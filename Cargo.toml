@@ -1,5 +1,5 @@
 [package]
-name = "collects_app"
+name = "collects"
 version = "0.1.0"
 authors = ["BoWen Chai <lovebaihezi@gmail.com>"]
 edition = "2024"

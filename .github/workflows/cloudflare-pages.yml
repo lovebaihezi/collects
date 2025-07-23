@@ -1,18 +1,16 @@
 name: Deploy to Cloudflare Pages
 
 on:
-  # Triggered on pushes to main branch
+  # Triggered on pushes to main branch and tags
   push:
     branches:
       - main
+    tags:
+      - "*"
   # Also run on pull requests
   pull_request:
     branches:
       - main
-  # Also run on Tag created
-  push:
-    tags:
-      - "*"
   # Allow manual triggering
   workflow_dispatch:
 

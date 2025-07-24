@@ -20,7 +20,8 @@ fn main() -> eframe::Result {
     eframe::run_native(
         "Collects",
         native_options,
-                Box::new(|cc| Ok(Box::new(collects::TemplateApp::new(cc)))),    )
+        Box::new(|cc| Ok(Box::new(collects::TemplateApp::new(cc)))),
+    )
 }
 
 // When compiling to web using trunk:
@@ -49,7 +50,8 @@ fn main() {
             .start(
                 canvas,
                 web_options,
-        Box::new(|cc| Ok(Box::new(collects::TemplateApp::new(cc)))),            )
+                Box::new(|cc| Ok(Box::new(collects::TemplateApp::new(cc)))),
+            )
             .await;
 
         // Remove the loading text and spinner:

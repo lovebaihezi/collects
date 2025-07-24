@@ -1,0 +1,104 @@
+name: Deploy to Cloudflare Workers
+
+on:
+  # Triggered on pushes to main branch and tags
+  push:
+    branches:
+      - main
+    tags:
+      - "*"
+  # Also run on pull requests for preview deployments
+  pull_request:
+    branches:
+      - main
+  # Allow manual triggering
+  workflow_dispatch:
+
+# Sets permissions of the GITHUB_TOKEN to allow deployment to Cloudflare Workers
+permissions:
+  contents: read
+  deployments: write
+
+jobs:
+  # Build for wasm and deploy to Cloudflare Workers
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          target: wasm32-unknown-unknown
+
+      - name: Install trunk
+        run: |
+          wget -qO- https://github.com/thedodd/trunk/releases/latest/download/trunk-x86_64-unknown-linux-gnu.tar.gz | tar -xzf-
+          sudo mv trunk /usr/local/bin/
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Setup pnpm with corepack
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.13.1 --activate
+
+      - name: Get pnpm store directory
+        id: pnpm-cache
+        run: |
+          echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
+
+      - name: Setup pnpm cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        run: pnpm install
+
+      # Build for preview (PRs and non-main branches)
+      - name: Build with Trunk (Preview)
+        if: github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')
+        run: pnpm run build:web
+        env:
+          # For Cloudflare Workers, we don't need a public URL prefix
+          public_url: ""
+          # Enable preview feature for preview builds
+          CARGO_FEATURES: preview
+
+      # Build for production (main branch and tags)
+      - name: Build with Trunk (Production)
+        if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')
+        run: pnpm run build:web
+        env:
+          # For Cloudflare Workers, we don't need a public URL prefix
+          public_url: ""
+
+      # Deploy to preview for PRs and non-main branches
+      - name: Deploy to Preview
+        if: github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy --env preview
+        env:
+          NODE_ENV: development
+
+      # Deploy to production for main branch and tags
+      - name: Deploy to Production
+        if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy
+        env:
+          NODE_ENV: production

@@ -1,3 +1,7 @@
+use std::sync::Arc;
+
+use egui::FontData;
+
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)] // if we add new fields, give them default values when deserializing old state
@@ -8,6 +12,8 @@ pub struct TemplateApp {
     #[serde(skip)] // This how you opt-out of serialization of a field
     value: f32,
 }
+
+const NOTO_SANS_SC_FONT_TTF: &'static [u8] = include_bytes!("../assets/NotoSansSC-Thin.ttf");
 
 impl Default for TemplateApp {
     fn default() -> Self {
@@ -22,16 +28,38 @@ impl Default for TemplateApp {
 impl TemplateApp {
     /// Called once before the first frame.
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
-        // This is also where you can customize the look and feel of egui using
-        // `cc.egui_ctx.set_visuals` and `cc.egui_ctx.set_fonts`.
+        let fonts = Self::setup_app_fonts();
+        cc.egui_ctx.set_fonts(fonts);
 
-        // Load previous app state (if any).
-        // Note that you must enable the `persistence` feature for this to work.
         if let Some(storage) = cc.storage {
             eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default()
         } else {
             Default::default()
         }
+    }
+
+    fn setup_app_fonts() -> egui::FontDefinitions {
+        let mut fonts = egui::FontDefinitions::default();
+
+        fonts.font_data.insert(
+            "noto_sans_sc".to_owned(),
+            Arc::new(FontData::from_static(NOTO_SANS_SC_FONT_TTF)),
+        );
+
+        // Add the font as fallback for all font families
+        fonts
+            .families
+            .entry(egui::FontFamily::Proportional)
+            .or_default()
+            .push("noto_sans_sc".to_owned());
+
+        fonts
+            .families
+            .entry(egui::FontFamily::Monospace)
+            .or_default()
+            .push("noto_sans_sc".to_owned());
+
+        fonts
     }
 }
 

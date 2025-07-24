@@ -1,8 +1,10 @@
 name = "collects"
 compatibility_date = "2025-05-05"
 main = "./worker/index.ts"
-routes = ["collects.lqxclqxc.com/*"]
-
+routes = [
+  { pattern = "collects.lqxclqxc.com", custom_domain = true }
+]
+workers_dev = false
 [assets]
 directory = "./dist"
 binding = "ASSETS"

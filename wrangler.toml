@@ -10,4 +10,4 @@ binding = "ASSETS"
 
 [env.preview]
 workers_dev = false
-routes = [{ pattern = "*.collects-preview.lqxclqxc.com", custom_domain = true }]
+routes = [{ pattern = "collects-preview.lqxclqxc.com", custom_domain = true }]

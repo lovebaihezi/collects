@@ -98,7 +98,12 @@ impl eframe::App for TemplateApp {
 
         egui::CentralPanel::default().show(ctx, |ui| {
             // The central panel the region left after adding TopPanel's and SidePanel's
-            ui.heading("eframe template");
+            // Display different headings based on the build environment
+            #[cfg(feature = "preview")]
+            ui.heading("Collects (Preview)");
+
+            #[cfg(not(feature = "preview"))]
+            ui.heading("Collects");
 
             ui.horizontal(|ui| {
                 ui.label("Write something: ");

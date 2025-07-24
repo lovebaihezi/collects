@@ -5,6 +5,7 @@
   "scripts": {
     "deploy": "wrangler deploy",
     "build:web": "trunk build --release",
+    "build:web:preview": "CARGO_FEATURES=preview trunk build --release",
     "dev": "cargo r",
     "start": "wrangler dev",
     "cf-typegen": "wrangler types"

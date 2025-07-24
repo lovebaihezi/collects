@@ -1,10 +1,9 @@
 name = "collects"
 compatibility_date = "2025-05-05"
 main = "./worker/index.ts"
+routes = ["collects.lqxclqxc.com/*"]
 
 [assets]
 directory = "./dist"
 binding = "ASSETS"
 
-[routes]
-route = "collects.lqxclqxc.com/*"

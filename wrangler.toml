@@ -9,3 +9,8 @@ workers_dev = false
 directory = "./dist"
 binding = "ASSETS"
 
+[env.preview]
+routes = [
+  { pattern = "collects-preview.lqxclqxc.com", custom_domain = true }
+]
+

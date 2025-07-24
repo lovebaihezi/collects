@@ -5,3 +5,6 @@ main = "./worker/index.ts"
 [assets]
 directory = "./dist"
 binding = "ASSETS"
+
+[routes]
+route = "collects.lqxclqxc.com/*"

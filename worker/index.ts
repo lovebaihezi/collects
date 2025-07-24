@@ -1,7 +1,7 @@
-import { DurableObject } from "cloudflare:workers";
+import { WorkerEntrypoint } from "cloudflare:workers";
 
-export default {
-	async fetch(request, _env, _ctx): Promise<Response> {
-  return env.ASSETS.fetch(request);
-	},
-} satisfies ExportedHandler<Env>;
+export default class CollectsWorker extends WorkerEntrypoint<Env> {
+  fetch(request: Request) {
+    return this.env.ASSETS.fetch(request);
+  }
+};

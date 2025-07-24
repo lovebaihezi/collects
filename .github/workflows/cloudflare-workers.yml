@@ -7,7 +7,7 @@ on:
       - main
     tags:
       - "*"
-  # Also run on pull requests
+  # Also run on pull requests for preview deployments
   pull_request:
     branches:
       - main
@@ -65,13 +65,29 @@ jobs:
         run: pnpm install
 
       - name: Build with Trunk
-        run: pnpm run build
+        run: pnpm run build:web
         env:
           # For Cloudflare Workers, we don't need a public URL prefix
           public_url: ""
 
-      - name: Deploy to Cloudflare Workers
-        run: pnpm run deploy
+      # Deploy to preview for PRs and non-main branches
+      - name: Deploy to Preview
+        if: github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy --env preview
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          NODE_ENV: development
+
+      # Deploy to production for main branch and tags
+      - name: Deploy to Production
+        if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy
+        env:
+          NODE_ENV: production

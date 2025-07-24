@@ -1,6 +1,6 @@
-use std::{borrow::Cow, sync::Arc};
+use std::sync::Arc;
 
-use egui::{FontData, TextBuffer};
+use egui::FontData;
 
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
 #[derive(serde::Deserialize, serde::Serialize)]
@@ -13,7 +13,7 @@ pub struct TemplateApp {
     value: f32,
 }
 
-const NOTO_SANS_SC_FONT_TTF: &'static [u8] = include_bytes!("../assets/NotoSansSC-Thin.ttf");
+const NOTO_SANS_SC_FONT_TTF: &[u8] = include_bytes!("../assets/NotoSansSC-Thin.ttf");
 
 impl Default for TemplateApp {
     fn default() -> Self {

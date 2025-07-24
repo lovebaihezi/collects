@@ -1,0 +1,7 @@
+name = "collects"
+compatibility_date = "2025-05-05"
+main = "./worker/index.ts"
+
+[assets]
+directory = "./dist"
+binding = "ASSETS"

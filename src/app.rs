@@ -13,6 +13,8 @@ pub struct TemplateApp {
     value: f32,
 }
 
+// TODO: The font should loaded as a file, not embedded in the binary.
+#[expect(clippy::large_include_file)]
 const NOTO_SANS_SC_FONT_TTF: &[u8] = include_bytes!("../assets/NotoSansSC-Thin.ttf");
 
 impl Default for TemplateApp {

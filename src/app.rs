@@ -1,6 +1,6 @@
-use std::sync::Arc;
+use std::{borrow::Cow, sync::Arc};
 
-use egui::FontData;
+use egui::{FontData, TextBuffer};
 
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
 #[derive(serde::Deserialize, serde::Serialize)]
@@ -40,9 +40,10 @@ impl TemplateApp {
 
     fn setup_app_fonts() -> egui::FontDefinitions {
         let mut fonts = egui::FontDefinitions::default();
+        let name = "Noto Sans SC".to_owned();
 
         fonts.font_data.insert(
-            "noto_sans_sc".to_owned(),
+            name.clone(),
             Arc::new(FontData::from_static(NOTO_SANS_SC_FONT_TTF)),
         );
 
@@ -51,13 +52,13 @@ impl TemplateApp {
             .families
             .entry(egui::FontFamily::Proportional)
             .or_default()
-            .push("noto_sans_sc".to_owned());
+            .push(name.clone());
 
         fonts
             .families
             .entry(egui::FontFamily::Monospace)
             .or_default()
-            .push("noto_sans_sc".to_owned());
+            .push(name);
 
         fonts
     }

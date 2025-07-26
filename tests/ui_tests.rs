@@ -1,4 +1,4 @@
-use collects::TemplateApp;
+use collects::Collects;
 use eframe::App;
 use egui::accesskit;
 use egui_kittest::Harness;
@@ -7,7 +7,7 @@ use egui_kittest::kittest::{NodeT, Queryable};
 #[test]
 fn test_collects_header_exists() {
     let app = |ui: &mut egui::Ui| {
-        let mut app = TemplateApp::default();
+        let mut app = Collects::default();
         app.update(ui.ctx(), &mut eframe::Frame::_new_kittest());
     };
 
@@ -52,7 +52,7 @@ fn test_collects_header_exists() {
 #[test]
 fn test_collects_header_preview_mode() {
     let app = |ui: &mut egui::Ui| {
-        let mut app = TemplateApp::default();
+        let mut app = Collects::default();
         app.update(ui.ctx(), &mut eframe::Frame::_new_kittest());
     };
 

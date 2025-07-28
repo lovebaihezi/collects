@@ -1,8 +1,8 @@
 use collects::Collects;
-use eframe::App;
+use eframe::App as _;
 use egui::accesskit;
 use egui_kittest::Harness;
-use egui_kittest::kittest::{NodeT, Queryable};
+use egui_kittest::kittest::{NodeT as _, Queryable as _};
 
 #[test]
 fn test_collects_header_exists() {
@@ -17,7 +17,6 @@ fn test_collects_header_exists() {
     // Print all labels to debug
     let all_labels: Vec<_> = harness
         .query_all_by_role(accesskit::Role::TextRun)
-        .into_iter()
         .collect();
     println!(
         "All labels: {:?}",
@@ -28,10 +27,7 @@ fn test_collects_header_exists() {
     );
 
     // Instead of looking for Heading role, look for TextRun with "Collects"
-    let collects_labels: Vec<_> = harness
-        .query_all_by_label_contains("Collects")
-        .into_iter()
-        .collect();
+    let collects_labels: Vec<_> = harness.query_all_by_label_contains("Collects").collect();
     assert!(
         !collects_labels.is_empty(),
         "No labels containing 'Collects' found in the UI"
@@ -40,12 +36,11 @@ fn test_collects_header_exists() {
     // Check that one of the labels contains "Collects"
     let label_texts: Vec<_> = collects_labels
         .iter()
-        .map(|h| h.accesskit_node().value().unwrap_or_default().to_string())
+        .map(|h| h.accesskit_node().value().unwrap_or_default().clone())
         .collect();
     assert!(
         label_texts.iter().any(|text| text.contains("Collects")),
-        "No label contains 'Collects'. Found labels: {:?}",
-        label_texts
+        "No label contains 'Collects'. Found labels: {label_texts:?}",
     );
 }
 
@@ -62,7 +57,6 @@ fn test_collects_header_preview_mode() {
     // Print all labels to debug
     let all_labels: Vec<_> = harness
         .query_all_by_role(accesskit::Role::TextRun)
-        .into_iter()
         .collect();
     println!(
         "All labels: {:?}",
@@ -73,10 +67,7 @@ fn test_collects_header_preview_mode() {
     );
 
     // Instead of looking for Heading role, look for TextRun with "Collects"
-    let collects_labels: Vec<_> = harness
-        .query_all_by_label_contains("Collects")
-        .into_iter()
-        .collect();
+    let collects_labels: Vec<_> = harness.query_all_by_label_contains("Collects").collect();
     assert!(
         !collects_labels.is_empty(),
         "No labels containing 'Collects' found in the UI"
@@ -103,12 +94,11 @@ fn test_collects_header_preview_mode() {
     {
         let label_texts: Vec<_> = collects_labels
             .iter()
-            .map(|h| h.accesskit_node().value().unwrap_or_default().to_string())
+            .map(|h| h.accesskit_node().value().unwrap_or_default().clone())
             .collect();
         assert!(
             label_texts.iter().any(|text| text.contains("Collects")),
-            "No label contains 'Collects'. Found labels: {:?}",
-            label_texts
+            "No label contains 'Collects'. Found labels: {label_texts:?}",
         );
     }
 }

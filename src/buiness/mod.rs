@@ -1,12 +1,7 @@
 #[derive(Debug)]
-pub enum Business {
-}
+pub enum Business {}
 
 #[derive(Debug)]
-pub enum BusinessOutput {
-}
+pub enum BusinessOutput {}
 
-pub struct BusinessCtx {
-
-}
-
+pub struct BusinessCtx {}

@@ -3,12 +3,12 @@ use flume::{Receiver, Sender};
 #[derive(Debug)]
 pub enum Business {
     StartAndDetachOneThread,
-    SpawnTokioInOneThread,
+    SpawnUringInSpecificThread,
 }
 
 #[derive(Debug)]
 pub enum BusinessOutput {
-    Void,
+    StartAndDetachOneThread(std::thread::ThreadId),
 }
 
 pub struct BusinessCtx {
@@ -19,8 +19,7 @@ pub struct BusinessCtx {
 }
 
 impl BusinessCtx {
-    pub fn init<const N: usize>() -> BusinessCtx {
-        // TODO: Max Business output should based on
+    pub fn init<const N: usize>() -> Self {
         let (input_sender, input_receiver) = flume::bounded::<Business>(N);
         let (output_sender, output_receiver) = flume::bounded::<BusinessOutput>(N);
         Self {
@@ -31,5 +30,18 @@ impl BusinessCtx {
         }
     }
 
-    pub fn schedule_one_business(business: Business) {}
+    pub fn run(&self, business: &Business) {
+        match business {
+            Business::StartAndDetachOneThread => {
+                let t = std::thread::spawn(|| {});
+                let output = BusinessOutput::StartAndDetachOneThread(t.thread().id());
+                self.output_sender
+                    .send(output)
+                    .expect("unreachable, output channel should not be closed");
+            }
+            Business::SpawnUringInSpecificThread => {
+                todo!()
+            }
+        }
+    }
 }

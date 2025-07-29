@@ -5,17 +5,12 @@ use egui::FontData;
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)] // if we add new fields, give them default values when deserializing old state
+#[derive(Default)]
 pub struct Collects {}
 
 // TODO: The font should loaded as a file, not embedded in the binary.
 #[expect(clippy::large_include_file)]
 const NOTO_SANS_SC_FONT_TTF: &[u8] = include_bytes!("../assets/NotoSansSC-Thin.ttf");
-
-impl Default for Collects {
-    fn default() -> Self {
-        Self {}
-    }
-}
 
 impl Collects {
     /// Called once before the first frame.
@@ -64,9 +59,6 @@ impl eframe::App for Collects {
 
     /// Called each time the UI needs repainting, which may be many times per second.
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        // Put your widgets into a `SidePanel`, `TopBottomPanel`, `CentralPanel`, `Window` or `Area`.
-        // For inspiration and more examples, go to https://emilk.github.io/egui
-
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
             egui::MenuBar::new().ui(ui, |ui| {
                 // NOTE: no File->Quit on web pages!

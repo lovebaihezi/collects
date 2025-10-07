@@ -1,0 +1,15 @@
+{
+  "name": "collects-worker",
+  "version": "1.0.0",
+  "description": "",
+  "main": "src/worker.ts",
+  "scripts": {},
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "packageManager": "pnpm@10.18.2",
+  "dependencies": {
+    "typescript": "^5.9.3",
+    "wrangler": "^4.43.0"
+  }
+}

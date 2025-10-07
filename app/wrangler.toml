@@ -1,0 +1,11 @@
+name = "collects-app"
+main = "src/worker.ts"
+compatibility_date = "2025-01-01"
+
+[[routes]]
+pattern = "collects.lqxclqxc.com"
+custom_domain = true
+
+[assets]
+directory = "./dist"
+binding = "ASSETS"

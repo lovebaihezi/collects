@@ -1,0 +1,26 @@
+[package]
+name = "collects-services"
+version = "0.1.0"
+authors = ["BoWen Chai <chaibowen.i@gmail.com>"]
+edition = "2024"
+include = ["LICENSE-APACHE", "LICENSE-MIT", "**/*.rs", "Cargo.toml"]
+
+[dependencies]
+anyhow = { workspace = true}
+axum = { workspace = true }
+
+opendal = { workspace = true }
+serde.workspace = true
+serde-env = "0.2.0"
+serde_json.workspace = true
+sqlx = { workspace = true }
+thiserror = { workspace = true }
+tokio  = { workspace = true }
+tracing  = { workspace = true }
+tracing-subscriber  = { workspace = true }
+
+[dev-dependencies]
+axum-test = "18.1.0"
+
+[build-dependencies]
+chrono = "0.4.42"

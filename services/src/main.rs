@@ -3,6 +3,9 @@ use std::net::{IpAddr, SocketAddr};
 use tracing::info;
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 const BUILD_DATE: &str = env!("BUILD_DATE");
 const BUILD_COMMIT: &str = env!("BUILD_COMMIT");
 const BUILD_BRANCH: &str = env!("BUILD_BRANCH");

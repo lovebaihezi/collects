@@ -11,7 +11,7 @@ dev:
         cargo r
 
 release:
-    cargo b --release
+    RUSTFLAGS="-C target-feature=+crt-static" cargo build --release --target=x86_64-unknown-linux-musl
 
 release-run:
     env \

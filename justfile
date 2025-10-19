@@ -68,4 +68,8 @@ docker-run image_tag: (docker-build image_tag)
 
     echo "Running image: ${FULL_IMAGE_NAME}"
 
-    sudo docker run -p 3000:3000 "${FULL_IMAGE_NAME}"
+    sudo docker run --rm -p 3000:3000 \
+      -e ENV=prod \
+      -e PORT=3000 \
+      -e DATABASE_URL=$(gcloud secrets versions access latest --secret=database-url) \
+      "${FULL_IMAGE_NAME}"

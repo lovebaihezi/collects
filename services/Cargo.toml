@@ -6,19 +6,20 @@ edition = "2024"
 include = ["LICENSE-APACHE", "LICENSE-MIT", "**/*.rs", "Cargo.toml"]
 
 [dependencies]
-anyhow = { workspace = true}
+anyhow = { workspace = true }
 axum = { workspace = true }
-
 opendal = { workspace = true }
-serde.workspace = true
-serde-env = "0.2.0"
-serde_json.workspace = true
+serde = { workspace = true }
+serde-env = { workspace = true }
+serde_json = { workspace = true }
 sqlx = { workspace = true }
 thiserror = { workspace = true }
-tokio  = { workspace = true }
+tokio.workspace = true
 tracing  = { workspace = true }
 tracing-subscriber  = { workspace = true }
 mimalloc = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
 
 [dev-dependencies]
 axum-test = "18.1.0"

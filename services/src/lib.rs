@@ -9,6 +9,10 @@ use sqlx::PgPool;
 pub mod config;
 pub mod database;
 
+pub mod collect_files;
+pub mod collects;
+pub mod tags;
+
 pub fn routes(pool: PgPool) -> Router {
     Router::new()
         .route("/is-health", get(async || "OK"))

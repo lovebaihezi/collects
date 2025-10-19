@@ -7,10 +7,10 @@ mod services
 docker-login region='us-east1':
     gcloud auth configure-docker {{region}}-docker.pkg.dev
 
-# Builds and pushes the `collects-services` Docker image to Google Artifact Registry
-# using the modern `docker buildx` command.
+# Builds and pushes the `collects-services` Docker image to Google Artifact Registry.
+# This command first builds the static binary and then builds the Docker image.
 # Usage: just docker-push 20251017-1
-docker-push image_tag:
+docker-push image_tag: services::release
     #!/usr/bin/env sh
     set -eux
 
@@ -30,3 +30,23 @@ docker-push image_tag:
     docker push "${FULL_IMAGE_NAME}"
 
     echo "Successfully pushed image: ${FULL_IMAGE_NAME}"
+
+# Runs the `collects-services` Docker image locally for testing.
+# Usage: just docker-run 20251017-1
+docker-run image_tag:
+    #!/usr/bin/env sh
+    set -eux
+
+    # --- Configuration ---
+    # Define these variables to match your GCP environment.
+    GCP_REGION="us-east1"
+    PROJECT_ID=$(gcloud config get-value project)
+    REPOSITORY_NAME="collects-services" # The name of your Artifact Registry repo
+    IMAGE_NAME="collects-services"      # The name of the image itself
+    # --- End Configuration ---
+
+    FULL_IMAGE_NAME="${GCP_REGION}-docker.pkg.dev/${PROJECT_ID}/${REPOSITORY_NAME}/${IMAGE_NAME}:{{image_tag}}"
+
+    echo "Running image: ${FULL_IMAGE_NAME}"
+
+    sudo docker run -p 3000:3000 "${FULL_IMAGE_NAME}"

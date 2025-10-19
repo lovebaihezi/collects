@@ -18,6 +18,7 @@ thiserror = { workspace = true }
 tokio  = { workspace = true }
 tracing  = { workspace = true }
 tracing-subscriber  = { workspace = true }
+mimalloc = { workspace = true }
 
 [dev-dependencies]
 axum-test = "18.1.0"

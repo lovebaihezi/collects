@@ -39,7 +39,7 @@ docker-push image_tag: services::release
     IMAGE_NAME="collects-services"
     FULL_IMAGE_NAME="${GCP_REGION}-docker.pkg.dev/${PROJECT_ID}/${REPOSITORY_NAME}/${IMAGE_NAME}:{{image_tag}}"
 
-    sudo docker buildx build --platform linux/amd64,linux/arm64 -t "${FULL_IMAGE_NAME}" . --push
+    sudo docker buildx build --platform linux/amd64 -t "${FULL_IMAGE_NAME}" . --push
 
 # Runs the `collects-services` Docker image locally for testing.
 # Usage: just docker-run 20251017-1

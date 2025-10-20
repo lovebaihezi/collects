@@ -33,12 +33,8 @@ impl Default for CollectsApp {
     }
 }
 
-// TODO: not bundle the font in binary
-// In Native build, the binary and font should packed to executed.
-// In Wasm Build, we will use the font file provided by the HTML page, which loaded by manually font loading and app starting.
-#[cfg(not(target_arch = "wasm32"))]
-fn add_font(ctx: &egui::Context) {
-    let data = FontData::from_static(include_bytes!("../assets/fonts/SourceHanSerifCN-VF.ttf"));
+fn add_font(ctx: &egui::Context, font_data: Vec<u8>) {
+    let data = FontData::from_owned(font_data);
     ctx.add_font(FontInsert::new(
         "source han serif",
         data,
@@ -51,12 +47,11 @@ fn add_font(ctx: &egui::Context) {
 
 impl CollectsApp {
     /// Called once before the first frame.
-    pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
+    pub fn new(cc: &eframe::CreationContext<'_>, font_data: Vec<u8>) -> Self {
         // This is also where you can customize the look and feel of egui using
         // `cc.egui_ctx.set_visuals` and `cc.egui_ctx.set_fonts`.
 
-        #[cfg(not(target_arch = "wasm32"))]
-        add_font(&cc.egui_ctx);
+        add_font(&cc.egui_ctx, font_data);
 
         // Load previous app state (if any).
         // Note that you must enable the `persistence` feature for this to work.

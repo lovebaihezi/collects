@@ -6,6 +6,8 @@
 // When compiling natively:
 #[cfg(not(target_arch = "wasm32"))]
 fn main() -> eframe::Result {
+    use std::fs;
+
     env_logger::init(); // Log to stderr (if you run with `RUST_LOG=debug`).
 
     let native_options = eframe::NativeOptions {
@@ -20,10 +22,14 @@ fn main() -> eframe::Result {
             ),
         ..Default::default()
     };
+
+    let data: Vec<u8> =
+        fs::read("assets/fonts/SourceHanSerifCN-VF.ttf").expect("Failed to Open font file");
+
     eframe::run_native(
         "Collects",
         native_options,
-        Box::new(|cc| Ok(Box::new(collects_app::CollectsApp::new(cc)))),
+        Box::new(|cc| Ok(Box::new(collects_app::CollectsApp::new(cc, data)))),
     )
 }
 
@@ -31,6 +37,9 @@ fn main() -> eframe::Result {
 #[cfg(target_arch = "wasm32")]
 fn main() {
     use eframe::wasm_bindgen::JsCast as _;
+    use wasm_bindgen_futures::JsFuture;
+    use web_sys::js_sys::{ArrayBuffer, Uint8Array};
+    use web_sys::{Request, RequestInit, RequestMode, Response};
 
     // Redirect `log` message to `console.log` and friends:
     eframe::WebLogger::init(log::LevelFilter::Debug).ok();
@@ -49,11 +58,41 @@ fn main() {
             .dyn_into::<web_sys::HtmlCanvasElement>()
             .expect("egui_canvas was not a HtmlCanvasElement");
 
+        let opts = RequestInit::new();
+        opts.set_method("GET");
+        opts.set_mode(RequestMode::Cors);
+
+        let url = format!("./SourceHanSerifCN-VF.ttf");
+
+        let request = Request::new_with_str_and_init(&url, &opts).unwrap();
+
+        request.headers().set("Accept", "font/ttf").unwrap();
+
+        let window = web_sys::window().unwrap();
+        let resp_value = JsFuture::from(window.fetch_with_request(&request))
+            .await
+            .expect("failed to fetch");
+
+        // `resp_value` is a `Response` object.
+        assert!(resp_value.is_instance_of::<Response>());
+        let resp: Response = resp_value.dyn_into().unwrap();
+
+        let arr_buf_value = JsFuture::from(resp.array_buffer().unwrap())
+            .await
+            .expect("failed to get array buffer");
+        assert!(arr_buf_value.is_instance_of::<ArrayBuffer>());
+
+        let arr_buf = arr_buf_value.dyn_into::<ArrayBuffer>().unwrap();
+        let uin8_arr = Uint8Array::new(&arr_buf);
+        let len = uin8_arr.length() as usize;
+        let mut font_data = vec![0; len];
+        uin8_arr.copy_to(&mut font_data[..]);
+
         let start_result = eframe::WebRunner::new()
             .start(
                 canvas,
                 web_options,
-                Box::new(|cc| Ok(Box::new(collects_app::CollectsApp::new(cc)))),
+                Box::new(|cc| Ok(Box::new(collects_app::CollectsApp::new(cc, font_data)))),
             )
             .await;
 

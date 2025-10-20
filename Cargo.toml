@@ -26,6 +26,7 @@ dotenvy = "0.15"
 ehttp = "0.5"
 flume = "0.11"
 mimalloc = { version = "0.1", default-features = false }
+wasm-bindgen = "0.2.101"
 
 [profile.dev]
 opt-level = 1

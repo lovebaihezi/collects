@@ -22,13 +22,13 @@ web-release:
 wk-init:
     pnpm i
 
-wk-dev:
+wk-dev: web-build
     pnpm wrangler dev
 
-wk-build:
+wk-build: web-release
     pnpm wrangler build
 
-wk-deploy: web-release
+wk-deploy: wk-build
     pnpm wrangler deploy
 
 wk-type:

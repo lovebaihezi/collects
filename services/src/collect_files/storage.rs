@@ -80,7 +80,6 @@ pub async fn delete_collect_file(pool: &PgPool, id: i32) -> Result<CollectFile, 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::collects::PrivacyKind;
     use sqlx::postgres::PgPoolOptions;
     use std::env;
 

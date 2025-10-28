@@ -9,6 +9,10 @@
   "license": "ISC",
   "packageManager": "pnpm@10.18.2",
   "dependencies": {
+    "@stackframe/js": "^2.8.47",
+    "@tailwindcss/cli": "^4.1.16",
+    "daisyui": "^5.3.8",
+    "tailwindcss": "^4.1.16",
     "typescript": "^5.9.3",
     "wrangler": "^4.43.0"
   }

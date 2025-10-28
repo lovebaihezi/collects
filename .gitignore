@@ -18,3 +18,5 @@ target_wasm
 .env.local
 .env.prod
 .env
+
+.wrangler

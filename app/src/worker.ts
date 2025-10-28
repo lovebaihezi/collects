@@ -1,24 +1,26 @@
+import { StackServerApp } from "@stackframe/js";
+
 export default {
-	async fetch(req: Request, env: Env): Promise<Response> {
-		const url = new URL(req.url);
+  async fetch(req: Request, env: Env): Promise<Response> {
+    const url = new URL(req.url);
 
-		if (url.pathname.startsWith('/api/')) {
-			const apiBase = 'https://collects-api-145756646168.us-east1.run.app';
+    if (url.pathname.startsWith("/auth-callback") && req.method === "POST") {
+      const token = req.credentials;
+    }
 
-			// Remove the /api prefix
-			const newPath = url.pathname.substring('/api'.length);
+    if (url.pathname.startsWith("/api/")) {
+      const apiBase = "https://collects-api-145756646168.us-east1.run.app";
 
-			const newUrl = new URL(apiBase + newPath);
-			newUrl.search = url.search;
+      const newPath = url.pathname.substring("/api".length);
 
-			// Clone the request, but with the new URL
-			const newRequest = new Request(newUrl.toString(), req);
+      const newUrl = new URL(apiBase + newPath);
+      newUrl.search = url.search;
 
-			// Forward the request to the API
-			return fetch(newRequest);
-		}
+      const newRequest = new Request(newUrl.toString(), req);
 
-		// For all other requests, serve from the static assets
-		return env.ASSETS.fetch(req);
-	},
+      return fetch(newRequest);
+    }
+
+    return await env.ASSETS.fetch(req);
+  },
 };

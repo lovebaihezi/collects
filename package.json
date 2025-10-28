@@ -1,0 +1,5 @@
+{
+	"dependencies": {
+		"signal-timers": "^1.0.4"
+	}
+}

@@ -1,0 +1,22 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2022", "WebWorker"],
+    "types": []
+  },
+  "include": [
+    "src/worker.ts",
+    "src/entry-worker.tsx",
+    "src/App.tsx",
+    "src/Card.tsx",
+    "src/types.d.ts",
+    "worker-configuration.d.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "src/entry-client.tsx",
+    "src/entry-server.tsx",
+    "vite.config.ts"
+  ]
+}

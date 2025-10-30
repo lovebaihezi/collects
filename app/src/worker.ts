@@ -1,12 +1,6 @@
-import { StackServerApp } from "@stackframe/js";
-
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     const url = new URL(req.url);
-
-    if (url.pathname.startsWith("/auth-callback") && req.method === "POST") {
-      const token = req.credentials;
-    }
 
     if (url.pathname.startsWith("/api/")) {
       const apiBase = "https://collects-api-145756646168.us-east1.run.app";

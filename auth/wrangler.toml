@@ -1,0 +1,23 @@
+name = "collects-app-auth"
+main = "src/worker.ts"
+compatibility_date = "2025-09-15"
+
+[[routes]]
+pattern = "collects-auth.lqxclqxc.com"
+custom_domain = true
+
+[vars]
+# STACK_PROJECT_ID = "your-project-id"
+# STACK_PUBLISHABLE_CLIENT_KEY = "your-publishable-key"
+
+# Stack secret environment variables (use wrangler secret put)
+# STACK_SECRET_SERVER_KEY = "your-secret-key"
+
+# Build configuration
+[build]
+command = "pnpm run build:client && pnpm run build:worker-ssr"
+
+# Assets configuration
+[assets]
+directory = "./dist/client"
+binding = "ASSETS"

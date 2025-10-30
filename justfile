@@ -1,3 +1,4 @@
+mod auth
 mod app
 mod services
 

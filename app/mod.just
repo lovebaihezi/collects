@@ -11,32 +11,17 @@ lint:
     cargo clippy
     trunk fmt --check
 
+[parallel]
 install:
+    cargo install trunk
     pnpm i
 
-auth-build-css: install
-    pnpx @tailwindcss/cli -i auth/index.css -o auth/output.css
-
-auth-build-ts: install
-    pnpm tsc auth/auth.ts \
-        --lib es2020,dom \
-        --outDir auth \
-        --target esnext \
-        --module esnext \
-        --moduleResolution bundler \
-        --esModuleInterop \
-        --skipLibCheck
-
-[parallel]
-auth-build: auth-build-css auth-build-ts
-    @echo "finsihed"
-
-web-build: auth-build
+web-build: install
     trunk build
     cp -r auth dist
     du -h dist/*
 
-web-release: auth-build
+web-release: install
     trunk build --release
     cp -r auth dist
     du -h dist/*

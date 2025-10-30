@@ -1,0 +1,50 @@
+{
+  "name": "auth",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node server",
+    "build": "pnpm run build:client && pnpm run build:server && pnpm run build:worker-ssr && pnpm run build:worker",
+    "build:client": "vite build --outDir dist/client",
+    "build:server": "vite build --ssr src/entry-server.tsx --outDir dist/server",
+    "build:worker-ssr": "vite build --ssr src/entry-worker.tsx --outDir dist/worker",
+    "build:worker": "wrangler deploy --dry-run --outdir dist/worker",
+    "deploy": "wrangler deploy",
+    "preview": "cross-env NODE_ENV=production node server",
+    "type-check": "tsc --noEmit && tsc --project tsconfig.worker.json --noEmit && tsc --project tsconfig.node.json --noEmit",
+    "lint": "oxlint",
+    "lint:fix": "oxlint --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "check": "pnpm run type-check && pnpm run lint && pnpm run format:check",
+    "wrangler": "wrangler"
+  },
+  "dependencies": {
+    "@stackframe/js": "^2.8.47",
+    "compression": "^1.8.1",
+    "express": "^5.1.0",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "sirv": "^3.0.2",
+    "wrangler": "^4.45.2"
+  },
+  "devDependencies": {
+    "@types/compression": "^1.7.5",
+    "@types/express": "^5.0.3",
+    "@types/node": "^24.5.1",
+    "@types/react": "^19.1.13",
+    "@types/react-dom": "^19.1.9",
+    "@vitejs/plugin-react-swc": "^4.0.1",
+    "cross-env": "^10.0.0",
+    "oxlint": "^0.16.2",
+    "prettier": "^3.4.2",
+    "typescript": "~5.9.2",
+    "vite": "^7.1.5"
+  },
+  "pnpm": {
+    "overrides": {
+      "rollup": "^4.28.1"
+    }
+  }
+}

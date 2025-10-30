@@ -1,0 +1,46 @@
+{
+  "$schema": "https://oxc.rs/schema/oxlintrc.json",
+  "rules": {
+    "react": "warn",
+    "react-perf": "warn",
+    "jsx-a11y": "warn",
+    "unicorn": "warn",
+    "typescript": "warn",
+    "import": "warn"
+  },
+  "settings": {
+    "react": {
+      "version": "detect"
+    }
+  },
+  "env": {
+    "browser": true,
+    "es2022": true
+  },
+  "globals": {
+    "ReadableStream": "readonly",
+    "TransformStream": "readonly",
+    "WritableStream": "readonly"
+  },
+  "categories": {
+    "correctness": "warn",
+    "suspicious": "warn",
+    "perf": "warn",
+    "style": "off"
+  },
+  "overrides": [
+    {
+      "files": ["src/worker.ts", "src/entry-worker.tsx"],
+      "env": {
+        "browser": false,
+        "worker": true
+      }
+    },
+    {
+      "files": ["vite.config.ts", "server.js"],
+      "env": {
+        "node": true
+      }
+    }
+  ]
+}

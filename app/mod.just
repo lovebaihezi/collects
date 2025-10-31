@@ -18,12 +18,10 @@ install:
 
 web-build: install
     trunk build
-    cp -r auth dist
     du -h dist/*
 
 web-release: install
     trunk build --release
-    cp -r auth dist
     du -h dist/*
 
 wk-dev: web-build

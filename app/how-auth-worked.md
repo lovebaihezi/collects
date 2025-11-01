@@ -17,20 +17,20 @@ sequenceDiagram
     participant Worker as Cloudflare Worker
     participant Clerk as Clerk Hosted Login
 
-    NativeApp->>+Worker: Generates WriteKey, opens /auth/login?write_key=...
+    NativeApp->>+Worker: "Generates WriteKey, opens /auth/login?write_key=..."
     Worker->>Worker: Generates PKCE verifier and challenge
-    Worker->>Worker: Stores {status: "pending", verifier, token: null} in KV under WriteKey
-    Worker-->>-Browser: Redirects to Clerk with PKCE challenge and state=WriteKey
+    Worker->>Worker: "Stores {status 'pending', verifier, token null} in KV under WriteKey"
+    Worker-->>Browser: Redirects to Clerk with PKCE challenge and state=WriteKey
     Browser->>+Clerk: User logs in
     Clerk-->>-Browser: Redirects to /auth/callback with authorization_code and state=WriteKey
-    Browser->>+Worker: /auth/callback?code=...&state=...
+    Browser->>+Worker: "/auth/callback?code=...&state=..."
     Worker->>Worker: Retrieves verifier from KV using WriteKey
-    Worker->>+Clerk: Exchanges code for session token (with verifier)
+    Worker->>+Clerk: "Exchanges code for session token (with verifier)"
     Clerk-->>-Worker: Returns session_token
-    Worker->>Worker: Stores {status: "success", ..., token: session_token} in KV
+    Worker->>Worker: "Stores {status 'success', ..., token session_token} in KV"
     Worker-->>-Browser: Shows "Successfully authenticated" message
     loop Poll for Token
-        NativeApp->>+Worker: /auth/token?write_key=...
+        NativeApp->>+Worker: "/auth/token?write_key=..."
         Worker->>Worker: Reads KV for WriteKey
         alt Status is "pending"
             Worker-->>-NativeApp: 404 Not Found
@@ -38,7 +38,7 @@ sequenceDiagram
             Worker-->>-NativeApp: 200 OK with session_token
         end
     end
-    NativeApp->>+Worker: Makes API call to /api/... with Authorization: Bearer <session_token>
+    NativeApp->>+Worker: "Makes API call to /api/... with Authorization Bearer <session_token>"
     Worker->>Worker: Verifies token with Clerk SDK
     Worker->>+Backend: Forwards request to backend service
     Backend-->>-Worker: Returns API response

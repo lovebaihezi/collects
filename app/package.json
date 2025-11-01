@@ -10,6 +10,8 @@
   "packageManager": "pnpm@10.18.2",
   "dependencies": {
     "typescript": "^5.9.3",
-    "wrangler": "^4.43.0"
+    "wrangler": "^4.43.0",
+    "@clerk/backend": "^1.2.3",
+    "pkce-challenge": "^5.0.0"
   }
 }

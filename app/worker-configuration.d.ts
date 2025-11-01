@@ -7,6 +7,11 @@ declare namespace Cloudflare {
 	}
 	interface Env {
 		ASSETS: Fetcher;
+		CLERK_FRONTEND_API: string;
+		CLERK_PUBLISHABLE_KEY: string;
+		CLERK_SECRET_KEY: string;
+		CLERK_JWT_KEY: string;
+		TOKEN_KV: KVNamespace;
 	}
 }
 interface Env extends Cloudflare.Env {}

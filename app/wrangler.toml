@@ -12,9 +12,8 @@ binding = "ASSETS"
 run_worker_first = [ "/api/*", "/auth/*" ]
 
 [[kv_namespaces]]
-binding = "TOKEN_KV"
-id = "production-kv-namespace-id" # Replace with your production KV namespace ID
-preview_id = "preview-kv-namespace-id" # Replace with your preview KV namespace ID
+binding = "KV"
+id = "a4dafe7674c2440b81e4ec2e5889f1ba"
 
 [env.staging]
 name = "collects-app-staging"
@@ -24,6 +23,5 @@ pattern = "staging.collects.lqxclqxc.com"
 custom_domain = true
 
 [[env.staging.kv_namespaces]]
-binding = "TOKEN_KV"
-id = "staging-kv-namespace-id" # Replace with your staging KV namespace ID
-preview_id = "preview-kv-namespace-id" # Replace with your preview KV namespace ID
+binding = "KV"
+id = "fac40588d16f4fa8b7c8f36de6445649"

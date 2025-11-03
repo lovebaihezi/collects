@@ -8,6 +8,31 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 use std::sync::Arc;
+use thiserror::Error;
+use axum::response::IntoResponse;
+
+#[derive(Debug, Error)]
+pub enum AuthError {
+    #[error("Invalid token format")]
+    InvalidToken,
+    #[error("Missing 'kid' in token header")]
+    MissingKid,
+    #[error("Could not find key in JWKS")]
+    KeyNotFound,
+    #[error("Failed to fetch JWKS")]
+    JwksFetchError(#[from] reqwest::Error),
+    #[error("Token validation error")]
+    JwtError(#[from] jsonwebtoken::errors::Error),
+    #[error("Internal server error")]
+    InternalError(#[from] anyhow::Error),
+}
+
+impl IntoResponse for AuthError {
+    fn into_response(self) -> Response {
+        tracing::error!("Authentication error: {:?}", self);
+        (StatusCode::UNAUTHORIZED, "Unauthorized").into_response()
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Claims {
@@ -41,7 +66,7 @@ use axum::body::Body;
 pub async fn auth_middleware(
     mut req: Request<Body>,
     next: Next,
-) -> Result<Response, StatusCode> {
+) -> Result<Response, AuthError> {
     let auth_header = req
         .headers()
         .get(axum::http::header::AUTHORIZATION)
@@ -50,24 +75,22 @@ pub async fn auth_middleware(
     if let Some(auth_header) = auth_header {
         if let Some(token) = auth_header.strip_prefix("Bearer ") {
             let jwks_client = req.extensions().get::<Arc<JwksClient>>().unwrap();
-            let claims = verify_token(token, jwks_client).await;
-            if let Ok(claims) = claims {
-                req.extensions_mut().insert(claims);
-                let res = next.run(req).await;
-                return Ok(res);
-            }
+            let claims = verify_token(token, jwks_client).await?;
+            req.extensions_mut().insert(claims);
+            let res = next.run(req).await;
+            return Ok(res);
         }
     }
 
-    Err(StatusCode::UNAUTHORIZED)
+    Err(AuthError::InvalidToken)
 }
 
-pub async fn verify_token(token: &str, jwks_client: &Arc<JwksClient>) -> anyhow::Result<Claims> {
+pub async fn verify_token(token: &str, jwks_client: &Arc<JwksClient>) -> Result<Claims, AuthError> {
     let header = decode_header(token)?;
-    let kid = header.kid.ok_or_else(|| anyhow::anyhow!("Missing kid in token header"))?;
+    let kid = header.kid.ok_or(AuthError::MissingKid)?;
 
     let jwks = jwks_client.get_jwks().await?;
-    let jwk = jwks.find(&kid).ok_or_else(|| anyhow::anyhow!("JWK not found for kid"))?;
+    let jwk = jwks.find(&kid).ok_or(AuthError::KeyNotFound)?;
 
     let mut validation = Validation::new(Algorithm::from_str(&jwk.common.key_algorithm.unwrap().to_string())?);
     validation.validate_exp = true;

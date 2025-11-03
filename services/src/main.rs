@@ -31,7 +31,7 @@ async fn main() -> anyhow::Result<()> {
     let pool = database::create_pool(&config).await?;
 
     // Build the application router
-    let route = routes(pool, config.clone());
+    let route = routes(pool, config.clone()).await;
 
     // Create socket address
     let addr = SocketAddr::from((config.server_addr().parse::<IpAddr>()?, config.port()));

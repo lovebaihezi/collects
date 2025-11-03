@@ -3,19 +3,20 @@ use axum::{
     http::StatusCode,
     response::IntoResponse,
     routing::{any, get},
-    middleware,
+    Extension, middleware,
 };
 use sqlx::PgPool;
-use crate::auth::{auth_middleware, JwksClient};
 use crate::config::Config;
-use axum::Extension;
+use crate::auth::{auth_middleware, Claims, JwksClient};
+use std::sync::Arc;
 
 pub mod config;
 pub mod database;
 pub mod auth;
 
-pub fn routes(pool: PgPool, config: Config) -> Router {
-    let jwks_client = JwksClient::new(config.clerk_frontend_api().to_string());
+pub async fn routes(pool: PgPool, config: Config) -> Router {
+    let jwks_client = Arc::new(JwksClient::new(config.clerk_frontend_api().to_string()));
+
     Router::new()
         .route("/is-health", get(async || "OK"))
         .route(
@@ -27,8 +28,8 @@ pub fn routes(pool: PgPool, config: Config) -> Router {
         .with_state(pool)
 }
 
-async fn protected_route() -> impl IntoResponse {
-    (StatusCode::OK, "This is a protected route")
+async fn protected_route(Extension(claims): Extension<Claims>) -> impl IntoResponse {
+    (StatusCode::OK, format!("Welcome, {}!", claims.sub))
 }
 
 async fn catch_all() -> impl IntoResponse {

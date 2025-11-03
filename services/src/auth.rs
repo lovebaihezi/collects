@@ -1,16 +1,12 @@
-use async_trait::async_trait;
-use axum::{
-	extract::{FromRequestParts, FromRef},
-	http::{request::Parts, StatusCode},
-	response::{IntoResponse, Response},
-	RequestPartsExt,
-};
-use axum_extra::{headers::{authorization::Bearer, Authorization}, TypedHeader};
 use jsonwebtoken::{decode, decode_header, jwk::JwkSet, DecodingKey, Validation, Algorithm};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use sqlx::PgPool;
 use std::str::FromStr;
+use axum::{
+    http::{Request, StatusCode},
+    middleware::Next,
+    response::Response,
+};
 
 #[derive(Debug, Clone)]
 pub struct JwksClient {
@@ -33,7 +29,7 @@ impl JwksClient {
 	}
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Claims {
 	pub sub: String,
 	pub exp: usize,
@@ -55,38 +51,29 @@ pub async fn verify_token(token: &str, jwks_client: &JwksClient) -> anyhow::Resu
 	Ok(token_data.claims)
 }
 
-#[async_trait]
-impl<S> FromRequestParts<S> for Claims
-where
-    S: Send + Sync,
-    (PgPool, JwksClient): FromRef<S>,
-{
-	type Rejection = AuthError;
 
-	async fn from_request_parts(
-		parts: &mut Parts,
-		state: &S,
-	) -> Result<Self, Self::Rejection> {
-		let TypedHeader(Authorization(bearer)) =
-			parts.extract::<TypedHeader<Authorization<Bearer>>>().await.map_err(|_| AuthError::InvalidToken)?;
+use axum::body::Body;
 
-        let (_, jwks_client) = <(PgPool, JwksClient)>::from_ref(state);
+pub async fn auth_middleware(
+    mut req: Request<Body>,
+    next: Next,
+) -> Result<Response, StatusCode> {
+    let auth_header = req
+        .headers()
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|header| header.to_str().ok());
 
-		let claims = verify_token(bearer.token(), &jwks_client).await.map_err(|_| AuthError::InvalidToken)?;
+    if let Some(auth_header) = auth_header {
+        if let Some(token) = auth_header.strip_prefix("Bearer ") {
+            let jwks_client = req.extensions().get::<JwksClient>().unwrap();
+            let claims = verify_token(token, jwks_client).await;
+            if let Ok(claims) = claims {
+                req.extensions_mut().insert(claims);
+                let res = next.run(req).await;
+                return Ok(res);
+            }
+        }
+    }
 
-		Ok(claims)
-	}
-}
-
-pub enum AuthError {
-	InvalidToken,
-}
-
-impl IntoResponse for AuthError {
-	fn into_response(self) -> Response {
-		let (status, error_message) = match self {
-			AuthError::InvalidToken => (StatusCode::UNAUTHORIZED, "Invalid token"),
-		};
-		(status, error_message).into_response()
-	}
+    Err(StatusCode::UNAUTHORIZED)
 }

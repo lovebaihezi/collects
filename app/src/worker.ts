@@ -101,6 +101,13 @@ async function handleToken(req: Request, env: Env): Promise<Response> {
   }
 }
 
+async function handleHealthCheck(req: Request, env: Env): Promise<Response> {
+	return new Response(JSON.stringify({ status: "ok" }), {
+		status: 200,
+		headers: { "Content-Type": "application/json" },
+	});
+}
+
 async function handleApi(req: Request, env: Env): Promise<Response> {
   const verificationResult = await verifyToken(req, env);
 
@@ -127,6 +134,8 @@ async function handle(req: Request, env: Env): Promise<Response> {
     return handleCallback(req, env);
     } else if (url.pathname.startsWith("/auth/token")) {
     return handleToken(req, env);
+    } else if (url.pathname.startsWith("/health")) {
+      return handleHealthCheck(req, env);
     } else if (url.pathname.startsWith("/api/")) {
     return handleApi(req, env);
     }

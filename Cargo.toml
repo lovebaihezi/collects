@@ -12,7 +12,7 @@ eframe = { version = "0.32", default-features = false, features = [
     "wayland",       # To support Linux (and CI)
 ] }
 anyhow = "1.0.100"
-axum = "0.8.6"
+axum = "0.7.5"
 opendal = "0.54.0"
 chrono = { version = "0.4", features = ["serde"] }
 serde = "1.0.228"

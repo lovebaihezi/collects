@@ -28,6 +28,7 @@ pub struct Config {
     database_url: String,
     server_addr: String,
     port: u16,
+    clerk_frontend_api: String,
 }
 
 // An intermediate struct for deserializing environment variables
@@ -38,6 +39,7 @@ struct RawConfig {
     database_url: String,
     server_addr: Option<String>,
     port: u16,
+    clerk_frontend_api: String,
 }
 
 impl Config {
@@ -47,6 +49,10 @@ impl Config {
 
     pub fn database_url(&self) -> &str {
         &self.database_url
+    }
+
+    pub fn clerk_frontend_api(&self) -> &str {
+        &self.clerk_frontend_api
     }
 
     pub fn server_addr(&self) -> &str {
@@ -98,6 +104,7 @@ impl Config {
             database_url: raw_config.database_url,
             port: raw_config.port,
             server_addr,
+            clerk_frontend_api: raw_config.clerk_frontend_api,
         })
     }
 }

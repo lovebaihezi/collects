@@ -1,9 +1,9 @@
 #![warn(clippy::all, rust_2018_idioms)]
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
-// hide console window on Windows in release
-// Set rust analyzer to provide auto completion for the wasm32 target
 
-// When compiling natively:
+#[cfg(not(target_arch = "wasm32"))]
+static MALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 #[cfg(not(target_arch = "wasm32"))]
 fn main() -> eframe::Result {
     use std::fs;

@@ -17,11 +17,13 @@ flume = { workspace = true }
 chrono = { workspace = true }
 wasm-bindgen = { workspace = true }
 serde = { workspace = true }
+tokio = { workspace = true }
 log = "0.4.27"
 
 # native:
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 env_logger = "0.11.8"
+mimalloc = { workspace = true }
 
 # web:
 [target.'cfg(target_arch = "wasm32")'.dependencies]

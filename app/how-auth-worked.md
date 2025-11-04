@@ -41,21 +41,27 @@ sequenceDiagram
     NativeApp->>+Worker: "Makes API call to /api/... with Authorization Bearer <session_token>"
     Worker->>Worker: Verifies token with Clerk SDK
     Worker->>+Backend: Forwards request to backend service
+    Backend->>Backend: Verifies session token with Clerk JWKS
     Backend-->>-Worker: Returns API response
     Worker-->>-NativeApp: Returns API response
 ```
 
 ## Step-by-Step Explanation
 
-1.  **Initiation:** The native application generates a unique `WriteKey` and opens the user's browser to the `/auth/login` endpoint on this worker, passing the `WriteKey` as a query parameter.
-2.  **PKCE Setup:** The worker generates a PKCE `code_verifier` and `code_challenge`. It stores the `code_verifier` in Cloudflare KV, keyed by the `WriteKey`, with a status of `"pending"`.
-3.  **Redirect to Clerk:** The worker redirects the browser to Clerk's hosted login page, including the `code_challenge` and passing the original `WriteKey` in the `state` parameter.
-4.  **User Authentication:** The user authenticates with Clerk.
-5.  **Callback:** Clerk redirects the user back to the worker's `/auth/callback` endpoint, providing an authorization `code` and the `WriteKey` (in the `state` parameter).
-6.  **Token Exchange:** The worker retrieves the `code_verifier` from KV using the `WriteKey`. It then communicates with Clerk to exchange the authorization `code` for a session token, providing the `code_verifier` as part of the PKCE flow.
-7.  **Store Token:** The worker updates the record in KV, setting the `status` to `"success"` and storing the newly obtained session token.
-8.  **Polling:** Meanwhile, the native application polls the `/auth/token` endpoint, sending its `WriteKey`. The worker will respond with a `404 Not Found` until the `status` in KV is `"success"`, at which point it will return the session token.
-9.  **API Requests:** The native application can now make requests to the `/api/*` endpoints on this worker, including the session token in the `Authorization` header as a Bearer token. The worker will verify the token's validity before proxying the request to the backend service.
+1.  **Health Check:** The native application can make a `GET` request to the `/health` endpoint to verify that the Cloudflare Worker is running and accessible.
+2.  **Initiation:** The native application generates a unique `WriteKey` and opens the user's browser to the `/auth/login` endpoint on this worker, passing the `WriteKey` as a query parameter.
+3.  **PKCE Setup:** The worker generates a PKCE `code_verifier` and `code_challenge`. It stores the `code_verifier` in Cloudflare KV, keyed by the `WriteKey`, with a status of `"pending"`.
+4.  **Redirect to Clerk:** The worker redirects the browser to Clerk's hosted login page, including the `code_challenge` and passing the original `WriteKey` in the `state` parameter.
+5.  **User Authentication:** The user authenticates with Clerk.
+6.  **Callback:** Clerk redirects the user back to the worker's `/auth/callback` endpoint, providing an authorization `code` and the `WriteKey` (in the `state` parameter).
+7.  **Token Exchange:** The worker retrieves the `code_verifier` from KV using the `WriteKey`. It then communicates with Clerk to exchange the authorization `code` for a session token, providing the `code_verifier` as part of the PKCE flow.
+8.  **Store Token:** The worker updates the record in KV, setting the `status` to `"success"` and storing the newly obtained session token.
+9.  **Polling:** Meanwhile, the native application polls the `/auth/token` endpoint, sending its `WriteKey`. The worker will respond with a `404 Not Found` until the `status` in KV is `"success"`, at which point it will return the session token.
+10. **API Requests:** The native application can now make requests to the `/api/*` endpoints on this worker, including the session token in the `Authorization` header as a Bearer token. The worker will verify the token's validity before proxying the request to the backend service. The backend service will also independently verify the token using the public JWKS from Clerk.
+
+## Environment Variables
+
+The backend Rust service requires the `CLERK_FRONTEND_API` environment variable to be set. This is used to construct the JWKS URL for token verification.
 
 ## DNS Configuration
 

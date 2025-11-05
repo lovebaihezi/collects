@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::{signals::APIStatusSignal, utils::fonts::add_font, widgets};
+use crate::{effects::APIStatusSignal, utils::fonts::add_font, widgets};
 
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
 #[derive(Deserialize, Serialize, Default)]

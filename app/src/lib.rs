@@ -1,7 +1,7 @@
 #![warn(clippy::all, rust_2018_idioms)]
 
 mod app;
-mod signals;
+mod effects;
 mod utils;
 mod widgets;
 

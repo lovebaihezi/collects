@@ -1,9 +1,8 @@
 [package]
-name = "collects-app"
+name = "collects-ui"
 version = "0.1.0"
 authors = ["BoWen Chai <chaibowen.i@gmail.com>"]
 edition = "2024"
-include = ["LICENSE-APACHE", "LICENSE-MIT", "**/*.rs", "Cargo.toml"]
 
 [package.metadata.docs.rs]
 all-features = true

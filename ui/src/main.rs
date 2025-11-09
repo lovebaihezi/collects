@@ -29,7 +29,7 @@ fn main() -> eframe::Result {
     eframe::run_native(
         "Collects",
         native_options,
-        Box::new(|cc| Ok(Box::new(collects_app::CollectsApp::new(cc, data)))),
+        Box::new(|cc| Ok(Box::new(collects_ui::CollectsUI::new(cc, data)))),
     )
 }
 
@@ -92,7 +92,7 @@ fn main() {
             .start(
                 canvas,
                 web_options,
-                Box::new(|cc| Ok(Box::new(collects_app::CollectsApp::new(cc, font_data)))),
+                Box::new(|cc| Ok(Box::new(collects_ui::CollectsUI::new(cc, font_data)))),
             )
             .await;
 

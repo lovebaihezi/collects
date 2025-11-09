@@ -1,0 +1,17 @@
+[package]
+name = "collects-states"
+version = "0.1.0"
+authors = ["BoWen Chai <chaibowen.i@gmail.com>"]
+edition = "2024"
+
+[package.metadata.docs.rs]
+all-features = true
+targets = ["x86_64-unknown-linux-gnu", "wasm32-unknown-unknown"]
+
+[dependencies]
+ehttp = { workspace = true }
+flume = { workspace = true }
+chrono = { workspace = true }
+serde = { workspace = true }
+tokio = { workspace = true }
+log = { workspace = true }

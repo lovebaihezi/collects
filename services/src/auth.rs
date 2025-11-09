@@ -1,15 +1,15 @@
+use axum::response::IntoResponse;
 use axum::{
     http::{Request, StatusCode},
     middleware::Next,
     response::Response,
 };
-use jsonwebtoken::{decode, decode_header, jwk::JwkSet, DecodingKey, Validation, Algorithm};
+use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode, decode_header, jwk::JwkSet};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 use std::sync::Arc;
 use thiserror::Error;
-use axum::response::IntoResponse;
 
 #[derive(Debug, Error)]
 pub enum AuthError {
@@ -56,17 +56,20 @@ impl JwksClient {
     }
 
     pub async fn get_jwks(&self) -> anyhow::Result<JwkSet> {
-        let jwks = self.client.get(&self.jwks_url).send().await?.json::<JwkSet>().await?;
+        let jwks = self
+            .client
+            .get(&self.jwks_url)
+            .send()
+            .await?
+            .json::<JwkSet>()
+            .await?;
         Ok(jwks)
     }
 }
 
 use axum::body::Body;
 
-pub async fn auth_middleware(
-    mut req: Request<Body>,
-    next: Next,
-) -> Result<Response, AuthError> {
+pub async fn auth_middleware(mut req: Request<Body>, next: Next) -> Result<Response, AuthError> {
     let auth_header = req
         .headers()
         .get(axum::http::header::AUTHORIZATION)
@@ -92,7 +95,9 @@ pub async fn verify_token(token: &str, jwks_client: &Arc<JwksClient>) -> Result<
     let jwks = jwks_client.get_jwks().await?;
     let jwk = jwks.find(&kid).ok_or(AuthError::KeyNotFound)?;
 
-    let mut validation = Validation::new(Algorithm::from_str(&jwk.common.key_algorithm.unwrap().to_string())?);
+    let mut validation = Validation::new(Algorithm::from_str(
+        &jwk.common.key_algorithm.unwrap().to_string(),
+    )?);
     validation.validate_exp = true;
 
     let decoding_key = DecodingKey::from_jwk(jwk)?;

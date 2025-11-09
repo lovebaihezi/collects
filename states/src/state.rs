@@ -1,13 +1,13 @@
-use crate::ctx::StateCtx;
+use crate::{StateID, ctx::StateCtx};
 
 pub trait State {
     #[inline]
-    fn id(&self) -> usize {
-        unimplemented!()
+    fn id(&self) -> StateID {
+        StateID::None
     }
 
-    fn compute(&mut self, ctx: &StateCtx) {
-        ctx.mark_dirty(self.id());
+    fn compute(&mut self, _ctx: &StateCtx) {
+        unimplemented!()
     }
 
     fn re_compute(&mut self, ctx: &StateCtx) {

@@ -38,6 +38,7 @@ stringzilla = "4"
 rfd = "0.15"
 log = "0.4"
 hecs = "0.10.5"
+bumpalo = "3"
 
 [profile.dev]
 opt-level = 1

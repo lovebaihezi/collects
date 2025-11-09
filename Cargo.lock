@@ -877,12 +877,10 @@ dependencies = [
 name = "collects-states"
 version = "0.1.0"
 dependencies = [
- "chrono",
- "ehttp",
+ "bumpalo",
  "flume",
  "log",
  "serde",
- "tokio",
 ]
 
 [[package]]

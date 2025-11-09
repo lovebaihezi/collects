@@ -4,9 +4,9 @@ use crate::{utils::fonts::add_font, widgets};
 
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
 #[derive(Deserialize, Serialize, Default)]
-#[serde(default)] // if we add new fields, give them default values when deserializing old state
+#[serde(default)]
 pub struct CollectsUI {
-    token: String,
+    token: Option<String>,
 }
 
 impl CollectsUI {

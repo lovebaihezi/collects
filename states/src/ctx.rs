@@ -1,52 +1,58 @@
-use std::collections::BTreeMap;
-
 use flume::{Receiver, Sender, unbounded};
 
-use crate::state::State;
+use super::StateID;
 
-pub type ID = usize;
+use crate::{basic_states::BasicStates, state::State};
 
-pub struct SyncState {
-    pub dirty: bool,
-    pub data: Option<Box<dyn State>>,
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SyncStatus {
+    #[default]
+    Init,
+    Pending,
+    Dirty,
+    Clean,
 }
 
+#[derive(Debug)]
 pub struct StateCtx {
-    send: Sender<Box<dyn State>>,
-    recv: Receiver<Box<dyn State>>,
+    send: Sender<BasicStates>,
+    recv: Receiver<BasicStates>,
 
-    storage: BTreeMap<ID, SyncState>,
+    // simple state tracking
+    state_status: [SyncStatus; StateID::amount()],
+    storage: Vec<BasicStates>,
 }
 
 impl StateCtx {
     pub fn new() -> Self {
         let (send, recv) = unbounded();
+        let status = [SyncStatus::Init; StateID::amount()];
 
         Self {
             send,
             recv,
-            storage: BTreeMap::new(),
+            state_status: status,
+            storage: Vec::with_capacity(StateID::amount()),
         }
     }
 
-    pub fn cached<T: State>(&self, id: ID) -> Option<&T> {
-        let state = self.storage.get(id);
-        state.and_then(|ss| ss.cast::<T>())
-    }
-
-    pub fn mark_dirty(&self, _id: ID) {
+    pub fn cached<T: State>(&self, _id: StateID) -> Option<&T> {
         unimplemented!()
     }
 
-    pub fn mark_pending(&self, _id: ID) {
-        unimplemented!()
+    pub fn mark_dirty(&mut self, id: StateID) {
+        self.state_status[id as usize] = SyncStatus::Dirty;
     }
 
-    pub fn mark_clean(&self, _id: ID) {
-        unimplemented!()
+    pub fn mark_pending(&mut self, id: StateID) {
+        self.state_status[id as usize] = SyncStatus::Pending;
     }
 
-    pub fn clear(&self) {
-        unimplemented!()
+    pub fn mark_clean(&mut self, id: StateID) {
+        self.state_status[id as usize] = SyncStatus::Clean;
+    }
+
+    pub fn clear(&mut self) {
+        self.storage.clear();
     }
 }

@@ -1,18 +1,18 @@
+use crate::auth::{Claims, JwksClient, auth_middleware};
+use crate::config::Config;
 use axum::{
-    Router,
+    Extension, Router,
     http::StatusCode,
+    middleware,
     response::IntoResponse,
     routing::{any, get},
-    Extension, middleware,
 };
 use sqlx::PgPool;
-use crate::config::Config;
-use crate::auth::{auth_middleware, Claims, JwksClient};
 use std::sync::Arc;
 
+pub mod auth;
 pub mod config;
 pub mod database;
-pub mod auth;
 
 pub async fn routes(pool: PgPool, config: Config) -> Router {
     let jwks_client = Arc::new(JwksClient::new(config.clerk_frontend_api().to_string()));

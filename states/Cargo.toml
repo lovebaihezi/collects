@@ -9,9 +9,7 @@ all-features = true
 targets = ["x86_64-unknown-linux-gnu", "wasm32-unknown-unknown"]
 
 [dependencies]
-ehttp = { workspace = true }
 flume = { workspace = true }
-chrono = { workspace = true }
 serde = { workspace = true }
-tokio = { workspace = true }
 log = { workspace = true }
+bumpalo = { workspace = true }

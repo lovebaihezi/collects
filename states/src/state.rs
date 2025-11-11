@@ -1,24 +1,23 @@
+use std::any::Any;
+
 use crate::{StateID, ctx::StateCtx};
 
-pub trait State {
-    #[inline]
-    fn id(&self) -> StateID {
-        StateID::None
-    }
+pub trait State: Any {
+    const ID: StateID;
 
-    fn compute(&mut self, _ctx: &StateCtx) {
-        unimplemented!()
-    }
+    const DEPS: &'static [StateID];
+
+    fn compute(&mut self, _ctx: &StateCtx);
 
     fn re_compute(&mut self, ctx: &StateCtx) {
         self.compute(ctx);
     }
 
-    fn mark_dirty(&self, ctx: &StateCtx) {
-        ctx.mark_dirty(self.id());
+    fn mark_dirty(&self, ctx: &mut StateCtx) {
+        ctx.mark_dirty(Self::ID);
     }
 
-    fn mark_pending(&self, ctx: &StateCtx) {
-        ctx.mark_pending(self.id());
+    fn mark_pending(&self, ctx: &mut StateCtx) {
+        ctx.mark_pending(Self::ID);
     }
 }

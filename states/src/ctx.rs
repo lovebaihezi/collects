@@ -40,6 +40,10 @@ impl StateCtx {
         unimplemented!()
     }
 
+    pub fn update(&mut self, id: StateID, value: BasicStates) {
+        unimplemented!()
+    }
+
     pub fn mark_dirty(&mut self, id: StateID) {
         self.state_status[id as usize] = SyncStatus::Dirty;
     }

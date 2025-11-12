@@ -1,17 +1,10 @@
 use std::any::Any;
 
-use crate::{StateID, ctx::StateCtx};
+use crate::{Reg, ctx::StateCtx};
 
 pub trait State: Any {
-    const ID: StateID;
-
-    const DEPS: &'static [StateID];
-
-    fn compute(&mut self, _ctx: &StateCtx);
-
-    fn re_compute(&mut self, ctx: &StateCtx) {
-        self.compute(ctx);
-    }
+    const TYPE: &'static str = "state";
+    const ID: Reg;
 
     fn mark_dirty(&self, ctx: &mut StateCtx) {
         ctx.mark_dirty(Self::ID);

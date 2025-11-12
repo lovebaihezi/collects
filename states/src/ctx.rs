@@ -1,50 +1,48 @@
-use flume::{Receiver, Sender, unbounded};
+use crate::StateRuntime;
 
 use super::BasicStates;
+use super::Reg;
 use super::State;
-use super::StateID;
 use super::StateSyncStatus;
 
 #[derive(Debug)]
 pub struct StateCtx {
-    send: Sender<BasicStates>,
-    recv: Receiver<BasicStates>,
+    runtime: StateRuntime,
 
     // simple state tracking
-    state_status: [StateSyncStatus; StateID::amount()],
+    state_status: [StateSyncStatus; Reg::amount()],
     storage: Vec<BasicStates>,
 }
 
 impl StateCtx {
     pub fn new() -> Self {
-        let (send, recv) = unbounded();
-        let status = [StateSyncStatus::Init; StateID::amount()];
+        let runtime = StateRuntime::new();
+        let status = [StateSyncStatus::Init; Reg::amount()];
 
         Self {
-            send,
-            recv,
+            runtime,
             state_status: status,
-            storage: Vec::with_capacity(StateID::amount()),
+            storage: Vec::with_capacity(Reg::amount()),
         }
     }
 
-    pub fn cached<T: State>(&self, _id: StateID) -> Option<&T> {
+    pub fn cached<T: State>(&self, _id: Reg) -> Option<&T> {
         unimplemented!()
     }
 
-    pub fn update(&mut self, id: StateID, value: BasicStates) {
+    pub fn update(&mut self, id: Reg, value: BasicStates) {
         unimplemented!()
     }
 
-    pub fn mark_dirty(&mut self, id: StateID) {
+    pub fn mark_dirty(&mut self, id: Reg) {
         self.state_status[id as usize] = StateSyncStatus::Dirty;
     }
 
-    pub fn mark_pending(&mut self, id: StateID) {
+    pub fn mark_pending(&mut self, id: Reg) {
         self.state_status[id as usize] = StateSyncStatus::Pending;
     }
 
-    pub fn mark_clean(&mut self, id: StateID) {
+    pub fn mark_clean(&mut self, id: Reg) {
         self.state_status[id as usize] = StateSyncStatus::Clean;
     }
 

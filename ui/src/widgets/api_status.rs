@@ -1,3 +1,4 @@
+use collects_business::ApiStatus;
 use egui::{Color32, Context, Response, Ui};
 
 pub fn api_status(state_ctx: &StateCtx, ctx: &Context, ui: &Ui) -> Response {

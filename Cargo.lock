@@ -840,6 +840,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "chrono",
+ "collects-states",
  "reqwest",
  "serde",
  "serde-env",
@@ -888,6 +889,7 @@ name = "collects-ui"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "collects-business",
  "eframe",
  "egui",
  "ehttp",

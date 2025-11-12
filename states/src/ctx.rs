@@ -1,17 +1,9 @@
 use flume::{Receiver, Sender, unbounded};
 
+use super::BasicStates;
+use super::State;
 use super::StateID;
-
-use crate::{basic_states::BasicStates, state::State};
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum SyncStatus {
-    #[default]
-    Init,
-    Pending,
-    Dirty,
-    Clean,
-}
+use super::StateSyncStatus;
 
 #[derive(Debug)]
 pub struct StateCtx {
@@ -19,14 +11,14 @@ pub struct StateCtx {
     recv: Receiver<BasicStates>,
 
     // simple state tracking
-    state_status: [SyncStatus; StateID::amount()],
+    state_status: [StateSyncStatus; StateID::amount()],
     storage: Vec<BasicStates>,
 }
 
 impl StateCtx {
     pub fn new() -> Self {
         let (send, recv) = unbounded();
-        let status = [SyncStatus::Init; StateID::amount()];
+        let status = [StateSyncStatus::Init; StateID::amount()];
 
         Self {
             send,
@@ -45,15 +37,15 @@ impl StateCtx {
     }
 
     pub fn mark_dirty(&mut self, id: StateID) {
-        self.state_status[id as usize] = SyncStatus::Dirty;
+        self.state_status[id as usize] = StateSyncStatus::Dirty;
     }
 
     pub fn mark_pending(&mut self, id: StateID) {
-        self.state_status[id as usize] = SyncStatus::Pending;
+        self.state_status[id as usize] = StateSyncStatus::Pending;
     }
 
     pub fn mark_clean(&mut self, id: StateID) {
-        self.state_status[id as usize] = SyncStatus::Clean;
+        self.state_status[id as usize] = StateSyncStatus::Clean;
     }
 
     pub fn clear(&mut self) {

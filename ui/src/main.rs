@@ -1,9 +1,9 @@
 #![warn(clippy::all, rust_2018_idioms)]
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
-// hide console window on Windows in release
-// Set rust analyzer to provide auto completion for the wasm32 target
 
-// When compiling natively:
+#[cfg(not(target_arch = "wasm32"))]
+static MALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 #[cfg(not(target_arch = "wasm32"))]
 fn main() -> eframe::Result {
     use std::fs;
@@ -29,7 +29,7 @@ fn main() -> eframe::Result {
     eframe::run_native(
         "Collects",
         native_options,
-        Box::new(|cc| Ok(Box::new(collects_app::CollectsApp::new(cc, data)))),
+        Box::new(|cc| Ok(Box::new(collects_ui::CollectsUI::new(cc, data)))),
     )
 }
 
@@ -92,7 +92,7 @@ fn main() {
             .start(
                 canvas,
                 web_options,
-                Box::new(|cc| Ok(Box::new(collects_app::CollectsApp::new(cc, font_data)))),
+                Box::new(|cc| Ok(Box::new(collects_ui::CollectsUI::new(cc, font_data)))),
             )
             .await;
 

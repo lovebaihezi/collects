@@ -1,4 +1,7 @@
 #![warn(clippy::all, rust_2018_idioms)]
 
 mod app;
-pub use app::CollectsApp;
+mod utils;
+mod widgets;
+
+pub use app::CollectsUI;

@@ -11,25 +11,27 @@ lint:
     cargo clippy
     trunk fmt --check
 
-web-build:
+[parallel]
+install:
+    cargo install trunk
+    pnpm i
+
+web-build: install
     trunk build
     du -h dist/*
 
-web-release:
+web-release: install
     trunk build --release
     du -h dist/*
-
-wk-init:
-    pnpm i
 
 wk-dev: web-build
     pnpm wrangler dev
 
-wk-build: web-release
+wk-build: install web-release
     pnpm wrangler build
 
-wk-deploy: wk-build
+wk-deploy: install wk-build
     pnpm wrangler deploy
 
-wk-type:
+wk-type: install
     pnpm wrangler types

@@ -1,17 +1,16 @@
+use std::any::Any;
+
 use crate::StateRuntime;
 
-use super::BasicStates;
-use super::Reg;
-use super::State;
-use super::StateSyncStatus;
+use super::{Reg, State, StateSyncStatus};
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct StateCtx {
     runtime: StateRuntime,
 
     // simple state tracking
     state_status: [StateSyncStatus; Reg::amount()],
-    storage: Vec<BasicStates>,
+    storage: Vec<Box<dyn Any>>,
 }
 
 impl StateCtx {
@@ -26,12 +25,12 @@ impl StateCtx {
         }
     }
 
-    pub fn cached<T: State>(&self, _id: Reg) -> Option<&T> {
-        unimplemented!()
+    pub fn cached<T: State>(&self) -> T {
+        T::default()
     }
 
-    pub fn update(&mut self, id: Reg, value: BasicStates) {
-        unimplemented!()
+    pub fn runtime(&self) -> &StateRuntime {
+        &self.runtime
     }
 
     pub fn mark_dirty(&mut self, id: Reg) {

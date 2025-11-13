@@ -11,5 +11,5 @@ pub use compute::Compute;
 pub use ctx::StateCtx;
 pub use register_state_id::reg::Reg;
 pub use runtime::StateRuntime;
-pub use state::State;
+pub use state::{State, StateReader, StateUpdater};
 pub use state_sync_status::StateSyncStatus;

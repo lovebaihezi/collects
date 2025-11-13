@@ -11,6 +11,10 @@ serde = { workspace = true }
 serde-env = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
+ehttp = { workspace = true }
+chrono = { workspace = true }
+log = { workspace = true }
+
 collects-states = { path = "../states" }
 
 [build-dependencies]

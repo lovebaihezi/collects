@@ -2,7 +2,10 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 #[cfg(not(target_arch = "wasm32"))]
-static MALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc;
+mod alloc {
+    #[global_allocator]
+    static MALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc;
+}
 
 #[cfg(not(target_arch = "wasm32"))]
 fn main() -> eframe::Result {

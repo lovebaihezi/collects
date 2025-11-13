@@ -67,15 +67,15 @@ pub mod reg {
     }
     }
 
-    impl Into<&'static str> for Reg {
-    fn into(self) -> &'static str {
-        REG_STRING[self as usize]
+    impl From<Reg> for &str {
+    fn from(value: Reg) -> Self {
+        REG_STRING[value as usize]
     }
     }
 
-    impl Into<usize> for Reg {
-    fn into(self) -> usize {
-        self as usize
+    impl From<Reg> for usize {
+    fn from(value: Reg) -> usize {
+        value as usize
     }
     }
 

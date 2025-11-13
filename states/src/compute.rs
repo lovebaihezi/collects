@@ -7,10 +7,10 @@ pub trait Compute: State + Sized {
     fn compute(&mut self, ctx: &StateCtx) -> Option<BasicStates>;
 
     fn reader(&self, ctx: &StateCtx) -> StateReader<Self> {
-        StateReader::from_runtime(&ctx.runtime())
+        StateReader::from_runtime(ctx.runtime())
     }
 
     fn updater(&self, ctx: &StateCtx) -> StateUpdater<Self> {
-        crate::StateUpdater::from_runtime(&ctx.runtime())
+        crate::StateUpdater::from_runtime(ctx.runtime())
     }
 }

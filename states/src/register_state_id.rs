@@ -11,6 +11,8 @@ pub mod reg {
     $($id,)+
     }
 
+    use std::fmt;
+
     const LEN:usize = [$(Reg::$id,)+].len();
     const REG_ARRAY: [Reg; LEN] = [$(Reg::$id,)+];
     const REG_STRING: [&'static str; LEN] = [$(stringify!($id),)+];
@@ -77,10 +79,10 @@ pub mod reg {
     }
     }
 
-    impl ToString for Reg {
+    impl fmt::Display for Reg {
     #[inline]
-    fn to_string(&self) -> String {
-        REG_STRING[*self as usize].to_string()
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", REG_STRING[*self as usize])
     }
     }
 }

@@ -1,8 +1,8 @@
 use std::any::Any;
 
-use crate::{StateReader, StateRuntime, StateUpdater};
+use crate::StateRuntime;
 
-use super::{BasicStates, Reg, State, StateSyncStatus};
+use super::{Reg, State, StateSyncStatus};
 
 #[derive(Debug, Default)]
 pub struct StateCtx {

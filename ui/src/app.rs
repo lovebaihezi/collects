@@ -1,3 +1,4 @@
+use collects_states::StateCtx;
 use serde::{Deserialize, Serialize};
 
 use crate::{utils::fonts::add_font, widgets};
@@ -7,6 +8,9 @@ use crate::{utils::fonts::add_font, widgets};
 #[serde(default)]
 pub struct CollectsUI {
     token: Option<String>,
+
+    #[serde(skip)]
+    state_ctx: StateCtx,
 }
 
 impl CollectsUI {
@@ -36,7 +40,7 @@ impl eframe::App for CollectsUI {
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
             egui::MenuBar::new().ui(ui, |ui| {
                 egui::widgets::global_theme_preference_buttons(ui);
-                widgets::api_status(ctx, ui);
+                widgets::api_status(&self.state_ctx, ui);
             });
         });
 

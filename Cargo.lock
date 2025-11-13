@@ -841,6 +841,8 @@ dependencies = [
  "anyhow",
  "chrono",
  "collects-states",
+ "ehttp",
+ "log",
  "reqwest",
  "serde",
  "serde-env",
@@ -890,6 +892,7 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "collects-business",
+ "collects-states",
  "eframe",
  "egui",
  "ehttp",

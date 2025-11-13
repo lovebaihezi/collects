@@ -1,11 +1,16 @@
 use std::any::Any;
 
 use flume::{Receiver, Sender};
+use thiserror::Error;
+
+use crate::{Compute, Reg};
 
 #[derive(Debug)]
 pub struct StateRuntime {
     send: Sender<Box<dyn Any>>,
     recv: Receiver<Box<dyn Any>>,
+
+    graph: Graph<Reg, Reg>,
 }
 
 impl Default for StateRuntime {
@@ -14,10 +19,17 @@ impl Default for StateRuntime {
     }
 }
 
+#[derive(Debug, Error)]
+pub enum DepsConflict {}
+
 impl StateRuntime {
     pub fn new() -> Self {
         let (send, recv) = flume::unbounded();
-        Self { send, recv }
+        Self {
+            send,
+            recv,
+            graph: Vec::with_capacity(Reg::amount()),
+        }
     }
 
     pub fn sender(&self) -> Sender<Box<dyn Any>> {
@@ -28,7 +40,5 @@ impl StateRuntime {
         self.recv.clone()
     }
 
-    pub fn start_worker(&self) {}
-
-    pub fn run_compute(&self) {}
+    pub fn record<T: Compute>(&mut self) -> Result<(), String> {}
 }

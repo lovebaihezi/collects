@@ -4,12 +4,9 @@ version = "0.1.0"
 authors = ["BoWen Chai <chaibowen.i@gmail.com>"]
 edition = "2024"
 
-[package.metadata.docs.rs]
-all-features = true
-targets = ["x86_64-unknown-linux-gnu", "wasm32-unknown-unknown"]
-
 [dependencies]
 flume = { workspace = true }
 serde = { workspace = true }
 log = { workspace = true }
 bumpalo = { workspace = true }
+thiserror = { workspace = true }

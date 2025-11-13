@@ -90,6 +90,5 @@ pub mod reg {
 }
 
 reg! {
-    None,
     ApiStatus
 }

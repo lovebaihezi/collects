@@ -3,14 +3,14 @@ use std::any::Any;
 use flume::{Receiver, Sender};
 use thiserror::Error;
 
-use crate::{Compute, Reg};
+use crate::{Compute, Graph, Reg};
 
 #[derive(Debug)]
 pub struct StateRuntime {
     send: Sender<Box<dyn Any>>,
     recv: Receiver<Box<dyn Any>>,
 
-    graph: Graph<Reg, Reg>,
+    graph: Graph<Reg>,
 }
 
 impl Default for StateRuntime {
@@ -28,7 +28,7 @@ impl StateRuntime {
         Self {
             send,
             recv,
-            graph: Vec::with_capacity(Reg::amount()),
+            graph: Graph::with_capacity(Reg::amount()),
         }
     }
 

@@ -14,6 +14,12 @@ where
     Node: Default + Debug,
     Edge: Default + Debug,
 {
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self {
+            routes: Vec::with_capacity(capacity),
+        }
+    }
+
     pub fn route_to(&mut self, from: Node, to: Node, via: Edge) {
         self.routes.push((from, via, to));
     }

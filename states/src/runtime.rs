@@ -1,9 +1,9 @@
-use std::any::Any;
+use std::{any::Any, panic};
 
 use flume::{Receiver, Sender};
 use thiserror::Error;
 
-use crate::{Compute, Graph, Reg};
+use crate::{Compute, Graph, Reg, graph::TopologyError};
 
 #[derive(Debug)]
 pub struct StateRuntime {
@@ -18,9 +18,6 @@ impl Default for StateRuntime {
         Self::new()
     }
 }
-
-#[derive(Debug, Error)]
-pub enum DepsConflict {}
 
 impl StateRuntime {
     pub fn new() -> Self {
@@ -40,5 +37,17 @@ impl StateRuntime {
         self.recv.clone()
     }
 
-    pub fn record<T: Compute>(&mut self) -> Result<(), String> {}
+    pub fn record<T: Compute>(&mut self) {
+        for dep in T::DEPS {
+            self.graph.route_to(*dep, T::ID, ());
+        }
+    }
+
+    pub fn verify_deps(&self) -> Result<(), TopologyError> {
+        self.graph.topology_sort()
+    }
+
+    pub fn shuold_update(&self, id: Reg) -> impl Iterator<Item = Reg> {
+        Vec::new().into_iter()
+    }
 }

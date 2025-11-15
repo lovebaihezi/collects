@@ -1,8 +1,6 @@
 use std::any::Any;
 
-use crate::{Compute, StateRuntime};
-
-use super::{Reg, State, StateSyncStatus};
+use super::{Compute, Reg, State, StateRuntime, StateSyncStatus};
 
 #[derive(Debug, Default)]
 pub struct StateCtx {
@@ -29,8 +27,7 @@ impl StateCtx {
     pub fn record_compute<T: Compute>(&mut self) {
         let id = T::ID as usize;
         self.storage[id] = Box::new(T::default());
-
-        self.runtime.
+        self.runtime.record::<T>();
     }
 
     pub fn cached<T: State>(&self) -> T {

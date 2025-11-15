@@ -10,7 +10,7 @@ mod state_sync_status;
 pub use basic_states::BasicStates;
 pub use compute::Compute;
 pub use ctx::StateCtx;
-pub use graph::Graph;
+pub use graph::{DepRoute, Graph, TopologyError};
 pub use register_state::reg::Reg;
 pub use runtime::StateRuntime;
 pub use state::{State, StateReader, StateUpdater};

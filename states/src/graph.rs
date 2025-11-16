@@ -81,17 +81,17 @@ where
 
         for (node, &(in_count, _)) in in_out.iter() {
             if in_count == 0 {
-                queue.push_back(node);
+                queue.push_back(*node);
             }
         }
 
         while let Some(current) = queue.pop_front() {
-            let connected_nodes = self.connected(*current);
+            let connected_nodes = self.connected(current);
             for connected_node in connected_nodes {
-                let (in_c, out_c) = in_out.get_mut(connected_node).unwrap();
+                let (in_c, _) = in_out.get_mut(connected_node).unwrap();
                 *in_c -= 1;
                 if *in_c == 0 {
-                    queue.push_back(connected_node);
+                    queue.push_back(*connected_node);
                 }
             }
         }

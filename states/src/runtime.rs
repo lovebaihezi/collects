@@ -43,7 +43,7 @@ impl StateRuntime {
         }
     }
 
-    pub fn verify_deps(&mut self) -> Result<(), TopologyError> {
+    pub fn verify_deps(&mut self) -> Result<(), TopologyError<Reg>> {
         self.graph.topology_sort()
     }
 

@@ -76,13 +76,14 @@ pub async fn auth_middleware(mut req: Request<Body>, next: Next) -> Result<Respo
         .and_then(|header| header.to_str().ok());
 
     if let Some(auth_header) = auth_header
-        && let Some(token) = auth_header.strip_prefix("Bearer ") {
-            let jwks_client = req.extensions().get::<Arc<JwksClient>>().unwrap();
-            let claims = verify_token(token, jwks_client).await?;
-            req.extensions_mut().insert(claims);
-            let res = next.run(req).await;
-            return Ok(res);
-        }
+        && let Some(token) = auth_header.strip_prefix("Bearer ")
+    {
+        let jwks_client = req.extensions().get::<Arc<JwksClient>>().unwrap();
+        let claims = verify_token(token, jwks_client).await?;
+        req.extensions_mut().insert(claims);
+        let res = next.run(req).await;
+        return Ok(res);
+    }
 
     Err(AuthError::InvalidToken)
 }

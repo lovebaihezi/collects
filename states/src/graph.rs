@@ -1,15 +1,19 @@
 use std::{
     collections::{BTreeMap, BTreeSet, VecDeque},
     fmt::{Debug, Formatter},
-    mem::MaybeUninit,
 };
 
 use thiserror::Error;
 
 #[derive(Debug, Error)]
-pub enum TopologyError {
+pub enum TopologyError<T>
+where
+    T: Debug,
+{
     #[error("Cycle detected in dependency graph, from ")]
-    CycleDetected(),
+    CycleDetected(DepRoute<T>),
+    #[error("Duplicate edge detected in dependency graph, at node {:?}", .0.route[0])]
+    DuplicateEdge(DepRoute<T>),
 }
 
 pub struct DepRoute<T> {
@@ -74,31 +78,35 @@ where
         in_out
     }
 
-    pub fn topology_sort(&mut self) -> Result<(), TopologyError> {
+    pub fn topology_sort(&mut self) -> Result<(), TopologyError<Node>> {
         let mut in_out = self.cal_in_out();
 
-        let mut queue = VecDeque::new();
+        let node: Vec<_> = in_out.keys().collect();
 
-        for (node, &(in_count, _)) in in_out.iter() {
-            if in_count == 0 {
-                queue.push_back(*node);
-            }
-        }
+        while !in_out.is_empty() {
+            if let Some((&node, &(in_deg, out_deg))) =
+                in_out.iter().find(|(_, &(in_deg, _))| in_deg == 0)
+            {
+                // remove node
+                in_out.remove(&node);
 
-        while let Some(current) = queue.pop_front() {
-            let connected_nodes = self.connected(current);
-            for connected_node in connected_nodes {
-                let (in_c, _) = in_out.get_mut(connected_node).unwrap();
-                *in_c -= 1;
-                if *in_c == 0 {
-                    queue.push_back(*connected_node);
+                // decrease out degree of connected nodes
+                // Dynamic Programming to speed up or cache
+                for connected in self.direct_connected_nodes(node)? {
+                    if let Some(entry) = in_out.get_mut(&connected) {
+                        entry.0 -= 1;
+                    }
                 }
+            } else {
+                let start_node = *node.first().unwrap();
+                return Err(TopologyError::CycleDetected(DepRoute { route }));
             }
         }
 
         Ok(())
     }
 
+    /// # Connected Nodes, node that deps on the given node
     pub fn connected(&mut self, node: Node) -> impl Iterator<Item = &Node> {
         if self.route_cache.contains_key(&node) {
             self.route_cache.get(&node).unwrap().into_iter()
@@ -106,6 +114,25 @@ where
             let collected = self.connected_nodes(node);
             self.route_cache.insert(node, collected);
             self.route_cache.get(&node).unwrap().into_iter()
+        }
+    }
+
+    fn direct_connected_nodes(&self, node: Node) -> Result<BTreeSet<Node>, TopologyError<Node>> {
+        let mut collected = Vec::new();
+
+        for (from, _via, to) in self.routes.iter() {
+            if from == &node {
+                collected.push(*to);
+            }
+        }
+
+        let collected_nodes_len = collected.len();
+        let set: BTreeSet<Node> = collected.into_iter().collect();
+
+        if set.len() != collected_nodes_len {
+            Err(TopologyError::DuplicateEdge(DepRoute { route: vec![node] }))
+        } else {
+            Ok(set)
         }
     }
 
@@ -143,5 +170,27 @@ mod tests {
         graph.route_to(1, 3, "edge_1_3");
 
         assert_eq!(graph.routes.len(), 3);
+    }
+
+    #[test]
+    fn simple_topology_sort() {
+        let mut graph: Graph<u32, &str> = Graph::with_capacity(10);
+        graph.route_to(1, 2, "edge_1_2");
+        graph.route_to(2, 3, "edge_2_3");
+        graph.route_to(1, 3, "edge_1_3");
+
+        let result = graph.topology_sort();
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn cycle_topology_sort() {
+        let mut graph: Graph<u32, &str> = Graph::with_capacity(10);
+        graph.route_to(1, 2, "edge_1_2");
+        graph.route_to(2, 3, "edge_2_3");
+        graph.route_to(3, 1, "edge_3_1");
+
+        let result = graph.topology_sort();
+        assert!(result.is_err());
     }
 }

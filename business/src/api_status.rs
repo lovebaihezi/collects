@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use collects_states::{BasicStates, Compute, Reg, State};
+use collects_states::{Compute, Reg, State};
 
 #[derive(Default, Debug)]
 pub struct ApiStatus {

@@ -1,7 +1,6 @@
-use std::{any::Any, panic};
+use std::any::Any;
 
 use flume::{Receiver, Sender};
-use thiserror::Error;
 
 use crate::{Compute, Graph, Reg, graph::TopologyError};
 

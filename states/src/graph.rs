@@ -104,11 +104,11 @@ where
     /// # Connected Nodes, node that deps on the given node
     pub fn connected(&mut self, node: Node) -> impl Iterator<Item = &Node> {
         if self.route_cache.contains_key(&node) {
-            self.route_cache.get(&node).unwrap().into_iter()
+            self.route_cache.get(&node).unwrap().iter()
         } else {
             let collected = self.connected_nodes(node);
             self.route_cache.insert(node, collected);
-            self.route_cache.get(&node).unwrap().into_iter()
+            self.route_cache.get(&node).unwrap().iter()
         }
     }
 

@@ -51,9 +51,10 @@ where
 
     pub fn read(&self) -> Option<Box<T>> {
         if let Ok(boxed) = self.recv.try_recv()
-            && let Ok(state) = boxed.downcast::<T>() {
-                return Some(state);
-            }
+            && let Ok(state) = boxed.downcast::<T>()
+        {
+            return Some(state);
+        }
         None
     }
 }

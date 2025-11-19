@@ -1,10 +1,10 @@
-use crate::{BasicStates, Reg, State, StateCtx, StateReader, StateUpdater};
+use crate::{Reg, State, StateCtx, StateReader, StateUpdater};
 
 pub trait Compute: State + Sized {
     const TYPE: &'static str = "compute";
     const DEPS: &'static [Reg];
 
-    fn compute(&mut self, ctx: &StateCtx) -> Option<BasicStates>;
+    fn compute(&self, ctx: &StateCtx) -> Option<Self>;
 
     fn reader(&self, ctx: &StateCtx) -> StateReader<Self> {
         StateReader::from_runtime(ctx.runtime())

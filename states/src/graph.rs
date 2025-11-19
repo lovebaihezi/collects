@@ -81,12 +81,8 @@ where
     pub fn topology_sort(&mut self) -> Result<(), TopologyError<Node>> {
         let mut in_out = self.cal_in_out();
 
-        let node: Vec<_> = in_out.keys().collect();
-
         while !in_out.is_empty() {
-            if let Some((&node, &(in_deg, out_deg))) =
-                in_out.iter().find(|(_, &(in_deg, _))| in_deg == 0)
-            {
+            if let Some((&node, _)) = in_out.iter().find(|(_, deg)| deg.0 == 0) {
                 // remove node
                 in_out.remove(&node);
 
@@ -98,8 +94,7 @@ where
                     }
                 }
             } else {
-                let start_node = *node.first().unwrap();
-                return Err(TopologyError::CycleDetected(DepRoute { route }));
+                return Err(TopologyError::CycleDetected(DepRoute { route: vec![] }));
             }
         }
 
@@ -130,6 +125,7 @@ where
         let set: BTreeSet<Node> = collected.into_iter().collect();
 
         if set.len() != collected_nodes_len {
+            // TODO: better error
             Err(TopologyError::DuplicateEdge(DepRoute { route: vec![node] }))
         } else {
             Ok(set)
@@ -146,6 +142,7 @@ where
         while let Some(current) = queue.pop_front() {
             for (from, _via, to) in self.routes.iter() {
                 if from == &current {
+                    // Actuall we check for node already collected, which means even if there is cycle, we won't stuck in infinite loop
                     if !collected.contains(to) {
                         collected.insert(*to);
                         queue.push_back(*to);

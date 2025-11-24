@@ -10,3 +10,15 @@ pub struct Time {
 impl State for Time {
     const ID: Reg = Reg::Time;
 }
+
+impl AsMut<DateTime<Utc>> for Time {
+    fn as_mut(&mut self) -> &mut DateTime<Utc> {
+        &mut self.virt
+    }
+}
+
+impl AsRef<DateTime<Utc>> for Time {
+    fn as_ref(&self) -> &DateTime<Utc> {
+        &self.virt
+    }
+}

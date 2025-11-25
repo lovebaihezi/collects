@@ -37,7 +37,7 @@ mod state_runtime_test {
     }
 
     impl Compute for DummyComputeA {
-        const DEPS: &'static [Reg] = &[Reg::TestStateA];
+        const DEPS: &'static [Reg] = &[Reg::TestStateA, Reg::Time];
 
         fn compute(&self, _ctx: &StateCtx) -> Option<Self> {
             Some(DummyComputeA)
@@ -47,11 +47,14 @@ mod state_runtime_test {
     #[test]
     fn state_runtime_baisic() {
         let mut ctx = StateCtx::new();
-        // Register the states and computes
-        ctx.add_state::<DummyState>();
-        ctx.record_compute::<DummyComputeA>();
+        // Register the states and computes, which, the state manually init
+        ctx.add_state(DummyState);
+        ctx.add_state(Time::default());
+        ctx.record_compute(DummyComputeA);
 
-        // First: Init States
-        ctx.init_states();
+        // run init compute
+        todo!();
+
+        // Render the states, which, we here verify the states are correctly updated
     }
 }

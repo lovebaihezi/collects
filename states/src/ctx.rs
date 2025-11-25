@@ -20,29 +20,23 @@ impl StateCtx {
         }
     }
 
-    pub fn add_state<T: State>(&mut self) {
+    pub fn add_state<T: State>(&mut self, state: T) {
         let id = T::ID as usize;
-        let default = T::default();
         self.storage[id] = (
-            default.type_id(),
-            Box::new(default),
+            state.type_id(),
+            Box::new(state),
             StateSyncStatus::BeforeInit,
         );
     }
 
-    pub fn record_compute<T: Compute>(&mut self) {
+    pub fn record_compute<T: Compute>(&mut self, compute: T) {
         let id = T::ID as usize;
-        let default = T::default();
         self.storage[id] = (
-            default.type_id(),
-            Box::new(default),
+            compute.type_id(),
+            Box::new(compute),
             StateSyncStatus::BeforeInit,
         );
         self.runtime.record::<T>();
-    }
-
-    pub fn init_states(&mut self) {
-        todo!()
     }
 
     pub fn cached<T: State>(&self) -> T {

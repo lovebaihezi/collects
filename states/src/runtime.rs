@@ -36,9 +36,9 @@ impl StateRuntime {
         self.recv.clone()
     }
 
-    pub fn record<T: Compute>(&mut self) {
-        for dep in T::DEPS {
-            self.graph.route_to(*dep, T::ID, ());
+    pub fn record<T: Compute>(&mut self, compute: &T) {
+        for dep in compute.deps() {
+            self.graph.route_to(*dep, compute.id(), ());
         }
     }
 

@@ -26,9 +26,7 @@ impl ApiStatus {
 }
 
 impl Compute for ApiStatus {
-    const DEPS: &'static [Reg] = &[];
-
-    fn compute(&self, ctx: &collects_states::StateCtx) -> Option<Self> {
+    fn compute(&self, ctx: &collects_states::StateCtx) {
         let request = ehttp::Request::get("https://collects.lqxclqxc./api/api-health");
         let api_status_updater = self.updater(ctx);
         ehttp::fetch(request, move |res| {
@@ -53,10 +51,11 @@ impl Compute for ApiStatus {
                 }
             }
         });
-        None
     }
 }
 
 impl State for ApiStatus {
-    const ID: Reg = Reg::ApiStatus;
+    fn id(&self) -> Reg {
+        Reg::ApiStatus
+    }
 }

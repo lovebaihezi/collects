@@ -4,9 +4,17 @@ use flume::{Receiver, Sender};
 
 use crate::{Reg, StateRuntime};
 
-pub trait State: Any + Default {
-    const TYPE: &'static str = "state";
-    const ID: Reg;
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ComponentType {
+    State,
+    Compute,
+}
+
+pub trait State: Any {
+    fn init(&mut self) {}
+    fn id(&self) -> Reg {
+        Reg::NOOP
+    }
 }
 
 pub struct StateUpdater<T: State> {

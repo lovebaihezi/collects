@@ -8,7 +8,9 @@ pub struct Time {
 }
 
 impl State for Time {
-    const ID: Reg = Reg::Time;
+    fn id(&self) -> Reg {
+        Reg::Time
+    }
 }
 
 impl AsMut<DateTime<Utc>> for Time {

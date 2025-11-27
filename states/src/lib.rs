@@ -26,18 +26,24 @@ mod state_runtime_test {
     struct DummyState;
 
     impl State for DummyState {
-        const ID: Reg = Reg::TestStateA;
+        fn id(&self) -> Reg {
+            Reg::TestStateA
+        }
     }
 
     #[derive(Default)]
     struct DummyComputeA;
 
     impl State for DummyComputeA {
-        const ID: Reg = Reg::TestComputeA;
+        fn id(&self) -> Reg {
+            Reg::TestComputeA
+        }
     }
 
     impl Compute for DummyComputeA {
-        const DEPS: &'static [Reg] = &[Reg::TestStateA, Reg::Time];
+        fn deps(&self) -> &'static [Reg] {
+            &[Reg::TestStateA, Reg::Time]
+        }
 
         fn compute(&self, _ctx: &StateCtx) -> Option<Self> {
             Some(DummyComputeA)
@@ -53,7 +59,7 @@ mod state_runtime_test {
         ctx.record_compute(DummyComputeA);
 
         // run init compute
-        todo!();
+        ctx.run_computed();
 
         // Render the states, which, we here verify the states are correctly updated
     }

@@ -21,7 +21,7 @@ impl StateCtx {
     }
 
     pub fn add_state<T: State>(&mut self, state: T) {
-        let id = T::ID as usize;
+        let id = state.id() as usize;
         self.storage[id] = (
             state.type_id(),
             Box::new(state),
@@ -30,17 +30,26 @@ impl StateCtx {
     }
 
     pub fn record_compute<T: Compute>(&mut self, compute: T) {
-        let id = T::ID as usize;
+        let id = compute.id() as usize;
+        self.runtime.record(&compute);
         self.storage[id] = (
             compute.type_id(),
             Box::new(compute),
             StateSyncStatus::BeforeInit,
         );
-        self.runtime.record::<T>();
     }
 
-    pub fn cached<T: State>(&self) -> T {
-        T::default()
+    pub fn run_computed(&self) {
+        for (type_id, compute_or_state, status) in self.storage.iter_mut() {
+            // if is compute
+            if let Some(compute) = compute_or_state.downcast_mut::<Box<dyn Compute>>() {
+                let res = compute.compute(self);
+            }
+        }
+    }
+
+    pub fn cached<T: Compute>(&self, id: Reg) -> T {
+        todo!()
     }
 
     pub fn runtime(&self) -> &StateRuntime {

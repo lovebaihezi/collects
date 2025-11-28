@@ -23,7 +23,9 @@ mod state_runtime_test {
     use super::*;
 
     #[derive(Default)]
-    struct DummyState;
+    struct DummyState {
+        base_value: i32,
+    }
 
     impl State for DummyState {
         fn id(&self) -> Reg {
@@ -32,7 +34,9 @@ mod state_runtime_test {
     }
 
     #[derive(Default)]
-    struct DummyComputeA;
+    struct DummyComputeA {
+        doubled: i32,
+    }
 
     impl State for DummyComputeA {
         fn id(&self) -> Reg {
@@ -45,8 +49,9 @@ mod state_runtime_test {
             &[Reg::TestStateA, Reg::Time]
         }
 
-        fn compute(&self, _ctx: &StateCtx) -> Option<Self> {
-            Some(DummyComputeA)
+        fn compute(&mut self, ctx: &mut StateCtx) {
+            let based = ctx.cached::<DummyState>(Reg::TestStateA);
+            self.doubled = based.unwrap().base_value * 2;
         }
     }
 
@@ -54,9 +59,9 @@ mod state_runtime_test {
     fn state_runtime_baisic() {
         let mut ctx = StateCtx::new();
         // Register the states and computes, which, the state manually init
-        ctx.add_state(DummyState);
+        ctx.add_state(DummyState { base_value: 1 });
         ctx.add_state(Time::default());
-        ctx.record_compute(DummyComputeA);
+        ctx.record_compute(DummyComputeA { doubled: 0 });
 
         // run init compute
         ctx.run_computed();

@@ -7,7 +7,7 @@ pub struct StateCtx {
     runtime: StateRuntime,
 
     // states(State, Compute)
-    storage: Vec<(TypeId, Box<dyn Any>, StateSyncStatus)>,
+    storage: Vec<(Box<dyn Any>, StateSyncStatus)>,
 }
 
 impl StateCtx {
@@ -22,34 +22,27 @@ impl StateCtx {
 
     pub fn add_state<T: State>(&mut self, state: T) {
         let id = state.id() as usize;
-        self.storage[id] = (
-            state.type_id(),
-            Box::new(state),
-            StateSyncStatus::BeforeInit,
-        );
+        self.storage[id] = (Box::new(state), StateSyncStatus::BeforeInit);
     }
 
     pub fn record_compute<T: Compute>(&mut self, compute: T) {
         let id = compute.id() as usize;
         self.runtime.record(&compute);
-        self.storage[id] = (
-            compute.type_id(),
-            Box::new(compute),
-            StateSyncStatus::BeforeInit,
-        );
+        self.storage[id] = (Box::new(compute), StateSyncStatus::BeforeInit);
     }
 
-    pub fn run_computed(&self) {
-        for (type_id, compute_or_state, status) in self.storage.iter_mut() {
-            // if is compute
-            if let Some(compute) = compute_or_state.downcast_mut::<Box<dyn Compute>>() {
-                let res = compute.compute(self);
+    pub fn run_computed(&mut self) {
+        let len = self.storage.len();
+        for i in 0..len {
+            if let Some(compute) = self.storage[i].0.downcast_mut::<Box<dyn Compute>>() {
+                // TODO: compute shuold accept [&mut State] or RefCell<Cell<State>> to read other state
+                compute.compute(self);
             }
         }
     }
 
-    pub fn cached<T: Compute>(&self, id: Reg) -> T {
-        todo!()
+    pub fn cached<T: State>(&self, id: Reg) -> Option<&T> {
+        self.storage[id as usize].0.downcast_ref::<T>()
     }
 
     pub fn runtime(&self) -> &StateRuntime {
@@ -57,15 +50,15 @@ impl StateCtx {
     }
 
     pub fn mark_dirty(&mut self, id: Reg) {
-        self.storage[id as usize].2 = StateSyncStatus::Dirty;
+        self.storage[id as usize].1 = StateSyncStatus::Dirty;
     }
 
     pub fn mark_pending(&mut self, id: Reg) {
-        self.storage[id as usize].2 = StateSyncStatus::Pending;
+        self.storage[id as usize].1 = StateSyncStatus::Pending;
     }
 
     pub fn mark_clean(&mut self, id: Reg) {
-        self.storage[id as usize].2 = StateSyncStatus::Clean;
+        self.storage[id as usize].1 = StateSyncStatus::Clean;
     }
 
     pub fn clear(&mut self) {

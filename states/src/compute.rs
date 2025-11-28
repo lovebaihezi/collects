@@ -1,17 +1,17 @@
 use crate::{Reg, State, StateCtx, StateReader, StateUpdater};
 
 pub trait Compute: State {
-    fn compute(&self, ctx: &StateCtx);
+    fn compute(&mut self, ctx: &StateCtx);
 
     fn deps(&self) -> &'static [Reg] {
         &[]
     }
+}
 
-    fn reader(&self, ctx: &StateCtx) -> StateReader<Self> {
-        StateReader::from_runtime(ctx.runtime())
-    }
+pub fn reader<T: Compute>(ctx: &StateCtx) -> StateReader<T> {
+    StateReader::from_runtime(ctx.runtime())
+}
 
-    fn updater(&self, ctx: &StateCtx) -> StateUpdater<Self> {
-        crate::StateUpdater::from_runtime(ctx.runtime())
-    }
+pub fn updater<T: Compute>(ctx: &StateCtx) -> StateUpdater<T> {
+    crate::StateUpdater::from_runtime(ctx.runtime())
 }

@@ -46,7 +46,7 @@ impl StateRuntime {
         self.graph.topology_sort()
     }
 
-    fn shuold_update_states(&self, id: Reg) -> impl Iterator<Item = Reg> {
+    fn should_update_states(&self, id: Reg) -> impl Iterator<Item = Reg> {
         Vec::new().into_iter()
     }
 }

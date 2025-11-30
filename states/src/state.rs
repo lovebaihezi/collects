@@ -1,4 +1,4 @@
-use std::any::Any;
+use std::{any::Any, fmt::Debug};
 
 use flume::{Receiver, Sender};
 
@@ -10,54 +10,43 @@ pub enum ComponentType {
     Compute,
 }
 
-pub trait State: Any {
+pub trait State: Any + Debug {
     fn init(&mut self) {}
-    fn id(&self) -> Reg {
-        Reg::NOOP
-    }
+    // TODO: Maybe TypeID could be better
+    fn id(&self) -> Reg;
 }
 
-pub struct StateUpdater<T: State> {
-    _marker: std::marker::PhantomData<T>,
+pub struct StateUpdater {
     send: Sender<Box<dyn Any>>,
 }
 
-impl<T> StateUpdater<T>
-where
-    T: State,
-{
+impl StateUpdater {
     pub fn from_runtime(runtime: &StateRuntime) -> Self {
         Self {
-            _marker: std::marker::PhantomData::<T>,
             send: runtime.sender(),
         }
     }
 
-    pub fn set(&self, state: T) {
+    pub fn set<T: State>(&self, state: T) {
         let boxed: Box<dyn Any> = Box::new(state);
         self.send.send(boxed).unwrap();
     }
 }
 
-unsafe impl<T> Send for StateUpdater<T> where T: State {}
+unsafe impl Send for StateUpdater {}
 
-pub struct StateReader<T: State> {
-    _marker: std::marker::PhantomData<T>,
+pub struct StateReader {
     recv: Receiver<Box<dyn Any>>,
 }
 
-impl<T> StateReader<T>
-where
-    T: State,
-{
+impl StateReader {
     pub fn from_runtime(runtime: &StateRuntime) -> Self {
         Self {
-            _marker: std::marker::PhantomData::<T>,
             recv: runtime.receiver(),
         }
     }
 
-    pub fn read(&self) -> Option<Box<T>> {
+    pub fn read<T: State>(&self) -> Option<Box<T>> {
         if let Ok(boxed) = self.recv.try_recv()
             && let Ok(state) = boxed.downcast::<T>()
         {
@@ -67,4 +56,4 @@ where
     }
 }
 
-unsafe impl<T> Send for StateReader<T> where T: State {}
+unsafe impl Send for StateReader {}

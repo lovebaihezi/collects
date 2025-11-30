@@ -1,6 +1,7 @@
 mod basic_state;
 mod compute;
 mod ctx;
+mod dep;
 mod enum_states;
 mod graph;
 mod register_state;
@@ -11,6 +12,7 @@ mod state_sync_status;
 pub use basic_state::Time;
 pub use compute::Compute;
 pub use ctx::StateCtx;
+pub use dep::Dep;
 pub use enum_states::BasicStates;
 pub use graph::{DepRoute, Graph, TopologyError};
 pub use register_state::Reg;
@@ -22,7 +24,7 @@ pub use state_sync_status::StateSyncStatus;
 mod state_runtime_test {
     use super::*;
 
-    #[derive(Default)]
+    #[derive(Default, Debug)]
     struct DummyState {
         base_value: i32,
     }
@@ -33,7 +35,7 @@ mod state_runtime_test {
         }
     }
 
-    #[derive(Default)]
+    #[derive(Default, Debug)]
     struct DummyComputeA {
         doubled: i32,
     }
@@ -49,9 +51,8 @@ mod state_runtime_test {
             &[Reg::TestStateA, Reg::Time]
         }
 
-        fn compute(&mut self, ctx: &mut StateCtx) {
-            let based = ctx.cached::<DummyState>(Reg::TestStateA);
-            self.doubled = based.unwrap().base_value * 2;
+        fn compute(&self, dep: Dep) {
+            let based = dep.get_ref::<DummyState>(Reg::TestStateA);
         }
     }
 

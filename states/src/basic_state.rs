@@ -2,7 +2,7 @@ use chrono::{DateTime, Utc};
 
 use crate::{Reg, State};
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct Time {
     virt: DateTime<Utc>,
 }

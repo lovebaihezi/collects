@@ -891,6 +891,9 @@ dependencies = [
  "serde-env",
  "serde_json",
  "thiserror 2.0.17",
+ "ustr",
+ "zerocopy",
+ "zerocopy-derive",
 ]
 
 [[package]]
@@ -924,12 +927,15 @@ name = "collects-states"
 version = "0.1.0"
 dependencies = [
  "bumpalo",
+ "chrono",
  "flume",
  "foyer",
  "log",
  "serde",
  "thiserror 2.0.17",
  "ustr",
+ "zerocopy",
+ "zerocopy-derive",
 ]
 
 [[package]]
@@ -1396,11 +1402,20 @@ version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "59a81c221a1e4dad06cb9c9deb19aea1193a5eea084e8cd42d869068132bf876"
 dependencies = [
+ "async-channel",
  "document-features",
+ "futures-util",
+ "getrandom 0.2.16",
  "js-sys",
+ "mime",
+ "mime_guess",
+ "rand 0.8.5",
+ "serde",
+ "serde_json",
  "ureq",
  "wasm-bindgen",
  "wasm-bindgen-futures",
+ "wasm-streams",
  "web-sys",
 ]
 
@@ -2922,6 +2937,16 @@ name = "mime"
 version = "0.3.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6877bb514081ee2a7ff5ef9de3281f14a4dd4bceac4c09388074a6b5df8a139a"
+
+[[package]]
+name = "mime_guess"
+version = "2.0.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f7c44f8e672c00fe5308fa235f821cb4198414e1c77935c1ab6948d3fd78550e"
+dependencies = [
+ "mime",
+ "unicase",
+]
 
 [[package]]
 name = "miniz_oxide"
@@ -5374,6 +5399,12 @@ dependencies = [
  "tempfile",
  "winapi",
 ]
+
+[[package]]
+name = "unicase"
+version = "2.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "75b844d17643ee918803943289730bec8aac480150456169e647ed0b576ba539"
 
 [[package]]
 name = "unicode-bidi"

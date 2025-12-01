@@ -12,3 +12,6 @@ bumpalo = { workspace = true }
 thiserror = { workspace = true }
 foyer = { workspace = true }
 ustr = { workspace = true }
+chrono = { workspace = true }
+zerocopy = { workspace = true }
+zerocopy-derive = { workspace = true }

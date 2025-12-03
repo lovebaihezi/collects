@@ -6,8 +6,8 @@ use crate::{Compute, Graph, Reg, graph::TopologyError};
 
 #[derive(Debug)]
 pub struct StateRuntime {
-    send: Sender<Box<dyn Any>>,
-    recv: Receiver<Box<dyn Any>>,
+    send: Sender<(Reg, Box<dyn Any>)>,
+    recv: Receiver<(Reg, Box<dyn Any>)>,
 
     graph: Graph<Reg>,
 }
@@ -28,11 +28,11 @@ impl StateRuntime {
         }
     }
 
-    pub fn sender(&self) -> Sender<Box<dyn Any>> {
+    pub fn sender(&self) -> Sender<(Reg, Box<dyn Any>)> {
         self.send.clone()
     }
 
-    pub fn receiver(&self) -> Receiver<Box<dyn Any>> {
+    pub fn receiver(&self) -> Receiver<(Reg, Box<dyn Any>)> {
         self.recv.clone()
     }
 

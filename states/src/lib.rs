@@ -70,6 +70,8 @@ mod state_runtime_test {
         // run init compute
         ctx.run_computed();
 
+        ctx.sync_computes();
+
         // Render the states, which, we here verify the states are correctly updated
     }
 }

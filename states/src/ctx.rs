@@ -1,4 +1,8 @@
-use std::{any::Any, cell::RefCell, ptr::NonNull};
+use std::{
+    any::Any,
+    cell::{RefCell, RefMut},
+    ptr::NonNull,
+};
 
 use crate::{Dep, StateReader, StateUpdater, state::ComponentType};
 
@@ -42,22 +46,22 @@ impl StateCtx {
     }
 
     pub fn run_computed(&mut self) {
-        let len = self.storage.len();
-        // TODO: Only run computes that is dirty, so we needs to run one graph compute first
-        for i in 0..len {
-            if self.storage[i].0 == ComponentType::Compute {
-                let mut borrowed = self.storage[i].1.borrow_mut();
-                if let Some(compute) = borrowed.downcast_mut::<Box<dyn Compute>>() {
-                    let deps_ids = compute.deps();
-                    let deps = Dep::new(
-                        deps_ids
-                            .iter()
-                            .map(|&dep_id| (dep_id, self.get_ref(dep_id))),
-                    );
-                    compute.compute(deps, self.updater());
-                }
+        let dirty_computes = self.dirty_computes();
+        for mut dirty_compute in dirty_computes {
+            if let Some(compute) = dirty_compute.downcast_mut::<Box<dyn Compute>>() {
+                let deps_ids = compute.deps();
+                let deps = Dep::new(
+                    deps_ids
+                        .iter()
+                        .map(|&dep_id| (dep_id, self.get_ref(dep_id))),
+                );
+                compute.compute(deps, self.updater());
             }
         }
+    }
+
+    fn get_ref_mut(&self, id: Reg) -> RefMut<'_, Box<dyn Any + 'static>> {
+        self.storage[id as usize].1.borrow_mut()
     }
 
     fn get_ref(&self, id: Reg) -> Option<NonNull<dyn Any>> {
@@ -72,8 +76,44 @@ impl StateCtx {
         })
     }
 
+    pub fn sync_computes(&mut self) {
+        let cur_len = self.runtime().receiver().len();
+        for _ in 0..cur_len {
+            if let Ok((id, boxed)) = self.runtime().receiver().try_recv() {
+                let id_usize = id as usize;
+                debug_assert!(id_usize < self.storage.len());
+                debug_assert_eq!(self.storage[id_usize].2, StateSyncStatus::Pending);
+                self.storage[id_usize].1.replace(boxed);
+                self.mark_clean(id);
+            }
+        }
+    }
+
     pub fn runtime(&self) -> &StateRuntime {
         &self.runtime
+    }
+
+    // TODO: Doc for how state and compute state transforms and how they works
+    pub fn dirty_computes(&self) -> impl Iterator<Item = RefMut<'_, Box<dyn Any>>> {
+        // TODO(chaibowen): cal from graph with state
+        //let dirty_states = self
+        //    .storage
+        //    .iter()
+        //    .enumerate()
+        //    .filter_map(|(i, (ct, _, status))| {
+        //        if *status == StateSyncStatus::Dirty && ct.is {
+        //            Some(Reg::from_usize(i))
+        //        } else {
+        //            None
+        //        }
+        //    });
+        self.storage.iter().filter_map(|(ct, state_cell, _)| {
+            if *ct == ComponentType::Compute {
+                Some(state_cell.borrow_mut())
+            } else {
+                None
+            }
+        })
     }
 
     pub fn mark_dirty(&mut self, id: Reg) {

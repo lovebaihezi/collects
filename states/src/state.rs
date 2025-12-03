@@ -17,7 +17,7 @@ pub trait State: Any + Debug {
 }
 
 pub struct StateUpdater {
-    send: Sender<Box<dyn Any>>,
+    send: Sender<(Reg, Box<dyn Any>)>,
 }
 
 impl StateUpdater {
@@ -28,15 +28,16 @@ impl StateUpdater {
     }
 
     pub fn set<T: State>(&self, state: T) {
+        let id = state.id();
         let boxed: Box<dyn Any> = Box::new(state);
-        self.send.send(boxed).unwrap();
+        self.send.send((id, boxed)).unwrap();
     }
 }
 
 unsafe impl Send for StateUpdater {}
 
 pub struct StateReader {
-    recv: Receiver<Box<dyn Any>>,
+    recv: Receiver<(Reg, Box<dyn Any>)>,
 }
 
 impl StateReader {
@@ -46,11 +47,11 @@ impl StateReader {
         }
     }
 
-    pub fn read<T: State>(&self) -> Option<Box<T>> {
-        if let Ok(boxed) = self.recv.try_recv()
+    pub fn read<T: State>(&self) -> Option<(Reg, Box<T>)> {
+        if let Ok((reg, boxed)) = self.recv.try_recv()
             && let Ok(state) = boxed.downcast::<T>()
         {
-            return Some(state);
+            return Some((reg, state));
         }
         None
     }

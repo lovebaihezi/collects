@@ -3,9 +3,16 @@ use collects_states::StateCtx;
 use egui::{Color32, Response, Ui};
 
 pub fn api_status(state_ctx: &StateCtx, ui: &mut Ui) -> Response {
-    match state_ctx.cached::<ApiStatus>().api_availability() {
-        APIAvailability::Available(_) => ui.colored_label(Color32::GREEN, "API Status: Healthy"),
-        APIAvailability::Unavailable(_) => ui.colored_label(Color32::RED, "API Status: Unhealthy"),
+    match state_ctx
+        .cached::<ApiStatus>(collects_states::Reg::ApiStatus)
+        .map(|v| v.api_availability())
+    {
+        Some(APIAvailability::Available(_)) => {
+            ui.colored_label(Color32::GREEN, "API Status: Healthy")
+        }
+        Some(APIAvailability::Unavailable(_)) => {
+            ui.colored_label(Color32::RED, "API Status: Unhealthy")
+        }
         _ => ui.colored_label(Color32::YELLOW, "API Status: Checking..."),
     }
 }

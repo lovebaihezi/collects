@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use collects_states::{Compute, Reg, State};
+use collects_states::{Compute, Dep, Reg, State, StateUpdater, Time};
 
 #[derive(Default, Debug)]
 pub struct ApiStatus {
@@ -8,47 +8,44 @@ pub struct ApiStatus {
     last_error: Option<String>,
 }
 
-pub enum APIAvailability {
+pub enum APIAvailability<'a> {
     Available(DateTime<Utc>),
-    Unavailable((DateTime<Utc>, String)),
+    Unavailable((DateTime<Utc>, &'a str)),
     Unknown,
 }
 
 impl ApiStatus {
-    pub fn api_availability(self) -> APIAvailability {
-        match (self.last_update_time, self.last_error) {
+    pub fn api_availability(&self) -> APIAvailability<'_> {
+        match (self.last_update_time, &self.last_error) {
             (None, None) => APIAvailability::Unknown,
             (Some(time), None) => APIAvailability::Available(time),
-            (Some(time), Some(err)) => APIAvailability::Unavailable((time, err)),
+            (Some(time), Some(err)) => APIAvailability::Unavailable((time, err.as_str())),
             _ => APIAvailability::Unknown,
         }
     }
 }
 
 impl Compute for ApiStatus {
-    fn compute(&self, ctx: &collects_states::StateCtx) {
+    fn compute(&self, deps: Dep, updater: StateUpdater) {
         let request = ehttp::Request::get("https://collects.lqxclqxc./api/api-health");
-        let api_status_updater = self.updater(ctx);
-        ehttp::fetch(request, move |res| {
-            let now = Utc::now();
-            match res {
-                Ok(response) => {
-                    if response.status == 200 {
-                        let api_status = ApiStatus {
-                            last_update_time: Some(now),
-                            last_error: None,
-                        };
-                        api_status_updater.set(api_status);
-                    }
-                }
-                Err(err) => {
+        let now = deps.get_ref::<Time>(Reg::Time).as_ref().to_utc();
+        ehttp::fetch(request, move |res| match res {
+            Ok(response) => {
+                if response.status == 200 {
                     let api_status = ApiStatus {
                         last_update_time: Some(now),
-                        last_error: Some(err.to_string()),
+                        last_error: None,
                     };
-                    api_status_updater.set(api_status);
-                    log::error!("API status check failed: {}", err);
+                    updater.set(api_status);
                 }
+            }
+            Err(err) => {
+                let api_status = ApiStatus {
+                    last_update_time: Some(now),
+                    last_error: Some(err.to_string()),
+                };
+                updater.set(api_status);
+                log::error!("API status check failed: {}", err);
             }
         });
     }

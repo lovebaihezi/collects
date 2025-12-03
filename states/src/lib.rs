@@ -51,8 +51,11 @@ mod state_runtime_test {
             &[Reg::TestStateA, Reg::Time]
         }
 
-        fn compute(&self, dep: Dep) {
+        fn compute(&self, dep: Dep, updater: StateUpdater) {
             let based = dep.get_ref::<DummyState>(Reg::TestStateA);
+            updater.set(DummyComputeA {
+                doubled: based.base_value * 2,
+            });
         }
     }
 
@@ -66,6 +69,8 @@ mod state_runtime_test {
 
         // run init compute
         ctx.run_computed();
+
+        ctx.sync_computes();
 
         // Render the states, which, we here verify the states are correctly updated
     }

@@ -1,6 +1,7 @@
 use std::{
     any::Any,
     cell::{RefCell, RefMut},
+    mem::MaybeUninit,
     ptr::NonNull,
 };
 
@@ -15,34 +16,39 @@ pub struct StateCtx {
     // states(State, Compute)
     // TODO: We better not store Box, consider using raw pointer to reduce indirection
     // We will not using RefCell with Box, the State should be Sized, and it will not needs to by Any to downcast, we just use NoNullPointer with unsafe
-    storage: Vec<(ComponentType, RefCell<Box<dyn Any>>, StateSyncStatus)>,
+    storage: Vec<MaybeUninit<(ComponentType, RefCell<Box<dyn Any>>, StateSyncStatus)>>,
 }
 
 impl StateCtx {
     pub fn new() -> Self {
         let runtime = StateRuntime::new();
-        let storage = Vec::with_capacity(Reg::amount());
+        let mut storage = Vec::with_capacity(dbg!(Reg::amount()));
+        // TODO: we shall use manually raw ptr to get better performance
+        for _ in 0..Reg::amount() {
+            storage.push(MaybeUninit::zeroed());
+        }
+        debug_assert_eq!(storage.len(), Reg::amount());
 
         Self { runtime, storage }
     }
 
     pub fn add_state<T: State>(&mut self, state: T) {
         let id = state.id() as usize;
-        self.storage[id] = (
+        self.storage[id].write((
             ComponentType::State,
             RefCell::new(Box::new(state)),
             StateSyncStatus::BeforeInit,
-        );
+        ));
     }
 
     pub fn record_compute<T: Compute>(&mut self, compute: T) {
         let id = compute.id() as usize;
         self.runtime.record(&compute);
-        self.storage[id] = (
+        self.storage[id].write((
             ComponentType::Compute,
             RefCell::new(Box::new(compute)),
             StateSyncStatus::BeforeInit,
-        );
+        ));
     }
 
     pub fn run_computed(&mut self) {
@@ -61,11 +67,17 @@ impl StateCtx {
     }
 
     fn get_ref_mut(&self, id: Reg) -> RefMut<'_, Box<dyn Any + 'static>> {
-        self.storage[id as usize].1.borrow_mut()
+        unsafe { self.storage[id as usize].assume_init_ref() }
+            .1
+            .borrow_mut()
     }
 
     fn get_ref(&self, id: Reg) -> Option<NonNull<dyn Any>> {
-        NonNull::new(self.storage[id as usize].1.as_ptr())
+        NonNull::new(
+            unsafe { self.storage[id as usize].assume_init_ref() }
+                .1
+                .as_ptr(),
+        )
     }
 
     pub fn cached<T: State>(&self, id: Reg) -> Option<&'static T> {
@@ -82,8 +94,13 @@ impl StateCtx {
             if let Ok((id, boxed)) = self.runtime().receiver().try_recv() {
                 let id_usize = id as usize;
                 debug_assert!(id_usize < self.storage.len());
-                debug_assert_eq!(self.storage[id_usize].2, StateSyncStatus::Pending);
-                self.storage[id_usize].1.replace(boxed);
+                debug_assert_eq!(
+                    unsafe { self.storage[id_usize].assume_init_ref() }.2,
+                    StateSyncStatus::Pending
+                );
+                unsafe { self.storage[id_usize].assume_init_mut() }
+                    .1
+                    .replace(boxed);
                 self.mark_clean(id);
             }
         }
@@ -107,25 +124,28 @@ impl StateCtx {
         //            None
         //        }
         //    });
-        self.storage.iter().filter_map(|(ct, state_cell, _)| {
-            if *ct == ComponentType::Compute {
-                Some(state_cell.borrow_mut())
-            } else {
-                None
-            }
-        })
+        self.storage
+            .iter()
+            .map(|v| unsafe { v.assume_init_ref() })
+            .filter_map(|(ct, state_cell, _)| {
+                if *ct == ComponentType::Compute {
+                    Some(state_cell.borrow_mut())
+                } else {
+                    None
+                }
+            })
     }
 
     pub fn mark_dirty(&mut self, id: Reg) {
-        self.storage[id as usize].2 = StateSyncStatus::Dirty;
+        unsafe { self.storage[id as usize].assume_init_mut() }.2 = StateSyncStatus::Dirty;
     }
 
     pub fn mark_pending(&mut self, id: Reg) {
-        self.storage[id as usize].2 = StateSyncStatus::Pending;
+        unsafe { self.storage[id as usize].assume_init_mut() }.2 = StateSyncStatus::Pending;
     }
 
     pub fn mark_clean(&mut self, id: Reg) {
-        self.storage[id as usize].2 = StateSyncStatus::Clean;
+        unsafe { self.storage[id as usize].assume_init_mut() }.2 = StateSyncStatus::Clean;
     }
 
     pub fn clear(&mut self) {

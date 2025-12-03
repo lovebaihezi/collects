@@ -11,9 +11,6 @@ pub mod reg {
             #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
             #[repr(usize)]
             pub enum Reg {
-                TestStateA,
-                TestComputeA,
-                NOOP,
                 /// State used in Applications
                 $($id,)+
             }
@@ -97,6 +94,9 @@ pub mod reg {
 }
 
 register! {
+    TestStateA,
+    TestComputeA,
+    NOOP,
     Time,
     ApiStatus
 }

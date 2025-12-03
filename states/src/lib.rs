@@ -60,7 +60,7 @@ mod state_runtime_test {
     }
 
     #[test]
-    fn state_runtime_baisic() {
+    fn state_runtime_basic() {
         let mut ctx = StateCtx::new();
         // Register the states and computes, which, the state manually init
         ctx.add_state(DummyState { base_value: 1 });
@@ -73,5 +73,12 @@ mod state_runtime_test {
         ctx.sync_computes();
 
         // Render the states, which, we here verify the states are correctly updated
+        assert!(ctx.cached::<DummyComputeA>(Reg::TestComputeA).is_some());
+        assert_eq!(
+            ctx.cached::<DummyComputeA>(Reg::TestComputeA)
+                .unwrap()
+                .doubled,
+            2
+        );
     }
 }

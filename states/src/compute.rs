@@ -1,9 +1,9 @@
-use crate::{Dep, Reg, State, StateUpdater};
+use std::any::{Any, TypeId};
 
-pub trait Compute: State {
+use crate::{Dep, State, StateUpdater};
+
+pub trait Compute: Any + State {
     fn compute(&self, deps: Dep, updater: StateUpdater);
 
-    fn deps(&self) -> &'static [Reg] {
-        &[]
-    }
+    fn deps(&self) -> &[TypeId];
 }

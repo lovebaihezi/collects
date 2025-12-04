@@ -26,6 +26,10 @@ impl ApiStatus {
 }
 
 impl Compute for ApiStatus {
+    fn deps(&self) -> &'static [Reg] {
+        &[Reg::Time]
+    }
+
     fn compute(&self, deps: Dep, updater: StateUpdater) {
         let request = ehttp::Request::get("https://collects.lqxclqxc./api/api-health");
         let now = deps.get_ref::<Time>(Reg::Time).as_ref().to_utc();

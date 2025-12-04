@@ -34,11 +34,11 @@ where
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct Graph<Node, Edge = ()>
 where
-    Node: Default + Debug + PartialEq + Copy + Ord,
-    Edge: Default + Debug + PartialEq,
+    Node: Debug + PartialEq + Copy + Ord,
+    Edge: Debug + PartialEq,
 {
     routes: Vec<(Node, Edge, Node)>,
 
@@ -47,14 +47,22 @@ where
 
 impl<Node, Edge> Graph<Node, Edge>
 where
-    Node: Default + Debug + PartialEq + Copy + Ord,
-    Edge: Default + Debug + PartialEq,
+    Node: Debug + PartialEq + Copy + Ord,
+    Edge: Debug + PartialEq,
 {
+    pub fn new() -> Self {
+        Self {
+            routes: Vec::new(),
+
+            route_cache: BTreeMap::new(),
+        }
+    }
+
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
             routes: Vec::with_capacity(capacity),
 
-            route_cache: Default::default(),
+            route_cache: BTreeMap::new(),
         }
     }
 

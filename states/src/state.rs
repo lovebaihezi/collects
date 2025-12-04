@@ -1,8 +1,11 @@
-use std::{any::Any, fmt::Debug};
+use std::{
+    any::{Any, TypeId, type_name},
+    fmt::Debug,
+};
 
 use flume::{Receiver, Sender};
 
-use crate::{Reg, StateRuntime};
+use crate::StateRuntime;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ComponentType {
@@ -10,14 +13,30 @@ pub enum ComponentType {
     Compute,
 }
 
+impl ComponentType {
+    pub fn is_state(&self) -> bool {
+        matches!(self, ComponentType::State)
+    }
+
+    pub fn is_compute(&self) -> bool {
+        matches!(self, ComponentType::Compute)
+    }
+}
+
 pub trait State: Any + Debug {
     fn init(&mut self) {}
-    // TODO: Maybe TypeID could be better
-    fn id(&self) -> Reg;
+
+    fn name(&self) -> &'static str {
+        type_name::<Self>()
+    }
+
+    fn id(&self) -> TypeId {
+        TypeId::of::<Self>()
+    }
 }
 
 pub struct StateUpdater {
-    send: Sender<(Reg, Box<dyn Any>)>,
+    send: Sender<(TypeId, Box<dyn Any>)>,
 }
 
 impl StateUpdater {
@@ -28,7 +47,7 @@ impl StateUpdater {
     }
 
     pub fn set<T: State>(&self, state: T) {
-        let id = state.id();
+        let id = TypeId::of::<T>();
         let boxed: Box<dyn Any> = Box::new(state);
         self.send.send((id, boxed)).unwrap();
     }
@@ -37,7 +56,7 @@ impl StateUpdater {
 unsafe impl Send for StateUpdater {}
 
 pub struct StateReader {
-    recv: Receiver<(Reg, Box<dyn Any>)>,
+    recv: Receiver<(TypeId, Box<dyn Any>)>,
 }
 
 impl StateReader {
@@ -47,7 +66,7 @@ impl StateReader {
         }
     }
 
-    pub fn read<T: State>(&self) -> Option<(Reg, Box<T>)> {
+    pub fn read<T: State>(&self) -> Option<(TypeId, Box<T>)> {
         if let Ok((reg, boxed)) = self.recv.try_recv()
             && let Ok(state) = boxed.downcast::<T>()
         {

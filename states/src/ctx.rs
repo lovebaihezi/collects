@@ -1,88 +1,85 @@
 use std::{
-    any::Any,
+    any::{Any, TypeId},
     cell::{RefCell, RefMut},
-    mem::MaybeUninit,
+    collections::BTreeMap,
     ptr::NonNull,
 };
 
+use log::debug;
+
 use crate::{Dep, StateReader, StateUpdater, state::ComponentType};
 
-use super::{Compute, Reg, State, StateRuntime, StateSyncStatus};
+use super::{Compute, State, StateRuntime, StateSyncStatus};
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct StateCtx {
     runtime: StateRuntime,
 
     // states(State, Compute)
     // TODO: We better not store Box, consider using raw pointer to reduce indirection
     // We will not using RefCell with Box, the State should be Sized, and it will not needs to by Any to downcast, we just use NoNullPointer with unsafe
-    storage: Vec<MaybeUninit<(ComponentType, RefCell<Box<dyn Any>>, StateSyncStatus)>>,
+    storage: BTreeMap<TypeId, (ComponentType, RefCell<Box<dyn Any>>, StateSyncStatus)>,
 }
 
 impl StateCtx {
     pub fn new() -> Self {
         let runtime = StateRuntime::new();
-        let mut storage = Vec::with_capacity(dbg!(Reg::amount()));
-        // TODO: we shall use manually raw ptr to get better performance
-        for _ in 0..Reg::amount() {
-            storage.push(MaybeUninit::zeroed());
-        }
-        debug_assert_eq!(storage.len(), Reg::amount());
-
+        let storage = BTreeMap::new();
         Self { runtime, storage }
     }
 
     pub fn add_state<T: State>(&mut self, state: T) {
-        let id = state.id() as usize;
-        self.storage[id].write((
-            ComponentType::State,
-            RefCell::new(Box::new(state)),
-            StateSyncStatus::BeforeInit,
-        ));
+        let id = TypeId::of::<T>();
+        debug!("Record State: id={:?}, state={:?}", id, state);
+        self.storage.insert(
+            id,
+            (
+                ComponentType::State,
+                RefCell::new(Box::new(state)),
+                StateSyncStatus::BeforeInit,
+            ),
+        );
     }
 
     pub fn record_compute<T: Compute>(&mut self, compute: T) {
-        let id = compute.id() as usize;
+        let id = TypeId::of::<T>();
+        debug!("Record Compute: id={:?}, compute={:?}", id, compute);
         self.runtime.record(&compute);
-        self.storage[id].write((
-            ComponentType::Compute,
-            RefCell::new(Box::new(compute)),
-            StateSyncStatus::BeforeInit,
-        ));
+        self.storage.insert(
+            id,
+            (
+                ComponentType::Compute,
+                RefCell::new(Box::new(compute)),
+                StateSyncStatus::BeforeInit,
+            ),
+        );
     }
 
     pub fn run_computed(&mut self) {
         let dirty_computes = self.dirty_computes();
         for mut dirty_compute in dirty_computes {
-            if let Some(compute) = dirty_compute.downcast_mut::<Box<dyn Compute>>() {
-                let deps_ids = compute.deps();
-                let deps = Dep::new(
-                    deps_ids
-                        .iter()
-                        .map(|&dep_id| (dep_id, self.get_ref(dep_id))),
-                );
-                compute.compute(deps, self.updater());
-            }
+            let compute = dirty_compute.downcast_mut::<Box<dyn Compute>>().unwrap();
+            let deps_ids = compute.deps();
+            let deps = Dep::new(
+                deps_ids
+                    .iter()
+                    .map(|&dep_id| (dep_id, self.get_ref(&dep_id))),
+            );
+            compute.compute(deps, self.updater());
         }
     }
 
-    fn get_ref_mut(&self, id: Reg) -> RefMut<'_, Box<dyn Any + 'static>> {
-        unsafe { self.storage[id as usize].assume_init_ref() }
-            .1
-            .borrow_mut()
+    fn get_ref_mut(&self, id: &TypeId) -> RefMut<'_, Box<dyn Any + 'static>> {
+        self.storage[id].1.borrow_mut()
     }
 
-    fn get_ref(&self, id: Reg) -> Option<NonNull<dyn Any>> {
-        NonNull::new(
-            unsafe { self.storage[id as usize].assume_init_ref() }
-                .1
-                .as_ptr(),
-        )
+    fn get_ref(&self, id: &TypeId) -> Option<NonNull<dyn Any>> {
+        NonNull::new(self.storage[id].1.as_ptr())
     }
 
-    pub fn cached<T: State>(&self, id: Reg) -> Option<&'static T> {
+    pub fn cached<T: State>(&self) -> Option<&'static T> {
         // TODO: Using address santizer to check if it will leaked or not, asumming it will not
-        self.get_ref(id).and_then(|v| unsafe {
+        self.get_ref(&TypeId::of::<T>()).and_then(|v| unsafe {
             // SAFETY: The lifetime 'static is safe here because the StateCtx owns the data,
             v.as_ref().downcast_ref::<Box<T>>().map(|b| b.as_ref())
         })
@@ -92,16 +89,14 @@ impl StateCtx {
         let cur_len = self.runtime().receiver().len();
         for _ in 0..cur_len {
             if let Ok((id, boxed)) = self.runtime().receiver().try_recv() {
-                let id_usize = id as usize;
-                debug_assert!(id_usize < self.storage.len());
-                debug_assert_eq!(
-                    unsafe { self.storage[id_usize].assume_init_ref() }.2,
-                    StateSyncStatus::Pending
-                );
-                unsafe { self.storage[id_usize].assume_init_mut() }
+                //debug_assert_eq!(
+                //    unsafe { self.storage[id_usize].assume_init_ref() }.2,
+                //    StateSyncStatus::Pending
+                //);
+                unsafe { self.storage.get_mut(&id).unwrap_unchecked() }
                     .1
                     .replace(boxed);
-                self.mark_clean(id);
+                self.mark_clean(&id);
             }
         }
     }
@@ -119,33 +114,46 @@ impl StateCtx {
         //    .enumerate()
         //    .filter_map(|(i, (ct, _, status))| {
         //        if *status == StateSyncStatus::Dirty && ct.is {
-        //            Some(Reg::from_usize(i))
+        //            Some(TypeId::from_usize(i))
         //        } else {
         //            None
         //        }
         //    });
-        self.storage
-            .iter()
-            .map(|v| unsafe { v.assume_init_ref() })
-            .filter_map(|(ct, state_cell, _)| {
-                if *ct == ComponentType::Compute {
-                    Some(state_cell.borrow_mut())
-                } else {
-                    None
-                }
-            })
+        self.storage.values().filter_map(|(ct, state_cell, _)| {
+            // Only Pending one needs to be computed
+            if ct.is_compute() {
+                Some(state_cell.borrow_mut())
+            } else {
+                None
+            }
+        })
     }
 
-    pub fn mark_dirty(&mut self, id: Reg) {
-        unsafe { self.storage[id as usize].assume_init_mut() }.2 = StateSyncStatus::Dirty;
+    pub fn mark_dirty_t<T: Compute>(&mut self) {
+        unsafe { self.storage.get_mut(&TypeId::of::<T>()).unwrap_unchecked() }.2 =
+            StateSyncStatus::Dirty;
     }
 
-    pub fn mark_pending(&mut self, id: Reg) {
-        unsafe { self.storage[id as usize].assume_init_mut() }.2 = StateSyncStatus::Pending;
+    pub fn mark_pending_t<T: Compute>(&mut self) {
+        unsafe { self.storage.get_mut(&TypeId::of::<T>()).unwrap_unchecked() }.2 =
+            StateSyncStatus::Pending;
     }
 
-    pub fn mark_clean(&mut self, id: Reg) {
-        unsafe { self.storage[id as usize].assume_init_mut() }.2 = StateSyncStatus::Clean;
+    pub fn mark_clean_t<T: Compute>(&mut self) {
+        unsafe { self.storage.get_mut(&TypeId::of::<T>()).unwrap_unchecked() }.2 =
+            StateSyncStatus::Clean;
+    }
+
+    pub fn mark_dirty(&mut self, id: &TypeId) {
+        unsafe { self.storage.get_mut(id).unwrap_unchecked() }.2 = StateSyncStatus::Dirty;
+    }
+
+    pub fn mark_pending(&mut self, id: &TypeId) {
+        unsafe { self.storage.get_mut(id).unwrap_unchecked() }.2 = StateSyncStatus::Pending;
+    }
+
+    pub fn mark_clean(&mut self, id: &TypeId) {
+        unsafe { self.storage.get_mut(id).unwrap_unchecked() }.2 = StateSyncStatus::Clean;
     }
 
     pub fn clear(&mut self) {

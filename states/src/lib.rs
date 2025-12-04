@@ -4,7 +4,6 @@ mod ctx;
 mod dep;
 mod enum_states;
 mod graph;
-mod register_state;
 mod runtime;
 mod state;
 mod state_sync_status;
@@ -15,13 +14,14 @@ pub use ctx::StateCtx;
 pub use dep::Dep;
 pub use enum_states::BasicStates;
 pub use graph::{DepRoute, Graph, TopologyError};
-pub use register_state::Reg;
 pub use runtime::StateRuntime;
 pub use state::{State, StateReader, StateUpdater};
 pub use state_sync_status::StateSyncStatus;
 
 #[cfg(test)]
 mod state_runtime_test {
+    use std::any::TypeId;
+
     use super::*;
 
     #[derive(Default, Debug)]
@@ -29,30 +29,23 @@ mod state_runtime_test {
         base_value: i32,
     }
 
-    impl State for DummyState {
-        fn id(&self) -> Reg {
-            Reg::TestStateA
-        }
-    }
+    impl State for DummyState {}
 
     #[derive(Default, Debug)]
     struct DummyComputeA {
         doubled: i32,
     }
 
-    impl State for DummyComputeA {
-        fn id(&self) -> Reg {
-            Reg::TestComputeA
-        }
-    }
+    impl State for DummyComputeA {}
 
     impl Compute for DummyComputeA {
-        fn deps(&self) -> &'static [Reg] {
-            &[Reg::TestStateA, Reg::Time]
+        fn deps(&self) -> &'static [TypeId] {
+            const IDS: [TypeId; 1] = [TypeId::of::<DummyState>()];
+            &IDS
         }
 
         fn compute(&self, dep: Dep, updater: StateUpdater) {
-            let based = dep.get_ref::<DummyState>(Reg::TestStateA);
+            let based = dep.get_ref::<DummyState>();
             updater.set(DummyComputeA {
                 doubled: based.base_value * 2,
             });
@@ -67,18 +60,11 @@ mod state_runtime_test {
         ctx.add_state(Time::default());
         ctx.record_compute(DummyComputeA { doubled: 0 });
 
-        // run init compute
         ctx.run_computed();
-
         ctx.sync_computes();
 
         // Render the states, which, we here verify the states are correctly updated
-        assert!(ctx.cached::<DummyComputeA>(Reg::TestComputeA).is_some());
-        assert_eq!(
-            ctx.cached::<DummyComputeA>(Reg::TestComputeA)
-                .unwrap()
-                .doubled,
-            2
-        );
+        assert!(ctx.cached::<DummyComputeA>().is_some());
+        assert_eq!(ctx.cached::<DummyComputeA>().unwrap().doubled, 2);
     }
 }

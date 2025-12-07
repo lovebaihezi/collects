@@ -1,32 +1,47 @@
-use std::{any::Any, collections::BTreeMap, ptr::NonNull};
+use std::{
+    any::{Any, TypeId},
+    collections::BTreeMap,
+    ptr::NonNull,
+};
 
-use crate::{Reg, State};
+use crate::{Compute, State};
 
 pub struct Dep {
-    inner: BTreeMap<Reg, NonNull<dyn Any>>,
+    inner: BTreeMap<TypeId, NonNull<dyn Any>>,
 }
 
 impl Dep {
-    pub fn new(iter: impl Iterator<Item = (Reg, Option<NonNull<dyn Any>>)>) -> Self {
-        let mut inner = BTreeMap::new();
-        for (reg, opt_ptr) in iter {
-            if let Some(ptr) = opt_ptr {
-                inner.insert(reg, ptr);
-            }
+    pub fn new(
+        states: impl Iterator<Item = (TypeId, NonNull<dyn State>)>,
+        computes: impl Iterator<Item = (TypeId, NonNull<dyn Compute>)>,
+    ) -> Self {
+        let mut inner: BTreeMap<TypeId, NonNull<dyn Any>> = BTreeMap::new();
+        for (reg, ptr) in states {
+            inner.insert(reg, ptr);
+        }
+        for (reg, ptr) in computes {
+            inner.insert(reg, ptr);
         }
         Self { inner }
     }
 
-    pub fn get_ref<'a, 'b: 'a, T: State>(&'a self, id: Reg) -> &'b T {
+    pub fn get_state_ref<'a, 'b: 'a, T: State + 'static>(&'a self) -> &'b T {
         self.inner
-            .get(&id)
+            .get(&TypeId::of::<T>())
             .and_then(|ptr| unsafe { ptr.as_ref().downcast_ref::<T>() })
             .unwrap()
     }
 
-    pub fn boxed<T: State>(&self, id: Reg) -> Box<T> {
+    pub fn get_compute_ref<'a, 'b: 'a, T: Compute + 'static>(&'a self) -> &'b T {
         self.inner
-            .get(&id)
+            .get(&TypeId::of::<T>())
+            .and_then(|ptr| unsafe { ptr.as_ref().downcast_ref::<T>() })
+            .unwrap()
+    }
+
+    pub fn boxed<T: State>(&self) -> Box<T> {
+        self.inner
+            .get(&TypeId::of::<T>())
             .map(|ptr| unsafe { Box::from_raw(ptr.cast::<T>().as_ptr()) })
             .unwrap()
     }

@@ -1,53 +1,52 @@
-use std::{any::Any, fmt::Debug};
+use std::{
+    any::{Any, TypeId, type_name},
+    fmt::Debug,
+};
 
 use flume::{Receiver, Sender};
 
-use crate::{Reg, StateRuntime};
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ComponentType {
-    State,
-    Compute,
-}
+use crate::{Compute, StateRuntime};
 
 pub trait State: Any + Debug {
     fn init(&mut self) {}
-    // TODO: Maybe TypeID could be better
-    fn id(&self) -> Reg;
-}
 
-pub struct StateUpdater {
-    send: Sender<(Reg, Box<dyn Any>)>,
-}
-
-impl StateUpdater {
-    pub fn from_runtime(runtime: &StateRuntime) -> Self {
-        Self {
-            send: runtime.sender(),
-        }
+    fn name(&self) -> &'static str {
+        type_name::<Self>()
     }
 
-    pub fn set<T: State>(&self, state: T) {
-        let id = state.id();
+    fn id(&self) -> TypeId {
+        TypeId::of::<Self>()
+    }
+}
+
+pub struct Updater {
+    send: Sender<(TypeId, Box<dyn Any>)>,
+}
+
+impl From<&StateRuntime> for Updater {
+    fn from(run_time: &StateRuntime) -> Self {
+        Self {
+            send: run_time.sender(),
+        }
+    }
+}
+
+impl Updater {
+    pub fn set<T: Compute + 'static>(&self, state: T) {
+        let id = TypeId::of::<T>();
         let boxed: Box<dyn Any> = Box::new(state);
         self.send.send((id, boxed)).unwrap();
     }
 }
 
-unsafe impl Send for StateUpdater {}
+unsafe impl Send for Updater {}
 
-pub struct StateReader {
-    recv: Receiver<(Reg, Box<dyn Any>)>,
+pub struct Reader {
+    recv: Receiver<(TypeId, Box<dyn Any>)>,
 }
 
-impl StateReader {
-    pub fn from_runtime(runtime: &StateRuntime) -> Self {
-        Self {
-            recv: runtime.receiver(),
-        }
-    }
-
-    pub fn read<T: State>(&self) -> Option<(Reg, Box<T>)> {
+impl Reader {
+    pub fn read<T: Compute + 'static>(&self) -> Option<(TypeId, Box<T>)> {
         if let Ok((reg, boxed)) = self.recv.try_recv()
             && let Ok(state) = boxed.downcast::<T>()
         {
@@ -57,4 +56,12 @@ impl StateReader {
     }
 }
 
-unsafe impl Send for StateReader {}
+impl From<&StateRuntime> for Reader {
+    fn from(run_time: &StateRuntime) -> Self {
+        Self {
+            recv: run_time.receiver(),
+        }
+    }
+}
+
+unsafe impl Send for Reader {}

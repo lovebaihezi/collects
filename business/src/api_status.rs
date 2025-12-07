@@ -1,5 +1,7 @@
+use std::any::{Any, TypeId};
+
 use chrono::{DateTime, Utc};
-use collects_states::{Compute, Dep, Reg, State, StateUpdater, Time};
+use collects_states::{Compute, ComputeDeps, Dep, State, Time, Updater, assign_impl};
 
 #[derive(Default, Debug)]
 pub struct ApiStatus {
@@ -26,13 +28,13 @@ impl ApiStatus {
 }
 
 impl Compute for ApiStatus {
-    fn deps(&self) -> &'static [Reg] {
-        &[Reg::Time]
+    fn deps(&self) -> ComputeDeps {
+        const IDS: [TypeId; 1] = [TypeId::of::<Time>()];
+        (&IDS, &[])
     }
-
-    fn compute(&self, deps: Dep, updater: StateUpdater) {
+    fn compute(&self, deps: Dep, updater: Updater) {
         let request = ehttp::Request::get("https://collects.lqxclqxc./api/api-health");
-        let now = deps.get_ref::<Time>(Reg::Time).as_ref().to_utc();
+        let now = deps.get_state_ref::<Time>().as_ref().to_utc();
         ehttp::fetch(request, move |res| match res {
             Ok(response) => {
                 if response.status == 200 {
@@ -53,10 +55,15 @@ impl Compute for ApiStatus {
             }
         });
     }
-}
-
-impl State for ApiStatus {
-    fn id(&self) -> Reg {
-        Reg::ApiStatus
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+    fn as_boxed_any(self) -> Box<dyn Any> {
+        Box::new(self)
+    }
+    fn assign_box(&mut self, new_self: Box<dyn Any>) {
+        assign_impl(self, new_self);
     }
 }
+
+impl State for ApiStatus {}

@@ -4,7 +4,7 @@ use egui::{Color32, Response, Ui};
 
 pub fn api_status(state_ctx: &StateCtx, ui: &mut Ui) -> Response {
     match state_ctx
-        .cached::<ApiStatus>(collects_states::Reg::ApiStatus)
+        .cached::<ApiStatus>()
         .map(|v| v.api_availability())
     {
         Some(APIAvailability::Available(_)) => {

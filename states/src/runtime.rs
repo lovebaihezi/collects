@@ -30,8 +30,13 @@ impl StateRuntime {
         self.recv.clone()
     }
 
-    pub fn record<T: Compute>(&mut self, compute: &T) {
-        for dep in compute.deps() {
+    pub fn record<T: Compute + 'static>(&mut self, compute: &T) {
+        let (states, computes) = compute.deps();
+        // The Graph
+        for dep in states {
+            self.graph.route_to(*dep, TypeId::of::<T>(), ());
+        }
+        for dep in computes {
             self.graph.route_to(*dep, TypeId::of::<T>(), ());
         }
     }

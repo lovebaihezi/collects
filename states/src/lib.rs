@@ -11,14 +11,14 @@ mod state;
 mod state_sync_status;
 
 pub use basic_state::Time;
-pub use compute::{Compute, ComputeDeps, assign_impl};
+pub use compute::{Compute, ComputeDeps, ComputeStage, assign_impl};
 pub use ctx::StateCtx;
 pub use dep::Dep;
 pub use enum_states::BasicStates;
 pub use graph::{DepRoute, Graph, TopologyError};
 pub use runtime::StateRuntime;
 pub use state::{Reader, State, Updater};
-pub use state_sync_status::StateSyncStatus;
+pub use state_sync_status::Stage;
 
 #[cfg(test)]
 mod state_runtime_test {
@@ -51,11 +51,12 @@ mod state_runtime_test {
             (&IDS, &[])
         }
 
-        fn compute(&self, dep: Dep, updater: Updater) {
+        fn compute(&self, dep: Dep, updater: Updater) -> ComputeStage {
             let based = dep.get_state_ref::<DummyState>();
             updater.set(DummyComputeA {
                 doubled: based.base_value * 2,
             });
+            ComputeStage::Finished
         }
 
         fn assign_box(&mut self, new_self: Box<dyn Any>) {

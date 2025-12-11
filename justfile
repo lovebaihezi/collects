@@ -1,4 +1,4 @@
-mod app
+mod ui
 mod services
 
 set shell := ["bash", "-c"]

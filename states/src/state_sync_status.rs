@@ -1,8 +1,7 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum StateSyncStatus {
+pub enum Stage {
     #[default]
     BeforeInit,
-    Initialized,
     Pending,
     Dirty,
     Clean,

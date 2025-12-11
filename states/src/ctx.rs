@@ -5,20 +5,20 @@ use std::{
     ptr::NonNull,
 };
 
-use log::debug;
+use log::{Level, info, log_enabled};
 
-use crate::{Dep, Reader, Updater};
+use crate::{ComputeStage, Dep, Reader, Updater};
 
-use super::{Compute, State, StateRuntime, StateSyncStatus};
+use super::{Compute, Stage, State, StateRuntime};
 
 #[derive(Debug)]
 pub struct StateCtx {
     runtime: StateRuntime,
 
-    states: BTreeMap<TypeId, (RefCell<Box<dyn State>>, StateSyncStatus)>,
+    states: BTreeMap<TypeId, (RefCell<Box<dyn State>>, Stage)>,
     // TODO: We better not store Box, consider using raw pointer to reduce indirection
     // We will not using RefCell with Box, the State should be Sized, and it will not needs to by Any to downcast, we just use NoNullPointer with unsafe
-    computes: BTreeMap<TypeId, (RefCell<Box<dyn Compute>>, StateSyncStatus)>,
+    computes: BTreeMap<TypeId, (RefCell<Box<dyn Compute>>, Stage)>,
 }
 
 impl Default for StateCtx {
@@ -41,26 +41,24 @@ impl StateCtx {
 
     pub fn add_state<T: State>(&mut self, state: T) {
         let id = TypeId::of::<T>();
-        debug!("Record State: id={:?}, state={:?}", id, state);
-        self.states.insert(
-            id,
-            (RefCell::new(Box::new(state)), StateSyncStatus::BeforeInit),
-        );
+        info!("Record State: id={:?}, state={:?}", id, state);
+        self.states
+            .insert(id, (RefCell::new(Box::new(state)), Stage::BeforeInit));
     }
 
-    pub fn record_compute<T: State + Compute>(&mut self, compute: T) {
+    pub fn record_compute<T: Compute>(&mut self, compute: T) {
         let id = TypeId::of::<T>();
-        debug!("Record Compute: id={:?}, compute={:?}", id, compute);
+        info!("Record Compute: id={:?}, compute={:?}", id, compute);
         self.runtime.record(&compute);
-        self.computes.insert(
-            id,
-            (RefCell::new(Box::new(compute)), StateSyncStatus::BeforeInit),
-        );
+        self.computes
+            .insert(id, (RefCell::new(Box::new(compute)), Stage::BeforeInit));
     }
 
     pub fn run_computed(&mut self) {
         let dirty_computes = self.dirty_computes();
-        for dirty_compute in dirty_computes {
+        let mut pending_ids: Vec<TypeId> = Vec::new();
+        let mut pending_compute_names = Vec::new();
+        for (id, dirty_compute) in dirty_computes {
             let (states, computes) = dirty_compute.deps();
             let deps = Dep::new(
                 states
@@ -70,7 +68,23 @@ impl StateCtx {
                     .into_iter()
                     .map(|&dep_id| (dep_id, self.get_compute_ptr(&dep_id))),
             );
-            dirty_compute.compute(deps, self.updater());
+            info!("Run compute: {:?}", dirty_compute.name());
+            if log_enabled!(Level::Info) {
+                pending_compute_names.push(dirty_compute.name());
+            }
+            let stage = dirty_compute.compute(deps, self.updater());
+            if stage == ComputeStage::Pending {
+                pending_ids.push(*id);
+            }
+        }
+        if log_enabled!(Level::Info) {
+            for name in pending_compute_names {
+                info!("Compute pending: {:?}", name);
+            }
+        }
+        // We use Vec to collect, or using RefCell to wrap, or using pointer to avoid borrow checker
+        for id in pending_ids {
+            self.computes.get_mut(&id).unwrap().1 = Stage::Pending;
         }
     }
 
@@ -123,10 +137,10 @@ impl StateCtx {
                 //    unsafe { self.storage[id_usize].assume_init_ref() }.2,
                 //    StateSyncStatus::Pending
                 //);
-                unsafe { self.computes.get_mut(&id).unwrap_unchecked() }
-                    .0
-                    .borrow_mut()
-                    .assign_box(boxed);
+                let compute = unsafe { self.computes.get_mut(&id).unwrap_unchecked() };
+                let computed_name = compute.0.borrow().name();
+                info!("Recevied Compute Update, compute={:?}", computed_name);
+                compute.0.borrow_mut().assign_box(boxed);
                 self.mark_clean(&id);
             }
         }
@@ -137,7 +151,7 @@ impl StateCtx {
     }
 
     // TODO: Doc for how state and compute state transforms and how they works
-    pub fn dirty_computes(&self) -> impl Iterator<Item = RefMut<'_, Box<dyn Compute>>> {
+    pub fn dirty_computes(&self) -> impl Iterator<Item = (&TypeId, RefMut<'_, Box<dyn Compute>>)> {
         // TODO(chaibowen): cal from graph with state
         //let dirty_states = self
         //    .storage
@@ -150,25 +164,30 @@ impl StateCtx {
         //            None
         //        }
         //    });
-        self.computes.values().map(|(state_cell, _)| {
-            // Only Pending one needs to be computed
-            state_cell.borrow_mut()
-        })
+        self.computes
+            .iter()
+            .filter_map(|(type_id, (state_cell, compute_state))| {
+                if matches!(compute_state, &Stage::Dirty | &Stage::BeforeInit) {
+                    Some((type_id, state_cell.borrow_mut()))
+                } else {
+                    None
+                }
+            })
     }
 
     fn get_mut_ref(
         &mut self,
         id: &TypeId,
     ) -> (
-        Option<&mut (RefCell<Box<dyn State + 'static>>, StateSyncStatus)>,
-        Option<&mut (RefCell<Box<dyn Compute + 'static>>, StateSyncStatus)>,
+        Option<&mut (RefCell<Box<dyn State + 'static>>, Stage)>,
+        Option<&mut (RefCell<Box<dyn Compute + 'static>>, Stage)>,
     ) {
         let state_entry = self.states.get_mut(id);
         let compute_entry = self.computes.get_mut(id);
         (state_entry, compute_entry)
     }
 
-    fn mark_as(&mut self, id: &TypeId, tobe: StateSyncStatus) {
+    fn mark_as(&mut self, id: &TypeId, tobe: Stage) {
         let (state_entry, compute_entry) = self.get_mut_ref(id);
         match (state_entry, compute_entry) {
             (Some(state), None) => {
@@ -183,16 +202,20 @@ impl StateCtx {
         }
     }
 
+    pub fn mark_before_init(&mut self, id: &TypeId) {
+        self.mark_as(id, Stage::BeforeInit);
+    }
+
     pub fn mark_dirty(&mut self, id: &TypeId) {
-        self.mark_as(id, StateSyncStatus::Dirty);
+        self.mark_as(id, Stage::Dirty);
     }
 
     pub fn mark_pending(&mut self, id: &TypeId) {
-        self.mark_as(id, StateSyncStatus::Pending);
+        self.mark_as(id, Stage::Pending);
     }
 
     pub fn mark_clean(&mut self, id: &TypeId) {
-        self.mark_as(id, StateSyncStatus::Clean);
+        self.mark_as(id, Stage::Clean);
     }
 
     pub fn clear(&mut self) {

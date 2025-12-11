@@ -2,9 +2,15 @@ use chrono::{DateTime, Utc};
 
 use crate::State;
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct Time {
     virt: DateTime<Utc>,
+}
+
+impl Default for Time {
+    fn default() -> Self {
+        Self { virt: Utc::now() }
+    }
 }
 
 impl State for Time {}

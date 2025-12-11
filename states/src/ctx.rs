@@ -27,6 +27,11 @@ impl Default for StateCtx {
     }
 }
 
+type MarkEntity<'a> = (
+    Option<&'a mut (RefCell<Box<dyn State + 'static>>, Stage)>,
+    Option<&'a mut (RefCell<Box<dyn Compute + 'static>>, Stage)>,
+);
+
 impl StateCtx {
     pub fn new() -> Self {
         let runtime = StateRuntime::new();
@@ -62,10 +67,10 @@ impl StateCtx {
             let (states, computes) = dirty_compute.deps();
             let deps = Dep::new(
                 states
-                    .into_iter()
+                    .iter()
                     .map(|&dep_id| (dep_id, self.get_state_ptr(&dep_id))),
                 computes
-                    .into_iter()
+                    .iter()
                     .map(|&dep_id| (dep_id, self.get_compute_ptr(&dep_id))),
             );
             info!("Run compute: {:?}", dirty_compute.name());
@@ -175,13 +180,7 @@ impl StateCtx {
             })
     }
 
-    fn get_mut_ref(
-        &mut self,
-        id: &TypeId,
-    ) -> (
-        Option<&mut (RefCell<Box<dyn State + 'static>>, Stage)>,
-        Option<&mut (RefCell<Box<dyn Compute + 'static>>, Stage)>,
-    ) {
+    fn get_mut_ref(&mut self, id: &TypeId) -> MarkEntity<'_> {
         let state_entry = self.states.get_mut(id);
         let compute_entry = self.computes.get_mut(id);
         (state_entry, compute_entry)

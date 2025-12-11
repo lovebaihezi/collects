@@ -12,6 +12,12 @@ pub struct StateRuntime {
     graph: Graph<TypeId>,
 }
 
+impl Default for StateRuntime {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl StateRuntime {
     pub fn new() -> Self {
         let (send, recv) = flume::unbounded();

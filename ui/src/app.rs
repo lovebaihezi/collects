@@ -1,4 +1,5 @@
-use collects_states::StateCtx;
+use collects_business::ApiStatus;
+use collects_states::{StateCtx, Time};
 use serde::{Deserialize, Serialize};
 
 use crate::{utils::fonts::add_font, widgets};
@@ -18,11 +19,16 @@ impl CollectsUI {
     pub fn new(cc: &eframe::CreationContext<'_>, font_data: Vec<u8>) -> Self {
         add_font(&cc.egui_ctx, font_data);
 
-        if let Some(storage) = cc.storage {
+        let mut me: Self = if let Some(storage) = cc.storage {
             eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default()
         } else {
             Default::default()
-        }
+        };
+
+        me.state_ctx.add_state(Time::default());
+        me.state_ctx.record_compute(ApiStatus::default());
+
+        me
     }
 }
 
@@ -36,6 +42,7 @@ impl eframe::App for CollectsUI {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Put your widgets into a `SidePanel`, `TopBottomPanel`, `CentralPanel`, `Window` or `Area`.
         // For inspiration and more examples, go to https://emilk.github.io/egui
+        self.state_ctx.sync_computes();
 
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
             egui::MenuBar::new().ui(ui, |ui| {
@@ -49,6 +56,7 @@ impl eframe::App for CollectsUI {
             ui.heading("Collects App");
             powered_by_egui_and_eframe(ui);
         });
+        self.state_ctx.run_computed();
     }
 }
 

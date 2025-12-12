@@ -45,6 +45,16 @@ where
     route_cache: BTreeMap<Node, BTreeSet<Node>>,
 }
 
+impl<Node, Edge> Default for Graph<Node, Edge>
+where
+    Node: Debug + PartialEq + Copy + Ord,
+    Edge: Debug + PartialEq,
+{
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<Node, Edge> Graph<Node, Edge>
 where
     Node: Debug + PartialEq + Copy + Ord,

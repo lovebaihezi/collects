@@ -2,7 +2,7 @@ use std::any::{Any, TypeId};
 
 use flume::{Receiver, Sender};
 
-use crate::{Compute, Graph, State, graph::TopologyError};
+use crate::{Compute, Graph, graph::TopologyError};
 
 #[derive(Debug)]
 pub struct StateRuntime {
@@ -10,6 +10,12 @@ pub struct StateRuntime {
     recv: Receiver<(TypeId, Box<dyn Any>)>,
 
     graph: Graph<TypeId>,
+}
+
+impl Default for StateRuntime {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl StateRuntime {
@@ -43,9 +49,5 @@ impl StateRuntime {
 
     pub fn verify_deps(&mut self) -> Result<(), TopologyError<TypeId>> {
         self.graph.topology_sort()
-    }
-
-    fn should_update_states<T: State>(&self) -> impl Iterator<Item = TypeId> {
-        Vec::new().into_iter()
     }
 }

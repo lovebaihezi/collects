@@ -144,7 +144,7 @@ impl StateCtx {
                 //);
                 let compute = unsafe { self.computes.get_mut(&id).unwrap_unchecked() };
                 let computed_name = compute.0.borrow().name();
-                info!("Recevied Compute Update, compute={:?}", computed_name);
+                info!("Received Compute Update, compute={:?}", computed_name);
                 compute.0.borrow_mut().assign_box(boxed);
                 self.mark_clean(&id);
             }

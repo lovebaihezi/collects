@@ -59,7 +59,7 @@ impl Compute for ApiStatus {
             ehttp::fetch(request, move |res| match res {
                 Ok(response) => {
                     if response.status == 200 {
-                        info!("BackEnd Avaliable, checked at {:?}", now);
+                        info!("BackEnd Available, checked at {:?}", now);
                         let api_status = ApiStatus {
                             last_update_time: Some(now),
                             last_error: None,

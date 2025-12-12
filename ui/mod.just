@@ -16,6 +16,9 @@ install:
     cargo install trunk
     pnpm i
 
+web-fmt: install
+    pnpm prettier --write index.html src/worker.ts
+
 web-build: install
     trunk build
     du -h dist/*

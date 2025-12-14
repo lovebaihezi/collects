@@ -1,10 +1,70 @@
+//! Main entry point for the Collects UI application.
+//!
+//! # Environment Configuration
+//!
+//! This application uses compile-time configuration via Cargo features.
+//! The configuration is available through the `collects_ui::env` module.
+//!
+//! ## Usage Examples:
+//!
+//! ```rust,ignore
+//! use collects_ui::env::*;
+//! use collects_ui::{env_prod, env_test, env_dev, target_wasm, target_native};
+//!
+//! // Access URLs
+//! let worker_url = BASE_URL;  // Worker/CDN URL
+//! let api_url = REAL_URL;     // Backend API URL
+//!
+//! // Use macros for compile-time checks
+//! if env_prod!() {
+//!     // Production-only code
+//! }
+//!
+//! if target_wasm!() {
+//!     // WASM-specific code
+//! }
+//!
+//! // Use helper functions
+//! if is_dev() {
+//!     enable_debug_mode();
+//! }
+//!
+//! // Auto-create AppEnv from config
+//! let app_env = create_app_env();
+//! ```
+//!
+//! ## Building for Different Environments:
+//!
+//! ```bash
+//! # Development (default)
+//! cargo build -p collects-ui
+//!
+//! # Production
+//! cargo build --release --features prod --no-default-features -p collects-ui
+//!
+//! # Testing
+//! cargo build --features test --no-default-features -p collects-ui
+//!
+//! # WASM Production
+//! cargo build --target wasm32-unknown-unknown \
+//!   --profile wasm-release --features prod --no-default-features -p collects-ui
+//! ```
+//!
+//! See `ENV_CONFIG.md` for detailed documentation or `ENV_QUICK_REF.md` for quick reference.
+
 #![warn(clippy::all, rust_2018_idioms)]
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
+use eframe::AppCreator;
 
 #[cfg(not(target_arch = "wasm32"))]
 mod alloc {
     #[global_allocator]
     static MALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc;
+}
+
+fn create_app(data: Vec<u8>) -> AppCreator<'static> {
+    Box::new(|cc| Ok(Box::new(collects_ui::CollectsUI::new(cc, data))))
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -29,11 +89,9 @@ fn main() -> eframe::Result {
     let data: Vec<u8> =
         fs::read("assets/fonts/SourceHanSerifCN-VF.ttf").expect("Failed to Open font file");
 
-    eframe::run_native(
-        "Collects",
-        native_options,
-        Box::new(|cc| Ok(Box::new(collects_ui::CollectsUI::new(cc, data)))),
-    )
+    let app = create_app(data);
+
+    eframe::run_native("Collects", native_options, app)
 }
 
 // When compiling to web using trunk:
@@ -91,12 +149,10 @@ fn main() {
         let mut font_data = vec![0; len];
         uin8_arr.copy_to(&mut font_data[..]);
 
+        let app = create_app(font_data);
+
         let start_result = eframe::WebRunner::new()
-            .start(
-                canvas,
-                web_options,
-                Box::new(|cc| Ok(Box::new(collects_ui::CollectsUI::new(cc, font_data)))),
-            )
+            .start(canvas, web_options, app)
             .await;
 
         // Remove the loading text and spinner:

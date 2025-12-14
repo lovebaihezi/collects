@@ -1,3 +1,5 @@
+use collects_states::State;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EnvType {
     Prod,
@@ -11,6 +13,7 @@ pub enum AppType {
     Native,
 }
 
+#[derive(Debug)]
 pub struct AppEnv {
     env_type: EnvType,
     app_type: AppType,
@@ -67,3 +70,5 @@ impl AppEnv {
         self.app_type
     }
 }
+
+impl State for AppEnv {}

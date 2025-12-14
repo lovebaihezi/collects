@@ -8,8 +8,6 @@ use flume::{Receiver, Sender};
 use crate::{Compute, StateRuntime};
 
 pub trait State: Any + Debug {
-    fn init(&mut self) {}
-
     fn name(&self) -> &'static str {
         type_name::<Self>()
     }

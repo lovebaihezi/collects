@@ -2,7 +2,7 @@ use collects_business::ApiStatus;
 use collects_states::{StateCtx, Time};
 use serde::{Deserialize, Serialize};
 
-use crate::{utils::fonts::add_font, widgets};
+use crate::{env::create_app_env, utils::fonts::add_font, widgets};
 
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
 #[derive(Deserialize, Serialize, Default)]
@@ -27,6 +27,7 @@ impl CollectsUI {
 
         me.state_ctx.add_state(Time::default());
         me.state_ctx.record_compute(ApiStatus::default());
+        me.state_ctx.add_state(create_app_env());
 
         me
     }
@@ -56,6 +57,7 @@ impl eframe::App for CollectsUI {
             ui.heading("Collects App");
             powered_by_egui_and_eframe(ui);
         });
+
         self.state_ctx.run_computed();
     }
 }

@@ -24,6 +24,7 @@ pub trait Compute: Debug + Any {
 
     fn as_any(&self) -> &dyn Any;
 
+    #[allow(clippy::wrong_self_convention)]
     fn as_boxed_any(self) -> Box<dyn Any>;
 
     fn assign_box(&mut self, new_self: Box<dyn Any>);
@@ -45,6 +46,7 @@ pub fn assign_impl<T: Compute + 'static>(old: &mut T, new: Box<dyn Any>) {
         }
         Err(any) => {
             // TODO: find way to store the type name
+            #[allow(clippy::type_id_on_box)]
             let id = any.type_id();
             panic!(
                 "Failed to assign compute: type mismatch, expected {:?}, found type id {:?}",

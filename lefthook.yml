@@ -1,0 +1,9 @@
+pre-commit:
+  parallel: true
+  commands:
+    fmt:
+      run: just check-fmt
+    clippy:
+      run: just check-clippy
+    typos:
+      run: just check-typos

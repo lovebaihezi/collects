@@ -160,7 +160,7 @@ where
         while let Some(current) = queue.pop_front() {
             for (from, _via, to) in self.routes.iter() {
                 if from == &current {
-                    // Actuall we check for node already collected, which means even if there is cycle, we won't stuck in infinite loop
+                    // Actually we check for node already collected, which means even if there is cycle, we won't stuck in infinite loop
                     if !collected.contains(to) {
                         collected.insert(*to);
                         queue.push_back(*to);

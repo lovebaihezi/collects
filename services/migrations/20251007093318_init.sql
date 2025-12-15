@@ -28,7 +28,7 @@ CREATE TABLE collect_files (
 
 -- one tag row includes
 -- id, name, create_time, delete_time
--- MAXIUM UTF-8 STRING LENGTH, about 85 CJK characters
+-- MAXIMUM UTF-8 STRING LENGTH, about 85 CJK characters
 CREATE TABLE tags (
     id SERIAL PRIMARY KEY,
     author_id TEXT NOT NULL REFERENCES neon_auth.users_sync(id) ON DELETE CASCADE,

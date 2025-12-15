@@ -3,6 +3,27 @@ mod services
 
 set shell := ["bash", "-c"]
 
+# Install development tools (lefthook, typos)
+install-deps:
+    cargo install typos-cli
+    go install github.com/evilmartians/lefthook@latest
+
+# Install git hooks
+install-hooks:
+    lefthook install
+
+# Run cargo fmt check on the workspace
+check-fmt:
+    cargo fmt --all -- --check
+
+# Run cargo clippy on the workspace
+check-clippy:
+    cargo clippy --workspace --all-targets -- -D warnings
+
+# Run typos check
+check-typos:
+    typos
+
 create-builder:
     sudo docker buildx create --name collects-builder --use
 

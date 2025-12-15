@@ -7,7 +7,7 @@ use log::{error, info};
 #[derive(Default, Debug)]
 pub struct ApiStatus {
     last_update_time: Option<DateTime<Utc>>,
-    // if exists error, means api avaliable
+    // if exists error, means api available
     last_error: Option<String>,
 }
 

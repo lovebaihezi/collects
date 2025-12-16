@@ -270,4 +270,54 @@ mod tests {
         let result = graph.topology_sort();
         assert!(result.is_err());
     }
+
+    #[test]
+    fn duplicate_edge_detection_error_msg() {
+        let mut graph: Graph<u32, &str> = Graph::with_capacity(10);
+        graph.route_to(1, 2, "edge_1_2");
+        graph.route_to(1, 2, "edge_1_2_dup");
+
+        let result = graph.topology_sort();
+        match result {
+             Err(TopologyError::DuplicateEdge(dep_route)) => {
+                 let debug_str = format!("{:?}", dep_route);
+                 // Should show "1 -> 2"
+                 assert!(debug_str.contains("1 -> 2"));
+
+                 let err = TopologyError::DuplicateEdge(dep_route);
+                 let err_str = format!("{}", err);
+                 assert!(err_str.contains("Duplicate edge detected"));
+                 assert!(err_str.contains("from 1 to 2"));
+             }
+             _ => panic!("Expected DuplicateEdge error"),
+        }
+    }
+
+    #[test]
+    fn cycle_detection_error_msg() {
+        let mut graph: Graph<u32, &str> = Graph::with_capacity(10);
+        // Create a cycle: 1 -> 2 -> 3 -> 1
+        graph.route_to(1, 2, "edge_1_2");
+        graph.route_to(2, 3, "edge_2_3");
+        graph.route_to(3, 1, "edge_3_1");
+
+        let result = graph.topology_sort();
+        match result {
+             Err(TopologyError::CycleDetected(dep_route)) => {
+                 let debug_str = format!("{:?}", dep_route);
+                 // We expect "1 -> 2 -> 3 -> 1" or a rotation of it, but it must be a closed loop
+                 assert!(debug_str.len() > 0);
+
+                 let err = TopologyError::CycleDetected(dep_route);
+                 let err_str = format!("{}", err);
+                 assert!(err_str.contains("Cycle detected"));
+                 // Check that it contains the nodes involved
+                 assert!(err_str.contains("1"));
+                 assert!(err_str.contains("2"));
+                 assert!(err_str.contains("3"));
+                 assert!(err_str.contains("->"));
+             }
+             _ => panic!("Expected CycleDetected error"),
+        }
+    }
 }

@@ -23,6 +23,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: nightly
           components: rustfmt, clippy
 
       - name: Setup Just

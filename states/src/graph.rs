@@ -10,9 +10,9 @@ pub enum TopologyError<T>
 where
     T: Debug,
 {
-    #[error("Cycle detected in dependency graph, from ")]
+    #[error("Cycle detected in dependency graph, from {:?}", .0)]
     CycleDetected(DepRoute<T>),
-    #[error("Duplicate edge detected in dependency graph, at node {:?}", .0.route[0])]
+    #[error("Duplicate edge detected in dependency graph, from {:?} to {:?}", .0.route[0], .0.route[1])]
     DuplicateEdge(DepRoute<T>),
 }
 
@@ -27,6 +27,9 @@ where
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let len = self.route.len();
+        if len == 0 {
+            return write!(f, "[]");
+        }
         for item in &self.route[..len - 1] {
             write!(f, "{:?} -> ", item)?;
         }
@@ -112,11 +115,73 @@ where
                     }
                 }
             } else {
+                let keys: Vec<Node> = in_out.keys().cloned().collect();
+                if let Some(cycle) = self.find_cycle(&keys) {
+                    return Err(TopologyError::CycleDetected(DepRoute { route: cycle }));
+                }
+                // Should not happen if logic is correct, but fallback
                 return Err(TopologyError::CycleDetected(DepRoute { route: vec![] }));
             }
         }
 
         Ok(())
+    }
+
+    fn find_cycle(&self, nodes: &[Node]) -> Option<Vec<Node>> {
+        // DFS to find cycle among the remaining nodes
+        let mut visited = BTreeSet::new();
+        let mut stack = Vec::new();
+        let mut path = Vec::new();
+
+        for &node in nodes {
+            if !visited.contains(&node) {
+                if let Some(cycle) = self.dfs_find_cycle(node, nodes, &mut visited, &mut stack, &mut path) {
+                    return Some(cycle);
+                }
+            }
+        }
+        None
+    }
+
+    fn dfs_find_cycle(
+        &self,
+        node: Node,
+        valid_nodes: &[Node],
+        visited: &mut BTreeSet<Node>,
+        stack: &mut Vec<Node>,
+        path: &mut Vec<Node>,
+    ) -> Option<Vec<Node>> {
+        visited.insert(node);
+        stack.push(node);
+        path.push(node);
+
+        // We only traverse edges that lead to nodes within the `valid_nodes` set (the strongly connected component / remaining nodes)
+        // Since we don't have an adjacency list pre-built for just these nodes, we iterate all routes.
+        // Optimization: `direct_connected_nodes` returns neighbors.
+        // We can ignore the error from `direct_connected_nodes` here as we are just traversing.
+        if let Ok(neighbors) = self.direct_connected_nodes(node) {
+            for neighbor in neighbors {
+                if valid_nodes.contains(&neighbor) {
+                    if stack.contains(&neighbor) {
+                        // Cycle found!
+                        // Extract the cycle from path
+                        if let Some(pos) = path.iter().position(|&x| x == neighbor) {
+                            let mut cycle = path[pos..].to_vec();
+                            cycle.push(neighbor); // Close the loop visually
+                            return Some(cycle);
+                        }
+                    } else if !visited.contains(&neighbor) {
+                        if let Some(cycle) = self.dfs_find_cycle(neighbor, valid_nodes, visited, stack, path) {
+                            return Some(cycle);
+                        }
+                    }
+                }
+            }
+        }
+
+        stack.pop();
+        path.pop();
+        None
     }
 
     /// # Connected Nodes, node that deps on the given node
@@ -131,23 +196,20 @@ where
     }
 
     fn direct_connected_nodes(&self, node: Node) -> Result<BTreeSet<Node>, TopologyError<Node>> {
-        let mut collected = Vec::new();
+        let mut collected = BTreeSet::new();
 
         for (from, _via, to) in self.routes.iter() {
             if from == &node {
-                collected.push(*to);
+                if collected.contains(to) {
+                    return Err(TopologyError::DuplicateEdge(DepRoute {
+                        route: vec![node, *to],
+                    }));
+                }
+                collected.insert(*to);
             }
         }
 
-        let collected_nodes_len = collected.len();
-        let set: BTreeSet<Node> = collected.into_iter().collect();
-
-        if set.len() != collected_nodes_len {
-            // TODO: better error
-            Err(TopologyError::DuplicateEdge(DepRoute { route: vec![node] }))
-        } else {
-            Ok(set)
-        }
+        Ok(collected)
     }
 
     fn connected_nodes(&self, node: Node) -> BTreeSet<Node> {

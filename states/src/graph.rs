@@ -128,59 +128,72 @@ where
     }
 
     fn find_cycle(&self, nodes: &[Node]) -> Option<Vec<Node>> {
-        // DFS to find cycle among the remaining nodes
+        // Iterative DFS to find cycle among the remaining nodes
         let mut visited = BTreeSet::new();
-        let mut stack = Vec::new();
+        // Set of nodes currently in the recursion stack (path)
+        let mut path_set = BTreeSet::new();
+        // The path itself, to reconstruct the cycle
         let mut path = Vec::new();
 
-        for &node in nodes {
-            if !visited.contains(&node) {
-                if let Some(cycle) = self.dfs_find_cycle(node, nodes, &mut visited, &mut stack, &mut path) {
-                    return Some(cycle);
-                }
+        // Stack for DFS: stores (node, neighbors_iterator)
+        // Using Box<dyn Iterator> to handle the BTreeSet iterator type
+        let mut stack: Vec<(Node, std::vec::IntoIter<Node>)> = Vec::new();
+
+        for &start_node in nodes {
+            if visited.contains(&start_node) {
+                continue;
             }
-        }
-        None
-    }
 
-    fn dfs_find_cycle(
-        &self,
-        node: Node,
-        valid_nodes: &[Node],
-        visited: &mut BTreeSet<Node>,
-        stack: &mut Vec<Node>,
-        path: &mut Vec<Node>,
-    ) -> Option<Vec<Node>> {
-        visited.insert(node);
-        stack.push(node);
-        path.push(node);
+            // Start DFS from start_node
+            // Neighbors are collected into a Vec to manage the iterator easily
+            let neighbors = self
+                .direct_connected_nodes(start_node)
+                .unwrap_or_default()
+                .into_iter()
+                .filter(|n| nodes.contains(n))
+                .collect::<Vec<_>>()
+                .into_iter();
 
-        // We only traverse edges that lead to nodes within the `valid_nodes` set (the strongly connected component / remaining nodes)
-        // Since we don't have an adjacency list pre-built for just these nodes, we iterate all routes.
-        // Optimization: `direct_connected_nodes` returns neighbors.
-        // We can ignore the error from `direct_connected_nodes` here as we are just traversing.
-        if let Ok(neighbors) = self.direct_connected_nodes(node) {
-            for neighbor in neighbors {
-                if valid_nodes.contains(&neighbor) {
-                    if stack.contains(&neighbor) {
-                        // Cycle found!
+            stack.push((start_node, neighbors));
+            visited.insert(start_node);
+            path_set.insert(start_node);
+            path.push(start_node);
+
+            while let Some((current_node, neighbors)) = stack.last_mut() {
+                if let Some(neighbor) = neighbors.next() {
+                    if path_set.contains(&neighbor) {
+                        // Cycle found
                         // Extract the cycle from path
                         if let Some(pos) = path.iter().position(|&x| x == neighbor) {
                             let mut cycle = path[pos..].to_vec();
-                            cycle.push(neighbor); // Close the loop visually
+                            cycle.push(neighbor);
                             return Some(cycle);
                         }
                     } else if !visited.contains(&neighbor) {
-                        if let Some(cycle) = self.dfs_find_cycle(neighbor, valid_nodes, visited, stack, path) {
-                            return Some(cycle);
-                        }
+                        // Visit new node
+                        let next_neighbors = self
+                            .direct_connected_nodes(neighbor)
+                            .unwrap_or_default()
+                            .into_iter()
+                            .filter(|n| nodes.contains(n))
+                            .collect::<Vec<_>>()
+                            .into_iter();
+
+                        visited.insert(neighbor);
+                        path_set.insert(neighbor);
+                        path.push(neighbor);
+                        stack.push((neighbor, next_neighbors));
                     }
+                } else {
+                    // Backtrack
+                    // Need to drop the borrow of stack first
+                    let node_to_remove = *current_node;
+                    stack.pop();
+                    path_set.remove(&node_to_remove);
+                    path.pop();
                 }
             }
         }
-
-        stack.pop();
-        path.pop();
         None
     }
 

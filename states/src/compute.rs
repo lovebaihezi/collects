@@ -10,22 +10,51 @@ use crate::{Dep, Updater};
 
 pub type ComputeDeps = (&'static [TypeId], &'static [TypeId]);
 
+/// Represents the stage of a computation process.
 #[derive(Debug, PartialEq, Eq)]
 pub enum ComputeStage {
+    /// The computation has finished successfully.
     Finished,
+    /// The computation is still pending (e.g., waiting for async results).
     Pending,
 }
 
+/// The `Compute` trait represents a derived state that depends on other states or computes.
+///
+/// It encapsulates logic to calculate its value based on dependencies.
 pub trait Compute: Debug + Any {
+    /// Performs the computation logic.
+    ///
+    /// # Arguments
+    ///
+    /// * `deps` - Access to dependencies (states and other computes).
+    /// * `updater` - A mechanism to update the state of the system.
+    ///
+    /// # Returns
+    ///
+    /// * `ComputeStage` indicating if the computation finished or is pending.
     fn compute(&self, deps: Dep, updater: Updater) -> ComputeStage;
 
-    // .0 means states, .1 means computes
+    /// Defines the dependencies of this compute.
+    ///
+    /// # Returns
+    ///
+    /// A tuple where:
+    /// * `.0` is a slice of `TypeId`s for required `State`s.
+    /// * `.1` is a slice of `TypeId`s for required `Compute`s.
     fn deps(&self) -> ComputeDeps;
 
+    /// returns the `Any` trait object for downcasting.
     fn as_any(&self) -> &dyn Any;
 
+    /// Assigns a new value to this compute from a boxed `Any`.
+    ///
+    /// Used for updating the compute's value after a recalculation.
     fn assign_box(&mut self, new_self: Box<dyn Any>);
 
+    /// Returns the name of the compute type.
+    ///
+    /// Defaults to the type name.
     fn name(&self) -> Ustr {
         Ustr::from(type_name::<Self>())
     }

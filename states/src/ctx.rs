@@ -11,6 +11,10 @@ use crate::{ComputeStage, Dep, Reader, Updater};
 
 use super::{Compute, Stage, State, StateRuntime};
 
+/// `StateCtx` acts as the central manager for all states and computes.
+///
+/// It holds the storage for states and computes, manages their lifecycle,
+/// and orchestrates the re-computation of derived states when dependencies change.
 #[derive(Debug)]
 pub struct StateCtx {
     runtime: StateRuntime,
@@ -33,6 +37,7 @@ type MarkEntity<'a> = (
 );
 
 impl StateCtx {
+    /// Creates a new, empty `StateCtx`.
     pub fn new() -> Self {
         let runtime = StateRuntime::new();
         let computes = BTreeMap::new();
@@ -44,6 +49,9 @@ impl StateCtx {
         }
     }
 
+    /// Adds a new `State` to the context.
+    ///
+    /// The state is initialized and marked as `BeforeInit`.
     pub fn add_state<T: State>(&mut self, state: T) {
         let id = TypeId::of::<T>();
         info!("Record State: id={:?}, state={:?}", id, state);
@@ -51,6 +59,9 @@ impl StateCtx {
             .insert(id, (RefCell::new(Box::new(state)), Stage::BeforeInit));
     }
 
+    /// Registers a `Compute` (derived state) to the context.
+    ///
+    /// The compute is recorded in the runtime and initialized.
     pub fn record_compute<T: Compute>(&mut self, compute: T) {
         let id = TypeId::of::<T>();
         info!("Record Compute: id={:?}, compute={:?}", id, compute);
@@ -59,6 +70,10 @@ impl StateCtx {
             .insert(id, (RefCell::new(Box::new(compute)), Stage::BeforeInit));
     }
 
+    /// Triggers the execution of all dirty computes.
+    ///
+    /// This iterates through computes marked as dirty or before init, resolves their
+    /// dependencies, and executes their `compute` method.
     pub fn run_computed(&mut self) {
         let dirty_computes = self.dirty_computes();
         let mut pending_ids: Vec<TypeId> = Vec::new();
@@ -124,6 +139,7 @@ impl StateCtx {
         unsafe { NonNull::new_unchecked(self.get_compute_mut(id)) }
     }
 
+    /// Retrieves a reference to a cached compute value if available.
     pub fn cached<T: Compute + Sized>(&self) -> Option<&'static T> {
         unsafe {
             self.computes[&TypeId::of::<T>()]
@@ -134,6 +150,10 @@ impl StateCtx {
         }
     }
 
+    /// Synchronizes the computes by processing updates from the runtime.
+    ///
+    /// This processes any pending updates sent via the `Updater` and applies them
+    /// to the respective computes, marking them as clean.
     pub fn sync_computes(&mut self) {
         let cur_len = self.runtime().receiver().len();
         for _ in 0..cur_len {

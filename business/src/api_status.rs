@@ -4,6 +4,8 @@ use chrono::{DateTime, Utc};
 use collects_states::{Compute, ComputeDeps, ComputeStage, Dep, State, Time, Updater, assign_impl};
 use log::{error, info};
 
+use crate::FetchState;
+
 #[derive(Default, Debug)]
 pub struct ApiStatus {
     last_update_time: Option<DateTime<Utc>>,
@@ -30,13 +32,14 @@ impl ApiStatus {
 
 impl Compute for ApiStatus {
     fn deps(&self) -> ComputeDeps {
-        const IDS: [TypeId; 1] = [TypeId::of::<Time>()];
+        const IDS: [TypeId; 2] = [TypeId::of::<Time>(), TypeId::of::<FetchState>()];
         (&IDS, &[])
     }
 
     fn compute(&self, deps: Dep, updater: Updater) -> ComputeStage {
         let request = ehttp::Request::get("https://collects.lqxclqxc.com/api/is-health");
         let now = deps.get_state_ref::<Time>().as_ref().to_utc();
+        let fetcher = deps.get_state_ref::<FetchState>().inner.clone();
         let should_fetch = match &self.last_update_time {
             Some(last_update_time) => {
                 let duration_since_update = now.signed_duration_since(*last_update_time);
@@ -56,28 +59,31 @@ impl Compute for ApiStatus {
         };
         if should_fetch {
             info!("Get API Status at {:?}", now);
-            ehttp::fetch(request, move |res| match res {
-                Ok(response) => {
-                    if response.status == 200 {
-                        info!("BackEnd Available, checked at {:?}", now);
+            fetcher.fetch(
+                request,
+                Box::new(move |res| match res {
+                    Ok(response) => {
+                        if response.status == 200 {
+                            info!("BackEnd Available, checked at {:?}", now);
+                            let api_status = ApiStatus {
+                                last_update_time: Some(now),
+                                last_error: None,
+                            };
+                            updater.set(api_status);
+                        } else {
+                            info!("BackEnd Return with status code: {:?}", response.status);
+                        }
+                    }
+                    Err(err) => {
                         let api_status = ApiStatus {
                             last_update_time: Some(now),
-                            last_error: None,
+                            last_error: Some(err.to_string()),
                         };
                         updater.set(api_status);
-                    } else {
-                        info!("BackEnd Return with status code: {:?}", response.status);
+                        error!("API status check failed: {:?}", err);
                     }
-                }
-                Err(err) => {
-                    let api_status = ApiStatus {
-                        last_update_time: Some(now),
-                        last_error: Some(err.to_string()),
-                    };
-                    updater.set(api_status);
-                    error!("API status check failed: {:?}", err);
-                }
-            });
+                }),
+            );
             ComputeStage::Pending
         } else {
             ComputeStage::Finished

@@ -885,6 +885,7 @@ dependencies = [
  "chrono",
  "collects-states",
  "ehttp",
+ "env_logger",
  "log",
  "reqwest",
  "serde",

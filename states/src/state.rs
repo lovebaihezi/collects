@@ -7,13 +7,23 @@ use flume::{Receiver, Sender};
 
 use crate::{Compute, StateRuntime};
 
+/// The `State` trait represents a fundamental unit of state in the application.
+///
+/// It provides basic identity and initialization logic for state objects.
 pub trait State: Any + Debug {
+    /// Initializes the state.
+    ///
+    /// This method is called when the state is first added to the context.
     fn init(&mut self) {}
 
+    /// Returns the name of the state type.
+    ///
+    /// Defaults to the type name.
     fn name(&self) -> &'static str {
         type_name::<Self>()
     }
 
+    /// Returns the unique type ID of the state.
     fn id(&self) -> TypeId {
         TypeId::of::<Self>()
     }

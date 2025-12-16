@@ -59,24 +59,22 @@ impl StateCtx {
             .insert(id, (RefCell::new(Box::new(compute)), Stage::BeforeInit));
     }
 
-    pub fn run_computed(&mut self) -> Result<(), crate::Error> {
+    pub fn run_computed(&mut self) {
         let dirty_computes = self.dirty_computes();
         let mut pending_ids: Vec<TypeId> = Vec::new();
         let mut pending_compute_names = Vec::new();
         for (id, dirty_compute) in dirty_computes {
             let (states, computes) = dirty_compute.deps();
 
-            let mut state_ptrs = Vec::new();
-            for &dep_id in states {
-                state_ptrs.push((dep_id, self.get_state_ptr(&dep_id)?));
-            }
+            let deps = Dep::new(
+                states
+                    .iter()
+                    .map(|&dep_id| (dep_id, self.get_state_ptr(&dep_id))),
+                computes
+                    .iter()
+                    .map(|&dep_id| (dep_id, self.get_compute_ptr(&dep_id))),
+            );
 
-            let mut compute_ptrs = Vec::new();
-            for &dep_id in computes {
-                compute_ptrs.push((dep_id, self.get_compute_ptr(&dep_id)?));
-            }
-
-            let deps = Dep::new(state_ptrs.into_iter(), compute_ptrs.into_iter());
             info!("Run compute: {:?}", dirty_compute.name());
             if log_enabled!(Level::Info) {
                 pending_compute_names.push(dirty_compute.name());
@@ -95,55 +93,69 @@ impl StateCtx {
         for id in pending_ids {
             self.computes.get_mut(&id).unwrap().1 = Stage::Pending;
         }
-        Ok(())
     }
 
-    fn get_state_mut(&self, id: &TypeId) -> Result<&'static mut dyn State, crate::Error> {
+    fn get_state_mut(&self, id: &TypeId) -> &'static mut dyn State {
         unsafe {
             let ptr = self
                 .states
                 .get(id)
-                .ok_or_else(|| {
-                    crate::Error::state_not_found(
-                        *id,
-                        "Ensure the state is added to the context before running computes that depend on it.",
+                .unwrap_or_else(|| {
+                    panic!(
+                        "{}",
+                        crate::Error::state_not_found(
+                            *id,
+                            "Ensure the state is added to the context before running computes that depend on it."
+                        )
                     )
-                })?
+                })
                 .0
                 .as_ptr();
 
-            ptr.as_mut().map(|v| v.as_mut()).ok_or_else(|| {
-                crate::Error::state_not_found(*id, "State pointer is null (Box was empty?)")
+            ptr.as_mut().map(|v| v.as_mut()).unwrap_or_else(|| {
+                panic!(
+                    "{}",
+                    crate::Error::state_not_found(*id, "State pointer is null (Box was empty?)")
+                )
             })
         }
     }
 
-    fn get_state_ptr(&self, id: &TypeId) -> Result<NonNull<dyn State>, crate::Error> {
-        unsafe { Ok(NonNull::new_unchecked(self.get_state_mut(id)?)) }
+    fn get_state_ptr(&self, id: &TypeId) -> NonNull<dyn State> {
+        unsafe { NonNull::new_unchecked(self.get_state_mut(id)) }
     }
 
-    fn get_compute_mut(&self, id: &TypeId) -> Result<&'static mut dyn Compute, crate::Error> {
+    fn get_compute_mut(&self, id: &TypeId) -> &'static mut dyn Compute {
         unsafe {
             let ptr = self
                 .computes
                 .get(id)
-                .ok_or_else(|| {
-                    crate::Error::compute_not_found(
-                        *id,
-                        "Ensure the compute is registered correctly.",
+                .unwrap_or_else(|| {
+                    panic!(
+                        "{}",
+                        crate::Error::compute_not_found(
+                            *id,
+                            "Ensure the compute is registered correctly."
+                        )
                     )
-                })?
+                })
                 .0
                 .as_ptr();
 
-            ptr.as_mut().map(|v| v.as_mut()).ok_or_else(|| {
-                crate::Error::compute_not_found(*id, "Compute pointer is null (Box was empty?)")
+            ptr.as_mut().map(|v| v.as_mut()).unwrap_or_else(|| {
+                panic!(
+                    "{}",
+                    crate::Error::compute_not_found(
+                        *id,
+                        "Compute pointer is null (Box was empty?)"
+                    )
+                )
             })
         }
     }
 
-    fn get_compute_ptr(&self, id: &TypeId) -> Result<NonNull<dyn Compute>, crate::Error> {
-        unsafe { Ok(NonNull::new_unchecked(self.get_compute_mut(id)?)) }
+    fn get_compute_ptr(&self, id: &TypeId) -> NonNull<dyn Compute> {
+        unsafe { NonNull::new_unchecked(self.get_compute_mut(id)) }
     }
 
     pub fn cached<T: Compute + Sized>(&self) -> Option<&'static T> {

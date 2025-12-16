@@ -75,7 +75,7 @@ mod state_runtime_test {
         ctx.add_state(Time::default());
         ctx.record_compute(DummyComputeA { doubled: 0 });
 
-        ctx.run_computed().unwrap();
+        ctx.run_computed();
         ctx.sync_computes();
 
         // Render the states, which, we here verify the states are correctly updated

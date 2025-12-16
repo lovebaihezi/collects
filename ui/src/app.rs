@@ -56,9 +56,7 @@ impl eframe::App for CollectsUI {
             ui.heading("Collects App");
             powered_by_egui_and_eframe(ui);
         });
-        if let Err(e) = self.state_ctx.run_computed() {
-            log::error!("Run computed failed: {:?}", e);
-        }
+        self.state_ctx.run_computed();
     }
 }
 

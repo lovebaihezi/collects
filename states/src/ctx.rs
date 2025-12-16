@@ -95,28 +95,31 @@ impl StateCtx {
 
     fn get_state_mut(&self, id: &TypeId) -> &'static mut dyn State {
         unsafe {
-            self.states[id]
+            self.states
+                .get(id)
+                .expect("State not found. Ensure the state is added to the context before running computes that depend on it.")
                 .0
                 .as_ptr()
                 .as_mut()
                 .map(|v| v.as_mut())
-                .unwrap()
+                .expect("State pointer is null. This should not happen if the state was added correctly.")
         }
     }
 
     fn get_state_ptr(&self, id: &TypeId) -> NonNull<dyn State> {
-        // TODO: Maybe we should use more serius error here, cause the state should exists in state
         unsafe { NonNull::new_unchecked(self.get_state_mut(id)) }
     }
 
     fn get_compute_mut(&self, id: &TypeId) -> &'static mut dyn Compute {
         unsafe {
-            self.computes[id]
+            self.computes
+                .get(id)
+                .expect("Compute not found. Ensure the compute is registered correctly.")
                 .0
                 .as_ptr()
                 .as_mut()
                 .map(|v| v.as_mut())
-                .unwrap()
+                .expect("Compute pointer is null. This should not happen if the compute was added correctly.")
         }
     }
 

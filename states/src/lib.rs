@@ -9,6 +9,7 @@ mod graph;
 mod runtime;
 mod state;
 mod state_sync_status;
+mod error;
 
 pub use basic_state::Time;
 pub use compute::{Compute, ComputeDeps, ComputeStage, assign_impl};
@@ -19,6 +20,7 @@ pub use graph::{DepRoute, Graph, TopologyError};
 pub use runtime::StateRuntime;
 pub use state::{Reader, State, Updater};
 pub use state_sync_status::Stage;
+pub use error::Error;
 
 #[cfg(test)]
 mod state_runtime_test {
@@ -73,7 +75,7 @@ mod state_runtime_test {
         ctx.add_state(Time::default());
         ctx.record_compute(DummyComputeA { doubled: 0 });
 
-        ctx.run_computed();
+        ctx.run_computed().unwrap();
         ctx.sync_computes();
 
         // Render the states, which, we here verify the states are correctly updated

@@ -88,10 +88,6 @@ impl Compute for ApiStatus {
         self
     }
 
-    fn as_boxed_any(self) -> Box<dyn Any> {
-        Box::new(self)
-    }
-
     fn assign_box(&mut self, new_self: Box<dyn Any>) {
         assign_impl(self, new_self);
     }

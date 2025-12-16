@@ -46,6 +46,7 @@ mod state_runtime_test {
         fn as_any(&self) -> &dyn Any {
             self
         }
+
         fn deps(&self) -> ComputeDeps {
             const IDS: [TypeId; 1] = [TypeId::of::<DummyState>()];
             (&IDS, &[])
@@ -61,10 +62,6 @@ mod state_runtime_test {
 
         fn assign_box(&mut self, new_self: Box<dyn Any>) {
             assign_impl(self, new_self);
-        }
-
-        fn as_boxed_any(self) -> Box<dyn Any> {
-            Box::new(self)
         }
     }
 

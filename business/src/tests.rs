@@ -4,7 +4,6 @@ mod tests {
     use chrono::{TimeZone, Utc};
     use collects_states::{StateCtx, Time};
     use ehttp::{Request, Response};
-    use std::sync::Arc;
 
     #[test]
     fn test_api_status_mock_fetch() {
@@ -23,14 +22,14 @@ mod tests {
         }));
 
         ctx.add_state(FetchState {
-            inner: Arc::new(Box::new(mock_fetcher)),
+            inner: mock_fetcher,
         });
 
         // Setup time
         ctx.add_state(Time::default());
 
-        // Register ApiStatus compute
-        ctx.record_compute(ApiStatus::default());
+        // Register ApiStatus compute with MockFetcher
+        ctx.record_compute(ApiStatus::<MockFetcher>::default());
 
         // Run compute cycle
         ctx.run_computed();
@@ -44,7 +43,7 @@ mod tests {
         ctx.sync_computes();
 
         // Check result
-        if let Some(status) = ctx.cached::<ApiStatus>() {
+        if let Some(status) = ctx.cached::<ApiStatus<MockFetcher>>() {
             match status.api_availability() {
                 APIAvailability::Available(time) => {
                     println!("API Available at {:?}", time);
@@ -71,16 +70,16 @@ mod tests {
         mock_fetcher.response = Some(Err("Network Error".to_string()));
 
         ctx.add_state(FetchState {
-            inner: Arc::new(Box::new(mock_fetcher)),
+            inner: mock_fetcher,
         });
 
         ctx.add_state(Time::default());
-        ctx.record_compute(ApiStatus::default());
+        ctx.record_compute(ApiStatus::<MockFetcher>::default());
 
         ctx.run_computed();
         ctx.sync_computes();
 
-        if let Some(status) = ctx.cached::<ApiStatus>() {
+        if let Some(status) = ctx.cached::<ApiStatus<MockFetcher>>() {
             match status.api_availability() {
                 APIAvailability::Unavailable((_, err)) => {
                     assert_eq!(err, "Network Error");

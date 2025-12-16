@@ -1,4 +1,4 @@
-use collects_business::ApiStatus;
+use collects_business::{ApiStatus, EhttpFetcher, FetchState};
 use collects_states::{StateCtx, Time};
 use serde::{Deserialize, Serialize};
 
@@ -26,7 +26,11 @@ impl CollectsUI {
         };
 
         me.state_ctx.add_state(Time::default());
-        me.state_ctx.record_compute(ApiStatus::default());
+        me.state_ctx.add_state(FetchState {
+            inner: EhttpFetcher::default(),
+        });
+        me.state_ctx
+            .record_compute(ApiStatus::<EhttpFetcher>::default());
 
         me
     }

@@ -1,10 +1,10 @@
-use collects_business::{APIAvailability, ApiStatus};
+use collects_business::{APIAvailability, ApiStatus, EhttpFetcher};
 use collects_states::StateCtx;
 use egui::{Color32, Response, Ui};
 
 pub fn api_status(state_ctx: &StateCtx, ui: &mut Ui) -> Response {
     match state_ctx
-        .cached::<ApiStatus>()
+        .cached::<ApiStatus<EhttpFetcher>>()
         .map(|v| v.api_availability())
     {
         Some(APIAvailability::Available(_)) => {

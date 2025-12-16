@@ -57,7 +57,7 @@ mod state_runtime_test {
             updater.set(DummyComputeA {
                 doubled: based.base_value * 2,
             });
-            ComputeStage::Finished
+            ComputeStage::Pending
         }
 
         fn assign_box(&mut self, new_self: Box<dyn Any>) {
@@ -79,5 +79,58 @@ mod state_runtime_test {
         // Render the states, which, we here verify the states are correctly updated
         assert!(ctx.cached::<DummyComputeA>().is_some());
         assert_eq!(ctx.cached::<DummyComputeA>().unwrap().doubled, 2);
+    }
+
+    #[derive(Default, Debug)]
+    struct DummyComputeB {
+        doubled: i32,
+    }
+
+    impl State for DummyComputeB {}
+
+    impl Compute for DummyComputeB {
+        fn as_any(&self) -> &dyn Any {
+            self
+        }
+
+        fn deps(&self) -> ComputeDeps {
+            const IDS: [TypeId; 1] = [TypeId::of::<DummyState>()];
+            (&IDS, &[])
+        }
+
+        fn compute(&self, dep: Dep, updater: Updater) -> ComputeStage {
+            let based = dep.get_state_ref::<DummyState>();
+            if based.base_value > 0 {
+                updater.set(DummyComputeB {
+                    doubled: based.base_value * 2,
+                });
+                return ComputeStage::Pending;
+            }
+            ComputeStage::Finished
+        }
+
+        fn assign_box(&mut self, new_self: Box<dyn Any>) {
+            assign_impl(self, new_self);
+        }
+    }
+
+    #[test]
+    fn state_runtime_pending() {
+        let mut ctx = StateCtx::new();
+
+        ctx.add_state(DummyState { base_value: 1 });
+        ctx.record_compute(DummyComputeB { doubled: 0 });
+
+        ctx.run_computed();
+        ctx.sync_computes();
+
+        assert_eq!(ctx.cached::<DummyComputeB>().unwrap().doubled, 2);
+
+        *ctx.states.get_mut(&TypeId::of::<DummyState>()).unwrap().0.get_mut() = Box::new(DummyState { base_value: -1 });
+        ctx.mark_dirty(&TypeId::of::<DummyState>());
+        ctx.mark_dirty(&TypeId::of::<DummyComputeB>());
+        ctx.run_computed();
+        ctx.sync_computes();
+        assert_eq!(ctx.cached::<DummyComputeB>().unwrap().doubled, 2);
     }
 }

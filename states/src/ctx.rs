@@ -19,7 +19,7 @@ use super::{Compute, Stage, State, StateRuntime};
 pub struct StateCtx {
     runtime: StateRuntime,
 
-    states: BTreeMap<TypeId, (RefCell<Box<dyn State>>, Stage)>,
+    pub(crate) states: BTreeMap<TypeId, (RefCell<Box<dyn State>>, Stage)>,
     // TODO: We better not store Box, consider using raw pointer to reduce indirection
     // We will not using RefCell with Box, the State should be Sized, and it will not needs to by Any to downcast, we just use NoNullPointer with unsafe
     computes: BTreeMap<TypeId, (RefCell<Box<dyn Compute>>, Stage)>,
@@ -158,11 +158,8 @@ impl StateCtx {
         let cur_len = self.runtime().receiver().len();
         for _ in 0..cur_len {
             if let Ok((id, boxed)) = self.runtime().receiver().try_recv() {
-                //debug_assert_eq!(
-                //    unsafe { self.storage[id_usize].assume_init_ref() }.2,
-                //    StateSyncStatus::Pending
-                //);
                 let compute = unsafe { self.computes.get_mut(&id).unwrap_unchecked() };
+            debug_assert_eq!(compute.1, Stage::Pending);
                 let computed_name = compute.0.borrow().name();
                 info!("Received Compute Update, compute={:?}", computed_name);
                 compute.0.borrow_mut().assign_box(boxed);

@@ -23,8 +23,8 @@ pub fn init_tracing(config: &Config) -> anyhow::Result<()> {
         // Set the global propagator to trace-context (W3C)
         opentelemetry::global::set_text_map_propagator(TraceContextPropagator::new());
 
-        let stackdriver_layer = tracing_stackdriver::layer()
-            .with_cloud_trace(CloudTraceConfiguration { project_id });
+        let stackdriver_layer =
+            tracing_stackdriver::layer().with_cloud_trace(CloudTraceConfiguration { project_id });
 
         // Let type inference handle the subscriber type instead of forcing Registry
         let otel_layer = tracing_opentelemetry::layer();

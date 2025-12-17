@@ -92,8 +92,10 @@ impl StateCtx {
             if log_enabled!(Level::Info) {
                 pending_compute_names.push(dirty_compute.name());
             }
-            let stage = dirty_compute.compute(deps, self.updater());
-            if stage == ComputeStage::Pending {
+            let before_run_len = self.runtime.receiver().len();
+            dirty_compute.compute(deps, self.updater());
+            let after_run_len = self.runtime.receiver().len();
+            if after_run_len > before_run_len {
                 pending_ids.push(*id);
             }
         }
@@ -108,11 +110,9 @@ impl StateCtx {
         }
     }
 
-    pub fn get_state_mut(&mut self, id: &TypeId) -> &'static mut dyn State {
+    pub fn get_state_mut(&self, id: &TypeId) -> &'static mut dyn State {
         unsafe {
-            self.states
-                .get_mut(id)
-                .unwrap()
+            self.states[id]
                 .0
                 .as_ptr()
                 .as_mut()

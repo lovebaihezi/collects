@@ -52,12 +52,11 @@ mod state_runtime_test {
             (&IDS, &[])
         }
 
-        fn compute(&self, dep: Dep, updater: Updater) -> ComputeStage {
+        fn compute(&self, dep: Dep, updater: Updater) {
             let based = dep.get_state_ref::<DummyState>();
             updater.set(DummyComputeA {
                 doubled: based.base_value * 2,
             });
-            ComputeStage::Pending
         }
 
         fn assign_box(&mut self, new_self: Box<dyn Any>) {
@@ -98,15 +97,13 @@ mod state_runtime_test {
             (&IDS, &[])
         }
 
-        fn compute(&self, dep: Dep, updater: Updater) -> ComputeStage {
+        fn compute(&self, dep: Dep, updater: Updater) {
             let based = dep.get_state_ref::<DummyState>();
             if based.base_value > 0 {
                 updater.set(DummyComputeB {
                     doubled: based.base_value * 2,
                 });
-                return ComputeStage::Pending;
             }
-            ComputeStage::Finished
         }
 
         fn assign_box(&mut self, new_self: Box<dyn Any>) {

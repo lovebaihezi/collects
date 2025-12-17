@@ -10,6 +10,15 @@ use crate::{Dep, Updater};
 
 pub type ComputeDeps = (&'static [TypeId], &'static [TypeId]);
 
+/// Represents the stage of a computation process.
+#[derive(Debug, PartialEq, Eq)]
+pub enum ComputeStage {
+    /// The computation has finished successfully.
+    Finished,
+    /// The computation is still pending (e.g., waiting for async results).
+    Pending,
+}
+
 /// The `Compute` trait represents a derived state that depends on other states or computes.
 ///
 /// It encapsulates logic to calculate its value based on dependencies.
@@ -20,7 +29,11 @@ pub trait Compute: Debug + Any {
     ///
     /// * `deps` - Access to dependencies (states and other computes).
     /// * `updater` - A mechanism to update the state of the system.
-    fn compute(&self, deps: Dep, updater: Updater);
+    ///
+    /// # Returns
+    ///
+    /// * `ComputeStage` indicating if the computation finished or is pending.
+    fn compute(&self, deps: Dep, updater: Updater) -> ComputeStage;
 
     /// Defines the dependencies of this compute.
     ///

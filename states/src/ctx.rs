@@ -92,10 +92,8 @@ impl StateCtx {
             if log_enabled!(Level::Info) {
                 pending_compute_names.push(dirty_compute.name());
             }
-            let before_run_len = self.runtime.receiver().len();
-            dirty_compute.compute(deps, self.updater());
-            let after_run_len = self.runtime.receiver().len();
-            if after_run_len > before_run_len {
+            let stage = dirty_compute.compute(deps, self.updater());
+            if stage == ComputeStage::Pending {
                 pending_ids.push(*id);
             }
         }

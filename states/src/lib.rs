@@ -33,14 +33,22 @@ mod state_runtime_test {
         base_value: i32,
     }
 
-    impl State for DummyState {}
+    impl State for DummyState {
+        fn as_any_mut(&mut self) -> &mut dyn Any {
+            self
+        }
+    }
 
     #[derive(Default, Debug)]
     struct DummyComputeA {
         doubled: i32,
     }
 
-    impl State for DummyComputeA {}
+    impl State for DummyComputeA {
+        fn as_any_mut(&mut self) -> &mut dyn Any {
+            self
+        }
+    }
 
     impl Compute for DummyComputeA {
         fn as_any(&self) -> &dyn Any {
@@ -52,11 +60,12 @@ mod state_runtime_test {
             (&IDS, &[])
         }
 
-        fn compute(&self, dep: Dep, updater: Updater) {
+        fn compute(&self, dep: Dep, updater: Updater) -> ComputeStage {
             let based = dep.get_state_ref::<DummyState>();
             updater.set(DummyComputeA {
                 doubled: based.base_value * 2,
             });
+            ComputeStage::Pending
         }
 
         fn assign_box(&mut self, new_self: Box<dyn Any>) {
@@ -85,7 +94,11 @@ mod state_runtime_test {
         doubled: i32,
     }
 
-    impl State for DummyComputeB {}
+    impl State for DummyComputeB {
+        fn as_any_mut(&mut self) -> &mut dyn Any {
+            self
+        }
+    }
 
     impl Compute for DummyComputeB {
         fn as_any(&self) -> &dyn Any {
@@ -97,13 +110,15 @@ mod state_runtime_test {
             (&IDS, &[])
         }
 
-        fn compute(&self, dep: Dep, updater: Updater) {
+        fn compute(&self, dep: Dep, updater: Updater) -> ComputeStage {
             let based = dep.get_state_ref::<DummyState>();
             if based.base_value > 0 {
                 updater.set(DummyComputeB {
                     doubled: based.base_value * 2,
                 });
+                return ComputeStage::Pending;
             }
+            ComputeStage::Finished
         }
 
         fn assign_box(&mut self, new_self: Box<dyn Any>) {
@@ -123,8 +138,9 @@ mod state_runtime_test {
 
         assert_eq!(ctx.cached::<DummyComputeB>().unwrap().doubled, 2);
 
-        let mut dummy_state = ctx
+        let dummy_state = ctx
             .get_state_mut(&TypeId::of::<DummyState>())
+            .as_any_mut()
             .downcast_mut::<DummyState>()
             .unwrap();
         dummy_state.base_value = -1;

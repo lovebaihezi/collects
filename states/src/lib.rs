@@ -11,7 +11,7 @@ mod state;
 mod state_sync_status;
 
 pub use basic_state::Time;
-pub use compute::{Compute, ComputeDeps, ComputeStage, assign_impl};
+pub use compute::{Compute, ComputeDeps, assign_impl};
 pub use ctx::StateCtx;
 pub use dep::Dep;
 pub use enum_states::BasicStates;
@@ -33,14 +33,22 @@ mod state_runtime_test {
         base_value: i32,
     }
 
-    impl State for DummyState {}
+    impl State for DummyState {
+        fn as_any_mut(&mut self) -> &mut dyn Any {
+            self
+        }
+    }
 
     #[derive(Default, Debug)]
     struct DummyComputeA {
         doubled: i32,
     }
 
-    impl State for DummyComputeA {}
+    impl State for DummyComputeA {
+        fn as_any_mut(&mut self) -> &mut dyn Any {
+            self
+        }
+    }
 
     impl Compute for DummyComputeA {
         fn as_any(&self) -> &dyn Any {
@@ -52,12 +60,11 @@ mod state_runtime_test {
             (&IDS, &[])
         }
 
-        fn compute(&self, dep: Dep, updater: Updater) -> ComputeStage {
+        fn compute(&self, dep: Dep, updater: Updater) {
             let based = dep.get_state_ref::<DummyState>();
             updater.set(DummyComputeA {
                 doubled: based.base_value * 2,
             });
-            ComputeStage::Finished
         }
 
         fn assign_box(&mut self, new_self: Box<dyn Any>) {
@@ -79,5 +86,60 @@ mod state_runtime_test {
         // Render the states, which, we here verify the states are correctly updated
         assert!(ctx.cached::<DummyComputeA>().is_some());
         assert_eq!(ctx.cached::<DummyComputeA>().unwrap().doubled, 2);
+    }
+
+    #[derive(Default, Debug)]
+    struct DummyComputeB {
+        doubled: i32,
+    }
+
+    impl State for DummyComputeB {
+        fn as_any_mut(&mut self) -> &mut dyn Any {
+            self
+        }
+    }
+
+    impl Compute for DummyComputeB {
+        fn as_any(&self) -> &dyn Any {
+            self
+        }
+
+        fn deps(&self) -> ComputeDeps {
+            const IDS: [TypeId; 1] = [TypeId::of::<DummyState>()];
+            (&IDS, &[])
+        }
+
+        fn compute(&self, dep: Dep, updater: Updater) {
+            let based = dep.get_state_ref::<DummyState>();
+            if based.base_value > 0 {
+                updater.set(DummyComputeB {
+                    doubled: based.base_value * 2,
+                });
+            }
+        }
+
+        fn assign_box(&mut self, new_self: Box<dyn Any>) {
+            assign_impl(self, new_self);
+        }
+    }
+
+    #[test]
+    fn state_runtime_pending() {
+        let mut ctx = StateCtx::new();
+
+        ctx.add_state(DummyState { base_value: 1 });
+        ctx.record_compute(DummyComputeB { doubled: 0 });
+
+        ctx.run_computed();
+        ctx.sync_computes();
+
+        assert_eq!(ctx.cached::<DummyComputeB>().unwrap().doubled, 2);
+
+        let dummy_state = ctx.state_mut::<DummyState>();
+        dummy_state.base_value = -1;
+        ctx.mark_dirty(&TypeId::of::<DummyComputeB>());
+        ctx.run_computed();
+        ctx.sync_computes();
+        assert_eq!(ctx.cached::<DummyComputeB>().unwrap().doubled, 2);
     }
 }

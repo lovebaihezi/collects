@@ -11,6 +11,7 @@ use crate::{Compute, StateRuntime};
 ///
 /// It provides basic identity and initialization logic for state objects.
 pub trait State: Any + Debug {
+    fn as_any_mut(&mut self) -> &mut dyn Any;
     /// Initializes the state.
     ///
     /// This method is called when the state is first added to the context.

@@ -110,7 +110,7 @@ impl StateCtx {
         }
     }
 
-    pub fn get_state_mut(&self, id: &TypeId) -> &'static mut dyn State {
+    fn get_state_mut(&self, id: &TypeId) -> &'static mut dyn State {
         unsafe {
             self.states[id]
                 .0

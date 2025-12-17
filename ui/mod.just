@@ -30,8 +30,8 @@ wk-dev: web-build
 wk-build: install web-release
     pnpm wrangler build
 
-wk-deploy: install wk-build
-    pnpm wrangler deploy
+wk-deploy env='dev': install wk-build
+    pnpm wrangler deploy --env {{env}}
 
 wk-type: install
     pnpm wrangler types

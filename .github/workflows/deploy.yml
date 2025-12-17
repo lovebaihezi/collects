@@ -34,37 +34,25 @@ jobs:
           node-version: 20
           cache: 'pnpm'
           cache-dependency-path: 'ui/pnpm-lock.yaml'
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-        working-directory: ./ui
       - name: Build
-        run: pnpm build
-        working-directory: ./ui
+        run: just ui::wk-build
       - name: Deploy to Staging
         if: github.event_name == 'pull_request'
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CF_API_TOKEN_TEST }}
-          workingDirectory: ./ui
-          command: deploy --env staging
+        run: just ui::wk-deploy staging
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN_TEST }}
       - name: Deploy to Test
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CF_API_TOKEN_TEST }}
-          workingDirectory: ./ui
-          command: deploy --env test
+        run: just ui::wk-deploy test
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN_TEST }}
       - name: Deploy to Nightly
         if: github.event_name == 'schedule'
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CF_API_TOKEN_PROD }}
-          workingDirectory: ./ui
-          command: deploy --env nightly
+        run: just ui::wk-deploy nightly
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN_PROD }}
       - name: Deploy to Production
         if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CF_API_TOKEN_PROD }}
-          workingDirectory: ./ui
-          command: deploy --env production
+        run: just ui::wk-deploy production
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN_PROD }}

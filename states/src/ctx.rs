@@ -7,7 +7,7 @@ use std::{
 
 use log::{Level, info, log_enabled};
 
-use crate::{ComputeStage, Dep, Reader, Updater};
+use crate::{Dep, Reader, Updater};
 
 use super::{Compute, Stage, State, StateRuntime};
 
@@ -92,8 +92,10 @@ impl StateCtx {
             if log_enabled!(Level::Info) {
                 pending_compute_names.push(dirty_compute.name());
             }
-            let stage = dirty_compute.compute(deps, self.updater());
-            if stage == ComputeStage::Pending {
+            let before_run_len = self.runtime.receiver().len();
+            dirty_compute.compute(deps, self.updater());
+            let after_run_len = self.runtime.receiver().len();
+            if after_run_len > before_run_len {
                 pending_ids.push(*id);
             }
         }
@@ -115,6 +117,15 @@ impl StateCtx {
                 .as_ptr()
                 .as_mut()
                 .map(|v| v.as_mut())
+                .unwrap()
+        }
+    }
+
+    pub fn state_mut<T: State>(&self) -> &'static mut T {
+        unsafe {
+            self.get_state_mut(&TypeId::of::<T>())
+                .as_any_mut()
+                .downcast_mut::<T>()
                 .unwrap()
         }
     }

@@ -48,6 +48,8 @@ foyer = "0.20"
 ustr = "1"
 zerocopy = "0.8"
 zerocopy-derive = '0.8'
+# To use with bevy and wasm, we specific the version to 0.2
+getrandom = { version = "0.2", features = ["js"] }
 
 [profile.dev]
 opt-level = 1

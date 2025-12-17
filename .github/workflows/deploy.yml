@@ -8,17 +8,13 @@ on:
       - 'v*'
   pull_request:
   schedule:
-    - cron: '0 9 * * 1-5'
+    - cron: '0 1 * * 1-5'
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install System Dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libssl-dev libgtk-3-dev libwayland-dev
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@master
         with:

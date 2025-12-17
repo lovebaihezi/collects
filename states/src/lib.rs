@@ -123,7 +123,10 @@ mod state_runtime_test {
 
         assert_eq!(ctx.cached::<DummyComputeB>().unwrap().doubled, 2);
 
-        let mut dummy_state = ctx.get_state_mut(&TypeId::of::<DummyState>()).downcast_mut::<DummyState>().unwrap();
+        let mut dummy_state = ctx
+            .get_state_mut(&TypeId::of::<DummyState>())
+            .downcast_mut::<DummyState>()
+            .unwrap();
         dummy_state.base_value = -1;
         ctx.mark_dirty(&TypeId::of::<DummyState>());
         ctx.mark_dirty(&TypeId::of::<DummyComputeB>());

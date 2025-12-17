@@ -2,16 +2,14 @@ name = "collects-app"
 main = "src/worker.ts"
 compatibility_date = "2025-09-15"
 
-[[routes]]
-pattern = "collects.lqxclqxc.com"
-custom_domain = true
-
 [assets]
 directory = "./dist"
 binding = "ASSETS"
 run_worker_first = [ "/api/*", "/auth/*" ]
 
-[[kv_namespaces]]
+[env.dev]
+
+[[env.dev.kv_namespaces]]
 binding = "KV"
 id = "a4dafe7674c2440b81e4ec2e5889f1ba"
 
@@ -19,9 +17,42 @@ id = "a4dafe7674c2440b81e4ec2e5889f1ba"
 name = "collects-app-staging"
 
 [[env.staging.routes]]
-pattern = "staging.collects.lqxclqxc.com"
+pattern = "collects-internal.lqxclqxc.com"
 custom_domain = true
 
 [[env.staging.kv_namespaces]]
 binding = "KV"
 id = "fac40588d16f4fa8b7c8f36de6445649"
+
+[env.test]
+name = "collects-app-test"
+
+[[env.test.routes]]
+pattern = "collects-test.lqxclqxc.com"
+custom_domain = true
+
+[[env.test.kv_namespaces]]
+binding = "KV"
+id = "a4dafe7674c2440b81e4ec2e5889f1ba" # TODO: Change to test kv
+
+[env.nightly]
+name = "collects-app-nightly"
+
+[[env.nightly.routes]]
+pattern = "collects-nightly.lqxclqxc.com"
+custom_domain = true
+
+[[env.nightly.kv_namespaces]]
+binding = "KV"
+id = "a4dafe7674c2440b81e4ec2e5889f1ba" # TODO: Change to nightly kv
+
+[env.production]
+name = "collects-app"
+
+[[env.production.routes]]
+pattern = "collects.lqxclqxc.com"
+custom_domain = true
+
+[[env.production.kv_namespaces]]
+binding = "KV"
+id = "a4dafe7674c2440b81e4ec2e5889f1ba" # TODO: Change to production kv

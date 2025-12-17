@@ -7,7 +7,7 @@ use std::{
 
 use log::{Level, info, log_enabled};
 
-use crate::{ComputeStage, Dep, Reader, Updater};
+use crate::{Dep, Reader, Updater};
 
 use super::{Compute, Stage, State, StateRuntime};
 
@@ -92,8 +92,10 @@ impl StateCtx {
             if log_enabled!(Level::Info) {
                 pending_compute_names.push(dirty_compute.name());
             }
-            let stage = dirty_compute.compute(deps, self.updater());
-            if stage == ComputeStage::Pending {
+            let before_run_len = self.runtime.receiver().len();
+            dirty_compute.compute(deps, self.updater());
+            let after_run_len = self.runtime.receiver().len();
+            if after_run_len > before_run_len {
                 pending_ids.push(*id);
             }
         }
@@ -117,6 +119,13 @@ impl StateCtx {
                 .map(|v| v.as_mut())
                 .unwrap()
         }
+    }
+
+    pub fn state_mut<T: State>(&self) -> &'static mut T {
+        self.get_state_mut(&TypeId::of::<T>())
+            .as_any_mut()
+            .downcast_mut::<T>()
+            .unwrap()
     }
 
     fn get_state_ptr(&self, id: &TypeId) -> NonNull<dyn State> {
@@ -158,11 +167,8 @@ impl StateCtx {
         let cur_len = self.runtime().receiver().len();
         for _ in 0..cur_len {
             if let Ok((id, boxed)) = self.runtime().receiver().try_recv() {
-                //debug_assert_eq!(
-                //    unsafe { self.storage[id_usize].assume_init_ref() }.2,
-                //    StateSyncStatus::Pending
-                //);
                 let compute = unsafe { self.computes.get_mut(&id).unwrap_unchecked() };
+                debug_assert_eq!(compute.1, Stage::Pending);
                 let computed_name = compute.0.borrow().name();
                 info!("Received Compute Update, compute={:?}", computed_name);
                 compute.0.borrow_mut().assign_box(boxed);

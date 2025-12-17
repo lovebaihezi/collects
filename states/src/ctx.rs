@@ -122,12 +122,10 @@ impl StateCtx {
     }
 
     pub fn state_mut<T: State>(&self) -> &'static mut T {
-        unsafe {
-            self.get_state_mut(&TypeId::of::<T>())
-                .as_any_mut()
-                .downcast_mut::<T>()
-                .unwrap()
-        }
+        self.get_state_mut(&TypeId::of::<T>())
+            .as_any_mut()
+            .downcast_mut::<T>()
+            .unwrap()
     }
 
     fn get_state_ptr(&self, id: &TypeId) -> NonNull<dyn State> {

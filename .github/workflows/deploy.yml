@@ -23,6 +23,7 @@ jobs:
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: nightly
+          targets: wasm32-unknown-unknown
       - name: Setup Just
         uses: extractions/setup-just@v2
       - uses: pnpm/action-setup@v4

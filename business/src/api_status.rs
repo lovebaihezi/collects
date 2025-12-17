@@ -1,7 +1,7 @@
 use std::any::{Any, TypeId};
 
 use chrono::{DateTime, Utc};
-use collects_states::{Compute, ComputeDeps, Dep, State, Time, Updater, assign_impl};
+use collects_states::{Compute, ComputeDeps, ComputeStage, Dep, State, Time, Updater, assign_impl};
 use log::{error, info};
 
 #[derive(Default, Debug)]
@@ -34,7 +34,7 @@ impl Compute for ApiStatus {
         (&IDS, &[])
     }
 
-    fn compute(&self, deps: Dep, updater: Updater) {
+    fn compute(&self, deps: Dep, updater: Updater) -> ComputeStage {
         let request = ehttp::Request::get("https://collects.lqxclqxc.com/api/is-health");
         let now = deps.get_state_ref::<Time>().as_ref().to_utc();
         let should_fetch = match &self.last_update_time {
@@ -78,6 +78,9 @@ impl Compute for ApiStatus {
                     error!("API status check failed: {:?}", err);
                 }
             });
+            ComputeStage::Pending
+        } else {
+            ComputeStage::Finished
         }
     }
 
@@ -90,8 +93,4 @@ impl Compute for ApiStatus {
     }
 }
 
-impl State for ApiStatus {
-    fn as_any_mut(&mut self) -> &mut dyn Any {
-        self
-    }
-}
+impl State for ApiStatus {}

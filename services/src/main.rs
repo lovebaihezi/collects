@@ -1,6 +1,7 @@
-use collects_services::{config::Config, database, routes, telemetry};
+use collects_services::{config::Config, database, routes};
 use std::net::{IpAddr, SocketAddr};
 use tracing::info;
+use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
@@ -11,15 +12,14 @@ const BUILD_BRANCH: &str = env!("BUILD_BRANCH");
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // Load configuration first to determine environment for tracing
-    let config: Config = Config::init()?;
-
     // Initialize tracing
-    telemetry::init_tracing(&config)?;
+    init_tracing();
 
     // Print build information
     print_build_info();
 
+    // Load configuration
+    let config: Config = Config::init()?;
     info!(
         environment = %config.environment(),
         server_addr = %config.server_addr(),
@@ -43,6 +43,17 @@ async fn main() -> anyhow::Result<()> {
     axum::serve(listener, route).await?;
 
     Ok(())
+}
+
+/// Initialize tracing/logging
+fn init_tracing() {
+    tracing_subscriber::registry()
+        .with(
+            EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| EnvFilter::new("info,collects_services=debug")),
+        )
+        .with(tracing_subscriber::fmt::layer())
+        .init();
 }
 
 /// Print build information

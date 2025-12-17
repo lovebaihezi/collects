@@ -13,13 +13,7 @@ impl Default for Time {
     }
 }
 
-use std::any::Any;
-
-impl State for Time {
-    fn as_any_mut(&mut self) -> &mut dyn Any {
-        self
-    }
-}
+impl State for Time {}
 
 impl AsMut<DateTime<Utc>> for Time {
     fn as_mut(&mut self) -> &mut DateTime<Utc> {

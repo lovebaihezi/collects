@@ -30,3 +30,4 @@ mimalloc = { workspace = true }
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen-futures = "0.4.50"
 web-sys = "0.3.70"
+getrandom = { version = "0.2", features = ["js"] }

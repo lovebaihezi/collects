@@ -965,6 +965,7 @@ dependencies = [
  "ehttp",
  "env_logger",
  "flume",
+ "getrandom 0.2.16",
  "log",
  "mimalloc",
  "serde",

@@ -20,6 +20,9 @@ web-build: install
     trunk build
     du -h dist/*
 
+web-fmt: install
+    pnpm prettier --write src/worker.ts index.html
+
 web-release: install
     trunk build --release
     du -h dist/*

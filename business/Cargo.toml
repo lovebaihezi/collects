@@ -26,3 +26,4 @@ chrono = "0.4.42"
 [features]
 env_test = []
 env_internal = []
+env_nightly = []

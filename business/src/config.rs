@@ -26,6 +26,8 @@ impl Default for ApiConfig {
                 "https://collects-test.lqxclqxc.com".to_string()
             } else if cfg!(feature = "env_internal") {
                 "https://collects-internal.lqxclqxc.com".to_string()
+            } else if cfg!(feature = "env_nightly") {
+                "https://collects-nightly.lqxclqxc.com".to_string()
             } else {
                 "https://collects.lqxclqxc.com".to_string()
             },

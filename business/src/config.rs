@@ -3,11 +3,11 @@ use std::any::Any;
 use ustr::Ustr;
 
 #[derive(Debug, Clone)]
-pub struct ApiConfig {
+pub struct BusinessConfig {
     api_base_url: String,
 }
 
-impl ApiConfig {
+impl BusinessConfig {
     pub fn new(base_url: String) -> Self {
         Self {
             api_base_url: base_url,
@@ -19,7 +19,7 @@ impl ApiConfig {
     }
 }
 
-impl Default for ApiConfig {
+impl Default for BusinessConfig {
     fn default() -> Self {
         Self {
             api_base_url: if cfg!(feature = "env_test") {
@@ -35,7 +35,7 @@ impl Default for ApiConfig {
     }
 }
 
-impl State for ApiConfig {
+impl State for BusinessConfig {
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
     }

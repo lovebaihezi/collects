@@ -1,6 +1,6 @@
 use std::any::{Any, TypeId};
 
-use crate::ApiConfig;
+use crate::BusinessConfig;
 use chrono::{DateTime, Utc};
 use collects_states::{Compute, ComputeDeps, Dep, State, Time, Updater, assign_impl};
 use log::{error, info};
@@ -31,12 +31,12 @@ impl ApiStatus {
 
 impl Compute for ApiStatus {
     fn deps(&self) -> ComputeDeps {
-        const IDS: [TypeId; 2] = [TypeId::of::<Time>(), TypeId::of::<ApiConfig>()];
+        const IDS: [TypeId; 2] = [TypeId::of::<Time>(), TypeId::of::<BusinessConfig>()];
         (&IDS, &[])
     }
 
     fn compute(&self, deps: Dep, updater: Updater) {
-        let config = deps.get_state_ref::<ApiConfig>();
+        let config = deps.get_state_ref::<BusinessConfig>();
         // Use config.api_url() which returns Ustr, so we convert it to &str
         let url = format!("{}/is-health", config.api_url().as_str());
         let request = ehttp::Request::get(url);

@@ -1,6 +1,9 @@
 #![warn(clippy::all, rust_2018_idioms)]
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+use collects_ui::state::State;
+use collects_ui::utils::fonts::add_font;
+
 #[cfg(not(target_arch = "wasm32"))]
 mod alloc {
     #[global_allocator]
@@ -32,7 +35,15 @@ fn main() -> eframe::Result {
     eframe::run_native(
         "Collects",
         native_options,
-        Box::new(|cc| Ok(Box::new(collects_ui::CollectsUI::new(cc, data)))),
+        Box::new(move |cc| {
+            add_font(&cc.egui_ctx, data);
+
+            // state should live as application exists
+            let state = Box::new(State::default());
+            let state = Box::leak(state);
+            let app = collects_ui::CollectsApp::new(state);
+            Ok(Box::new(app))
+        }),
     )
 }
 
@@ -95,7 +106,14 @@ fn main() {
             .start(
                 canvas,
                 web_options,
-                Box::new(|cc| Ok(Box::new(collects_ui::CollectsUI::new(cc, font_data)))),
+                Box::new(|cc| {
+                    add_font(&cc.egui_ctx, data);
+
+                    let state = Box::new(State::default());
+                    let state = Box::leak(state);
+                    let app = collects_ui::CollectsApp::new(state);
+                    Ok(Box::new(app))
+                }),
             )
             .await;
 

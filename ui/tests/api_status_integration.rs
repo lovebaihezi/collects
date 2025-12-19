@@ -3,10 +3,10 @@ use collects_states::{StateCtx, Time};
 use collects_ui::widgets::api_status::api_status;
 use egui_kittest::Harness;
 use kittest::Queryable;
-use std::cell::RefCell;
-use std::rc::Rc;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
+use std::cell::RefCell;
+use std::rc::Rc;
 
 #[tokio::test]
 async fn test_api_status_integration() {
@@ -25,12 +25,9 @@ async fn test_api_status_integration() {
     // 2. Setup StateCtx with Mock Configuration
     let mut state_ctx = StateCtx::new();
     state_ctx.add_state(Time::default());
-    // Inject the mock URL config BEFORE the compute runs
-    // Use the new constructor
     state_ctx.add_state(ApiConfig::new(mock_url));
     state_ctx.record_compute(ApiStatus::default());
 
-    // Wrap state_ctx to share between harness and test driver
     let state_ctx = Rc::new(RefCell::new(state_ctx));
     let state_ctx_clone = state_ctx.clone();
 
@@ -40,36 +37,26 @@ async fn test_api_status_integration() {
         api_status(&ctx, ui);
     });
 
-    // 4. Initial Render & Update
-    // Run the compute once (initially it will fetch)
+    // 4. Initial Render
     state_ctx.borrow_mut().run_computed();
     state_ctx.borrow_mut().sync_computes();
-
-    // Render the UI
     harness.run();
 
-    // Verify initial state (likely "Checking..." because ehttp fetch is async/background)
-    harness
-        .query_by_text("API Status: Checking...")
-        .assert_exists();
+    // Verify initial state
+    // Use get_by_label, which panics if not found (proving existence)
+    harness.get_by_label("API Status: Checking...");
 
     // 5. Wait for Async Update
-    // Poll for success
     let mut success = false;
     for _ in 0..50 {
-        // Wait a bit for the http request to finish
         tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-
-        // Process updates
         state_ctx.borrow_mut().sync_computes();
-        // Rerun compute if dependencies changed
         state_ctx.borrow_mut().run_computed();
-
-        // Render again to update the UI
         harness.run();
 
         // Check if "Healthy" appeared
-        if harness.get_by_text("API Status: Healthy").exists() {
+        // query_by_label returns Option, so is_some() is sufficient
+        if harness.query_by_label("API Status: Healthy").is_some() {
             success = true;
             break;
         }

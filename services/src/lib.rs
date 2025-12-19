@@ -131,7 +131,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_health_check_disconnected() {
-        let storage = MockStorage { is_connected: false };
+        let storage = MockStorage {
+            is_connected: false,
+        };
         let config = Config::new_for_test();
         let app = routes(storage, config).await;
 

@@ -29,9 +29,6 @@ impl PgStorage {
 
 impl SqlStorage for PgStorage {
     async fn is_connected(&self) -> bool {
-        sqlx::query("SELECT 1")
-            .execute(&self.pool)
-            .await
-            .is_ok()
+        sqlx::query("SELECT 1").execute(&self.pool).await.is_ok()
     }
 }

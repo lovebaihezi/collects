@@ -1,5 +1,5 @@
-use std::any::Any;
 use collects_states::State;
+use std::any::Any;
 
 #[derive(Debug, Clone)]
 pub struct ApiConfig {
@@ -15,7 +15,7 @@ impl Default for ApiConfig {
                 "https://collects-internal.lqxclqxc.com".to_string()
             } else {
                 "https://collects.lqxclqxc.com".to_string()
-            }
+            },
         }
     }
 }

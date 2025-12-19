@@ -38,3 +38,13 @@ wk-deploy env="": install wk-build
 
 wk-type: install
     pnpm wrangler types
+
+dist-native target output_name features="":
+    cargo build --release --target {{target}} {{ if features != "" { "--features " + features } else { "" } }}
+
+    # Handle optional .exe extension for Windows
+    if [ -f "target/{{target}}/release/collects-ui.exe" ]; then \
+        mv target/{{target}}/release/collects-ui.exe {{output_name}}; \
+    else \
+        mv target/{{target}}/release/collects-ui {{output_name}}; \
+    fi

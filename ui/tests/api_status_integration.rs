@@ -3,10 +3,10 @@ use collects_states::{StateCtx, Time};
 use collects_ui::widgets::api_status::api_status;
 use egui_kittest::Harness;
 use kittest::Queryable;
-use wiremock::matchers::{method, path};
-use wiremock::{Mock, MockServer, ResponseTemplate};
 use std::cell::RefCell;
 use std::rc::Rc;
+use wiremock::matchers::{method, path};
+use wiremock::{Mock, MockServer, ResponseTemplate};
 
 #[tokio::test]
 async fn test_api_status_integration() {
@@ -49,7 +49,9 @@ async fn test_api_status_integration() {
     harness.run();
 
     // Verify initial state (likely "Checking..." because ehttp fetch is async/background)
-    harness.query_by_text("API Status: Checking...").assert_exists();
+    harness
+        .query_by_text("API Status: Checking...")
+        .assert_exists();
 
     // 5. Wait for Async Update
     // Poll for success

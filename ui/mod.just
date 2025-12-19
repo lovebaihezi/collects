@@ -39,12 +39,21 @@ wk-deploy env="": install wk-build
 wk-type: install
     pnpm wrangler types
 
-dist-native target output_name features="":
-    cargo build --release --target {{target}} {{ if features != "" { "--features " + features } else { "" } }}
+# Unix implementation (Bash)
+[unix]
+package-native output_name features="":
+    # Build the crate. Explicit target-dir ensures artifacts are in ui/target/release
+    cargo build --release --target-dir target -p collects-ui {{ if features != "" { "--features " + features } else { "" } }}
 
-    # Handle optional .exe extension for Windows
-    if [ -f "target/{{target}}/release/collects-ui.exe" ]; then \
-        mv target/{{target}}/release/collects-ui.exe {{output_name}}; \
-    else \
-        mv target/{{target}}/release/collects-ui {{output_name}}; \
-    fi
+    # Handle renaming
+    mv target/release/collects-ui target/release/{{output_name}}
+
+# Windows implementation (PowerShell)
+[windows]
+package-native output_name features="":
+    #!pwsh
+    # Build the crate. Explicit target-dir ensures artifacts are in ui/target/release
+    cargo build --release --target-dir target -p collects-ui {{ if features != "" { "--features " + features } else { "" } }}
+
+    # Handle renaming
+    Move-Item -Path "target/release/collects-ui.exe" -Destination "target/release/{{output_name}}" -Force

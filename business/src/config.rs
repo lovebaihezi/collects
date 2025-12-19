@@ -1,9 +1,22 @@
 use collects_states::State;
 use std::any::Any;
+use ustr::Ustr;
 
 #[derive(Debug, Clone)]
 pub struct ApiConfig {
-    pub api_base_url: String,
+    api_base_url: String,
+}
+
+impl ApiConfig {
+    pub fn new(base_url: String) -> Self {
+        Self {
+            api_base_url: base_url,
+        }
+    }
+
+    pub fn api_url(&self) -> Ustr {
+        Ustr::from(&format!("{}/api", self.api_base_url))
+    }
 }
 
 impl Default for ApiConfig {

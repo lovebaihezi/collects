@@ -1,5 +1,5 @@
-use async_trait::async_trait;
 use sqlx::postgres::{PgPool, PgPoolOptions};
+use std::future::Future;
 
 use crate::config::Config;
 
@@ -12,9 +12,8 @@ pub async fn create_pool(config: &Config) -> anyhow::Result<PgPool> {
     Ok(pool)
 }
 
-#[async_trait]
 pub trait SqlStorage: Clone + Send + Sync + 'static {
-    async fn is_connected(&self) -> bool;
+    fn is_connected(&self) -> impl Future<Output = bool> + Send;
 }
 
 #[derive(Clone)]
@@ -28,7 +27,6 @@ impl PgStorage {
     }
 }
 
-#[async_trait]
 impl SqlStorage for PgStorage {
     async fn is_connected(&self) -> bool {
         sqlx::query("SELECT 1")

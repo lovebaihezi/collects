@@ -93,7 +93,6 @@ async fn catch_all() -> impl IntoResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use async_trait::async_trait;
     use axum::{
         body::Body,
         http::{Request, StatusCode},
@@ -105,7 +104,6 @@ mod tests {
         is_connected: bool,
     }
 
-    #[async_trait]
     impl SqlStorage for MockStorage {
         async fn is_connected(&self) -> bool {
             self.is_connected

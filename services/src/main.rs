@@ -1,4 +1,8 @@
-use collects_services::{config::Config, database, routes, telemetry};
+use collects_services::{
+    config::Config,
+    database::{self, PgStorage},
+    routes, telemetry,
+};
 use std::net::{IpAddr, SocketAddr};
 use tracing::info;
 
@@ -29,9 +33,10 @@ async fn main() -> anyhow::Result<()> {
 
     // Initialize database connection pool
     let pool = database::create_pool(&config).await?;
+    let storage = PgStorage::new(pool);
 
     // Build the application router
-    let route = routes(pool, config.clone()).await;
+    let route = routes(storage, config.clone()).await;
 
     // Create socket address
     let addr = SocketAddr::from((config.server_addr().parse::<IpAddr>()?, config.port()));

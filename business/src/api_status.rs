@@ -1,5 +1,6 @@
 use std::any::{Any, TypeId};
 
+use crate::ApiConfig;
 use chrono::{DateTime, Utc};
 use collects_states::{Compute, ComputeDeps, Dep, State, Time, Updater, assign_impl};
 use log::{error, info};
@@ -30,12 +31,15 @@ impl ApiStatus {
 
 impl Compute for ApiStatus {
     fn deps(&self) -> ComputeDeps {
-        const IDS: [TypeId; 1] = [TypeId::of::<Time>()];
+        const IDS: [TypeId; 2] = [TypeId::of::<Time>(), TypeId::of::<ApiConfig>()];
         (&IDS, &[])
     }
 
     fn compute(&self, deps: Dep, updater: Updater) {
-        let request = ehttp::Request::get("https://collects.lqxclqxc.com/api/is-health");
+        let config = deps.get_state_ref::<ApiConfig>();
+        // Use config.api_url() which returns Ustr, so we convert it to &str
+        let url = format!("{}/is-health", config.api_url().as_str());
+        let request = ehttp::Request::get(url);
         let now = deps.get_state_ref::<Time>().as_ref().to_utc();
         let should_fetch = match &self.last_update_time {
             Some(last_update_time) => {

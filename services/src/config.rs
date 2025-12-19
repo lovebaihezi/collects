@@ -43,6 +43,17 @@ struct RawConfig {
 }
 
 impl Config {
+    #[cfg(test)]
+    pub fn new_for_test() -> Self {
+        Self {
+            env: Env::Local,
+            database_url: "postgres://localhost:5432/test".to_string(),
+            server_addr: "127.0.0.1".to_string(),
+            port: 8080,
+            clerk_frontend_api: "clerk.test".to_string(),
+        }
+    }
+
     pub fn environment(&self) -> &Env {
         &self.env
     }

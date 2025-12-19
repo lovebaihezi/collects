@@ -886,7 +886,6 @@ name = "collects-services"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "async-trait",
  "axum",
  "axum-extra",
  "axum-test",

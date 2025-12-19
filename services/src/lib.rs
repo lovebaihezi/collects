@@ -1,15 +1,15 @@
 use crate::auth::{Claims, JwksClient, auth_middleware};
 use crate::config::Config;
+use crate::database::SqlStorage;
 use axum::{
     Extension, Router,
-    extract::Request,
+    extract::{Request, State},
     http::StatusCode,
     middleware,
     response::IntoResponse,
     routing::{any, get},
 };
 use opentelemetry::{global, propagation::Extractor};
-use sqlx::PgPool;
 use std::sync::Arc;
 use tower_http::trace::TraceLayer;
 use tracing_opentelemetry::OpenTelemetrySpanExt;
@@ -31,11 +31,14 @@ impl<'a> Extractor for HeaderExtractor<'a> {
     }
 }
 
-pub async fn routes(pool: PgPool, config: Config) -> Router {
+pub async fn routes<S>(storage: S, config: Config) -> Router
+where
+    S: SqlStorage + Clone + Send + Sync + 'static,
+{
     let jwks_client = Arc::new(JwksClient::new(config.clerk_frontend_api().to_string()));
 
     Router::new()
-        .route("/is-health", get(async || "OK"))
+        .route("/is-health", get(health_check::<S>))
         .route(
             "/protected",
             get(protected_route).route_layer(middleware::from_fn(auth_middleware)),
@@ -65,7 +68,18 @@ pub async fn routes(pool: PgPool, config: Config) -> Router {
                 span
             }),
         )
-        .with_state(pool)
+        .with_state(storage)
+}
+
+async fn health_check<S>(State(storage): State<S>) -> impl IntoResponse
+where
+    S: SqlStorage,
+{
+    if storage.is_connected().await {
+        (StatusCode::OK, "OK")
+    } else {
+        (StatusCode::BAD_GATEWAY, "502")
+    }
 }
 
 async fn protected_route(Extension(claims): Extension<Claims>) -> impl IntoResponse {
@@ -74,4 +88,65 @@ async fn protected_route(Extension(claims): Extension<Claims>) -> impl IntoRespo
 
 async fn catch_all() -> impl IntoResponse {
     (StatusCode::NOT_FOUND, "nothing to see here")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::{
+        body::Body,
+        http::{Request, StatusCode},
+    };
+    use tower::ServiceExt;
+
+    #[derive(Clone)]
+    struct MockStorage {
+        is_connected: bool,
+    }
+
+    impl SqlStorage for MockStorage {
+        async fn is_connected(&self) -> bool {
+            self.is_connected
+        }
+    }
+
+    #[tokio::test]
+    async fn test_health_check_connected() {
+        let storage = MockStorage { is_connected: true };
+        let config = Config::new_for_test();
+        let app = routes(storage, config).await;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/is-health")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_health_check_disconnected() {
+        let storage = MockStorage {
+            is_connected: false,
+        };
+        let config = Config::new_for_test();
+        let app = routes(storage, config).await;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/is-health")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
+    }
 }

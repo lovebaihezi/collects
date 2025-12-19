@@ -1,4 +1,5 @@
 use sqlx::postgres::{PgPool, PgPoolOptions};
+use std::future::Future;
 
 use crate::config::Config;
 
@@ -9,4 +10,25 @@ pub async fn create_pool(config: &Config) -> anyhow::Result<PgPool> {
     tracing::info!("Database connection pool established");
 
     Ok(pool)
+}
+
+pub trait SqlStorage: Clone + Send + Sync + 'static {
+    fn is_connected(&self) -> impl Future<Output = bool> + Send;
+}
+
+#[derive(Clone)]
+pub struct PgStorage {
+    pub pool: PgPool,
+}
+
+impl PgStorage {
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool }
+    }
+}
+
+impl SqlStorage for PgStorage {
+    async fn is_connected(&self) -> bool {
+        sqlx::query("SELECT 1").execute(&self.pool).await.is_ok()
+    }
 }

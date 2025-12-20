@@ -92,21 +92,16 @@ impl StateCtx {
             if log_enabled!(Level::Info) {
                 pending_compute_names.push(dirty_compute.name());
             }
-            let before_run_len = self.runtime.receiver().len();
+            pending_ids.push(*id);
             dirty_compute.compute(deps, self.updater());
-            let after_run_len = self.runtime.receiver().len();
-            if after_run_len > before_run_len {
-                pending_ids.push(*id);
-            }
+        }
+        for id in pending_ids {
+            self.mark_pending(&id);
         }
         if log_enabled!(Level::Info) {
             for name in pending_compute_names {
                 info!("Compute pending: {:?}", name);
             }
-        }
-        // We use Vec to collect, or using RefCell to wrap, or using pointer to avoid borrow checker
-        for id in pending_ids {
-            self.computes.get_mut(&id).unwrap().1 = Stage::Pending;
         }
     }
 
@@ -199,6 +194,11 @@ impl StateCtx {
             .iter()
             .filter_map(|(type_id, (state_cell, compute_state))| {
                 if matches!(compute_state, &Stage::Dirty | &Stage::BeforeInit) {
+                    info!(
+                        "Run Compute which is {:?} = {:?}",
+                        compute_state,
+                        state_cell.borrow().name()
+                    );
                     Some((type_id, state_cell.borrow_mut()))
                 } else {
                     None

@@ -160,6 +160,10 @@ impl StateCtx {
     /// to the respective computes, marking them as clean.
     pub fn sync_computes(&mut self) {
         let cur_len = self.runtime().receiver().len();
+        info!(
+            "Start Sync Compute State, Cur Received {:?} Compute Result",
+            cur_len
+        );
         for _ in 0..cur_len {
             if let Ok((id, boxed)) = self.runtime().receiver().try_recv() {
                 let compute = unsafe { self.computes.get_mut(&id).unwrap_unchecked() };

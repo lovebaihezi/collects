@@ -16,3 +16,50 @@ pub fn api_status(state_ctx: &StateCtx, ui: &mut Ui) -> Response {
         _ => ui.colored_label(Color32::YELLOW, "API Status: Checking..."),
     }
 }
+
+#[cfg(test)]
+mod api_state_widget_test {
+    use std::time::Duration;
+
+    use kittest::Queryable;
+
+    use crate::test_utils::TestCtx;
+
+    #[tokio::test]
+    async fn test_api_status_widget() {
+        let mut ctx = TestCtx::new(|ui, state| {
+            super::api_status(&state.ctx, ui);
+        })
+        .await;
+
+        let harness = ctx.harness_mut();
+
+        harness.step();
+
+        assert!(
+            harness.query_by_label("API Status: Checking...").is_some(),
+            "'API Status: Checking...' should exists in UI"
+        );
+
+        harness.state_mut().ctx.sync_computes();
+        harness.step();
+        harness.state_mut().ctx.run_computed();
+
+        // The Mock Server Needs to wait a bit before it can return 200
+        // TODO: finds best practice to wait for mock server
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        harness.state_mut().ctx.sync_computes();
+        harness.step();
+        harness.state_mut().ctx.run_computed();
+
+        if let Some(n) = harness.query_by_label_contains("API Status") {
+            eprintln!("NODE: {:?}", n);
+        }
+
+        assert!(
+            harness.query_by_label("API Status: Healthy").is_some(),
+            "'API Status: Healthy' should exists in UI"
+        );
+    }
+}

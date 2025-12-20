@@ -38,9 +38,7 @@ fn main() -> eframe::Result {
         Box::new(move |cc| {
             add_font(&cc.egui_ctx, data);
 
-            // state should live as application exists
-            let state = Box::new(State::default());
-            let state = Box::leak(state);
+            let state = State::default();
             let app = collects_ui::CollectsApp::new(state);
             Ok(Box::new(app))
         }),
@@ -109,8 +107,7 @@ fn main() {
                 Box::new(|cc| {
                     add_font(&cc.egui_ctx, data);
 
-                    let state = Box::new(State::default());
-                    let state = Box::leak(state);
+                    let state = State::default();
                     let app = collects_ui::CollectsApp::new(state);
                     Ok(Box::new(app))
                 }),

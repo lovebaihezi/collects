@@ -36,7 +36,7 @@ getrandom = { version = "0.2", features = ["js"] }
 [dev-dependencies]
 kittest = "0.3"
 wiremock = "0.6"
-egui_kittest = "0.33"
+egui_kittest = { version = "0.33", features = ["snapshot", "eframe"] }
 tokio = { workspace = true, features = ["full", "test-util"] }
 
 [features]

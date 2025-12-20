@@ -2,12 +2,13 @@ name: CI
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
   pull_request:
 
 env:
   CARGO_TERM_COLOR: always
 
+# TODO: We needs to optimize the Job flows, store run build cache, and parallel the jobs.
 jobs:
   lint:
     name: Lint
@@ -45,3 +46,9 @@ jobs:
 
       - name: Check Typos
         run: just check-typos
+
+      - name: Run Test
+        run: just build-release
+
+      - name: Run Build
+        run: just release

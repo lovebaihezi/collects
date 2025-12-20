@@ -3,7 +3,8 @@ use std::any::{Any, TypeId};
 use crate::BusinessConfig;
 use chrono::{DateTime, Utc};
 use collects_states::{Compute, ComputeDeps, Dep, State, Time, Updater, assign_impl};
-use log::{error, info};
+use log::{debug, info, warn};
+use ustr::Ustr;
 
 #[derive(Default, Debug)]
 pub struct ApiStatus {
@@ -37,8 +38,7 @@ impl Compute for ApiStatus {
 
     fn compute(&self, deps: Dep, updater: Updater) {
         let config = deps.get_state_ref::<BusinessConfig>();
-        // Use config.api_url() which returns Ustr, so we convert it to &str
-        let url = format!("{}/is-health", config.api_url().as_str());
+        let url = Ustr::from(format!("{}/is-health", config.api_url().as_str()).as_str());
         let request = ehttp::Request::get(url);
         let now = deps.get_state_ref::<Time>().as_ref().to_utc();
         let should_fetch = match &self.last_update_time {
@@ -59,11 +59,14 @@ impl Compute for ApiStatus {
             }
         };
         if should_fetch {
-            info!("Get API Status at {:?}", now);
+            info!(
+                "Fetching API Status at {:?} on: {:?}, Waiting Result",
+                &url, now
+            );
             ehttp::fetch(request, move |res| match res {
                 Ok(response) => {
                     if response.status == 200 {
-                        info!("BackEnd Available, checked at {:?}", now);
+                        debug!("BackEnd Available, checked at {:?}", now);
                         let api_status = ApiStatus {
                             last_update_time: Some(now),
                             last_error: None,
@@ -74,12 +77,12 @@ impl Compute for ApiStatus {
                     }
                 }
                 Err(err) => {
+                    warn!("API status check failed: {:?}", err);
                     let api_status = ApiStatus {
                         last_update_time: Some(now),
                         last_error: Some(err.to_string()),
                     };
                     updater.set(api_status);
-                    error!("API status check failed: {:?}", err);
                 }
             });
         }

@@ -1,18 +1,18 @@
 use crate::{state::State, widgets};
 
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
-pub struct CollectsApp<'a> {
-    state: &'a mut State,
+pub struct CollectsApp {
+    state: State,
 }
 
-impl<'a> CollectsApp<'a> {
+impl CollectsApp {
     /// Called once before the first frame.
-    pub fn new(state: &'a mut State) -> Self {
+    pub fn new(state: State) -> Self {
         Self { state }
     }
 }
 
-impl<'a> eframe::App for CollectsApp<'a> {
+impl eframe::App for CollectsApp {
     /// Called each time the UI needs repainting, which may be many times per second.
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Sync Compute for render

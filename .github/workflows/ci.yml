@@ -48,7 +48,7 @@ jobs:
         run: just check-typos
 
       - name: Run Test
-        run: just build-release
+        run: just ui::test
 
       - name: Run Build
-        run: just release
+        run: just ui::release

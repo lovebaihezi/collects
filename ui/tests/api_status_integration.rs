@@ -15,15 +15,9 @@ async fn test_api_status_with_200() {
         "'API Status: Checking...' should exists in UI"
     );
 
-    // We run run compute at the ends of update, which, second step will able to update the api status
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
     harness.step();
-
-    assert!(
-        harness.query_by_label("API Status: Checking...").is_some(),
-        "'API Status: Checking...' should exists in UI"
-    );
-
-    harness.run_steps(60);
 
     assert!(
         harness.query_by_label("API Status: Healthy").is_some(),

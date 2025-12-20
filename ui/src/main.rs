@@ -105,7 +105,7 @@ fn main() {
                 canvas,
                 web_options,
                 Box::new(|cc| {
-                    add_font(&cc.egui_ctx, data);
+                    add_font(&cc.egui_ctx, font_data);
 
                     let state = State::default();
                     let app = collects_ui::CollectsApp::new(state);

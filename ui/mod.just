@@ -7,6 +7,9 @@ build:
 release:
     cargo build --release
 
+test log_level="DEBUG":
+    RUST_LOG={{log_level}} cargo test
+
 lint:
     cargo clippy
     trunk fmt --check

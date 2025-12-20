@@ -9,7 +9,7 @@ install-deps:
     go install github.com/evilmartians/lefthook@latest
 
 # Install git hooks
-install-hooks:
+install-hooks: install-deps
     lefthook install
 
 # Run cargo fmt check on the workspace

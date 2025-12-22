@@ -1,6 +1,6 @@
 use crate::auth::{Claims, JwksClient, auth_middleware};
 use crate::config::Config;
-use crate::database::SqlStorage;
+use crate::database::PersistentStructureDataService;
 use axum::{
     Extension, Router,
     extract::{Request, State},
@@ -33,7 +33,7 @@ impl<'a> Extractor for HeaderExtractor<'a> {
 
 pub async fn routes<S>(storage: S, config: Config) -> Router
 where
-    S: SqlStorage + Clone + Send + Sync + 'static,
+    S: PersistentStructureDataService + Clone + Send + Sync + 'static,
 {
     let jwks_client = Arc::new(JwksClient::new(config.clerk_frontend_api().to_string()));
 
@@ -73,7 +73,7 @@ where
 
 async fn health_check<S>(State(storage): State<S>) -> impl IntoResponse
 where
-    S: SqlStorage,
+    S: PersistentStructureDataService,
 {
     if storage.is_connected().await {
         (StatusCode::OK, "OK")
@@ -100,11 +100,11 @@ mod tests {
     use tower::ServiceExt;
 
     #[derive(Clone)]
-    struct MockStorage {
+    struct NeonTestService {
         is_connected: bool,
     }
 
-    impl SqlStorage for MockStorage {
+    impl PersistentStructureDataService for NeonTestService {
         async fn is_connected(&self) -> bool {
             self.is_connected
         }
@@ -112,7 +112,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_health_check_connected() {
-        let storage = MockStorage { is_connected: true };
+        let storage = NeonTestService { is_connected: true };
         let config = Config::new_for_test();
         let app = routes(storage, config).await;
 
@@ -131,7 +131,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_health_check_disconnected() {
-        let storage = MockStorage {
+        let storage = NeonTestService {
             is_connected: false,
         };
         let config = Config::new_for_test();

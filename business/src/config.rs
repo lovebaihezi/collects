@@ -60,17 +60,32 @@ mod tests {
             assert_eq!(config.api_url(), Ustr::from("/api"));
         } else if cfg!(feature = "env_test") {
             assert_eq!(config.api_base_url, "https://collects-test.lqxclqxc.com");
-            assert_eq!(config.api_url(), Ustr::from("https://collects-test.lqxclqxc.com/api"));
+            assert_eq!(
+                config.api_url(),
+                Ustr::from("https://collects-test.lqxclqxc.com/api")
+            );
         } else if cfg!(feature = "env_internal") {
-            assert_eq!(config.api_base_url, "https://collects-internal.lqxclqxc.com");
-            assert_eq!(config.api_url(), Ustr::from("https://collects-internal.lqxclqxc.com/api"));
+            assert_eq!(
+                config.api_base_url,
+                "https://collects-internal.lqxclqxc.com"
+            );
+            assert_eq!(
+                config.api_url(),
+                Ustr::from("https://collects-internal.lqxclqxc.com/api")
+            );
         } else if cfg!(feature = "env_nightly") {
             assert_eq!(config.api_base_url, "https://collects-nightly.lqxclqxc.com");
-            assert_eq!(config.api_url(), Ustr::from("https://collects-nightly.lqxclqxc.com/api"));
+            assert_eq!(
+                config.api_url(),
+                Ustr::from("https://collects-nightly.lqxclqxc.com/api")
+            );
         } else {
             // Default production
             assert_eq!(config.api_base_url, "https://collects.lqxclqxc.com");
-            assert_eq!(config.api_url(), Ustr::from("https://collects.lqxclqxc.com/api"));
+            assert_eq!(
+                config.api_url(),
+                Ustr::from("https://collects.lqxclqxc.com/api")
+            );
         }
     }
 }

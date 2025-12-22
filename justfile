@@ -79,3 +79,7 @@ docker-run image_tag: (docker-build image_tag)
         -e PORT=3000 \
         -e DATABASE_URL=$(gcloud secrets versions access latest --secret=database-url) \
         "${FULL_IMAGE_NAME}"
+
+# Runs the setup script for Google Cloud Authentication
+setup-gcp-auth project_id repo:
+    cd scripts/setup-gcp-auth && bun install && bun run main.ts --project-id {{project_id}} --repo {{repo}}

@@ -47,18 +47,20 @@ cli
 
     console.log(`\n🔹 Setting up GCP Auth for project: ${projectId}, repo: ${repo}\n`);
 
+    // Helper to generate commands without '|| true' for visibility
     const commands = [
-      `# 1. Create Service Account`,
-      `gcloud iam service-accounts create ${serviceAccount} --project "${projectId}" --display-name="GitHub Actions Deployer" || true`,
+      `# 1. Create Service Account (ignoring if exists)`,
+      `gcloud iam service-accounts create ${serviceAccount} --project "${projectId}" --display-name="GitHub Actions Deployer" || echo "Service account likely exists"`,
       ``,
-      `# 2. Create Workload Identity Pool`,
-      `gcloud iam workload-identity-pools create ${pool} --project "${projectId}" --location="global" --display-name="GitHub Actions Pool" || true`,
+      `# 2. Create Workload Identity Pool (ignoring if exists)`,
+      `gcloud iam workload-identity-pools create ${pool} --project "${projectId}" --location="global" --display-name="GitHub Actions Pool" || echo "Pool likely exists"`,
       ``,
-      `# 3. Create Workload Identity Provider`,
-      `gcloud iam workload-identity-pools providers create-oidc ${provider} --project "${projectId}" --location="global" --workload-identity-pool="${pool}" --display-name="GitHub Actions Provider" --attribute-mapping="google.subject=assertion.sub,attribute.actor=assertion.actor,attribute.repository=assertion.repository" --issuer-uri="https://token.actions.githubusercontent.com" || true`,
+      `# 3. Create Workload Identity Provider (ignoring if exists)`,
+      `gcloud iam workload-identity-pools providers create-oidc ${provider} --project "${projectId}" --location="global" --workload-identity-pool="${pool}" --display-name="GitHub Actions Provider" --attribute-mapping="google.subject=assertion.sub,attribute.actor=assertion.actor,attribute.repository=assertion.repository" --issuer-uri="https://token.actions.githubusercontent.com" || echo "Provider likely exists"`,
       ``,
       `# 4. Get Pool ID`,
       `POOL_ID=$(gcloud iam workload-identity-pools describe ${pool} --project "${projectId}" --location="global" --format="value(name)")`,
+      `echo "Pool ID: $POOL_ID"`,
       ``,
       `# 5. Allow GitHub Actions to Impersonate Service Account`,
       `gcloud iam service-accounts add-iam-policy-binding "${serviceAccount}@${projectId}.iam.gserviceaccount.com" --project "${projectId}" --role="roles/iam.workloadIdentityUser" --member="principalSet://iam.googleapis.com/\${POOL_ID}/attribute.repository/${repo}"`,
@@ -67,6 +69,10 @@ cli
       `gcloud projects add-iam-policy-binding "${projectId}" --member="serviceAccount:${serviceAccount}@${projectId}.iam.gserviceaccount.com" --role="roles/artifactregistry.writer"`,
       `gcloud projects add-iam-policy-binding "${projectId}" --member="serviceAccount:${serviceAccount}@${projectId}.iam.gserviceaccount.com" --role="roles/run.admin"`,
       `gcloud projects add-iam-policy-binding "${projectId}" --member="serviceAccount:${serviceAccount}@${projectId}.iam.gserviceaccount.com" --role="roles/iam.serviceAccountUser"`,
+      ``,
+      `# 7. Verification`,
+      `echo "Verifying Provider..."`,
+      `gcloud iam workload-identity-pools providers describe ${provider} --project "${projectId}" --location="global" --workload-identity-pool="${pool}" --format="value(name)"`
     ];
 
     console.log('--- Run the following commands in your terminal ---');
@@ -81,6 +87,10 @@ cli
     if (!projectNumber) {
         console.error("Failed to fetch project number. Make sure you are authenticated with gcloud.");
     } else {
+        console.log(`Detected Project Number: ${projectNumber}`);
+
+        // Construct the full resource name
+        // Format: projects/{project_number}/locations/global/workloadIdentityPools/{pool_id}/providers/{provider_id}
         const providerResourceName = `projects/${projectNumber}/locations/global/workloadIdentityPools/${pool}/providers/${provider}`;
         const serviceAccountEmail = `${serviceAccount}@${projectId}.iam.gserviceaccount.com`;
 
@@ -93,6 +103,7 @@ cli
         console.log(`Secret Name:  GCP_SERVICE_ACCOUNT`);
         console.log(`Secret Value: ${serviceAccountEmail}`);
         console.log('---------------------------------------------------');
+        console.log('⚠️  Note: Ensure the "Secret Value" above exactly matches the output of step #7 if you ran the commands manually.');
     }
   });
 

@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 import { cac } from 'cac';
+import prompts from 'prompts';
 
 const cli = cac('setup-gcp-auth');
 
@@ -13,6 +14,28 @@ cli
   .action(async (options) => {
     let { projectId, repo, serviceAccount, pool, provider } = options;
 
+    // Prompt for missing values
+    if (!projectId || !repo) {
+      const response = await prompts([
+        {
+          type: projectId ? null : 'text',
+          name: 'projectId',
+          message: 'Google Cloud Project ID:',
+          initial: projectId
+        },
+        {
+          type: repo ? null : 'text',
+          name: 'repo',
+          message: 'GitHub Repository (owner/repo):',
+          initial: repo
+        }
+      ]);
+
+      if (!projectId) projectId = response.projectId;
+      if (!repo) repo = response.repo;
+    }
+
+    // Validate again after prompt
     if (!projectId) {
       console.error('Error: --project-id is required');
       process.exit(1);
@@ -51,10 +74,6 @@ cli
     console.log('\n---------------------------------------------------\n');
 
     // Calculate values for GitHub Secrets
-    // We assume the pool ID format based on inputs
-    // The correct full resource name for provider is: projects/{project_number}/locations/global/workloadIdentityPools/{pool}/providers/{provider}
-    // We need project number.
-
     console.log('Fetching Project Number...');
     const proc = Bun.spawnSync(['gcloud', 'projects', 'describe', projectId, '--format=value(projectNumber)']);
     const projectNumber = proc.stdout.toString().trim();

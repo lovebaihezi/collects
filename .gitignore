@@ -20,3 +20,5 @@ target_wasm
 .env
 
 .wrangler
+scripts/setup-gcp-auth/node_modules
+scripts/setup-gcp-auth/node_modules

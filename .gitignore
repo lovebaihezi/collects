@@ -21,4 +21,3 @@ target_wasm
 
 .wrangler
 scripts/setup-gcp-auth/node_modules
-scripts/setup-gcp-auth/node_modules

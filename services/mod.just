@@ -26,20 +26,6 @@ fmt:
 lint:
     cargo clippy
 
-# Builds and pushes a multi-arch `collects-services` Docker image to Google Artifact Registry.
-docker-push image_tag:
-    #!/bin/bash
-    set -eux
-
-    GCP_REGION="us-east1"
-    PROJECT_ID=$(gcloud config get-value project)
-    REPOSITORY_NAME="collects-services"
-    IMAGE_NAME="collects-services"
-    FULL_IMAGE_NAME="${GCP_REGION}-docker.pkg.dev/${PROJECT_ID}/${REPOSITORY_NAME}/${IMAGE_NAME}:{{image_tag}}"
-
-    # We use linux/amd64 because we are building for x86_64-unknown-linux-musl
-    docker buildx build --platform linux/amd64 --tag "${FULL_IMAGE_NAME}" . --push
-
 # Deploys the service to Cloud Run
 gcloud-deploy env image_tag:
     #!/bin/bash

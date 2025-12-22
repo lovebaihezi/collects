@@ -66,11 +66,8 @@ jobs:
              echo "TAG=${{ github.ref_name }}" >> $GITHUB_ENV
           fi
 
-      - name: Build Binary
-        run: just services::release
-
       - name: Build and Push Docker Image
-        run: just services::docker-push ${{ env.TAG }}
+        run: just docker-push ${{ env.TAG }}
 
       - name: Deploy to Cloud Run
         run: just services::gcloud-deploy ${{ env.ENV }} ${{ env.TAG }}

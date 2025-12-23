@@ -2,8 +2,8 @@ name: Deploy Worker
 
 on:
   push:
-    branches: [ "main" ]
-    tags: [ "v*" ]
+    branches: ["main"]
+    tags: ["v*"]
   pull_request:
   schedule:
     - cron: "0 0 * * *"
@@ -41,7 +41,7 @@ jobs:
         id: env
         run: |
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            echo "ENV=internal" >> $GITHUB_ENV
+            echo "ENV=pr" >> $GITHUB_ENV
           elif [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" == "refs/heads/main" ]]; then
             echo "ENV=test" >> $GITHUB_ENV
           elif [[ "${{ github.event_name }}" == "schedule" ]]; then

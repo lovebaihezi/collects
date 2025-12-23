@@ -26,6 +26,17 @@ custom_domain = true
 binding = "KV"
 id = "fac40588d16f4fa8b7c8f36de6445649"
 
+[env.pr]
+name = "collects-app-pr"
+
+[[env.pr.routes]]
+pattern = "collects-pr.lqxclqxc.com"
+custom_domain = true
+
+[[env.pr.kv_namespaces]]
+binding = "KV"
+id = "fac40588d16f4fa8b7c8f36de6445649"
+
 [env.test]
 name = "collects-app-test"
 

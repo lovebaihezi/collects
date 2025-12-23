@@ -2,40 +2,57 @@
 import { cac } from 'cac';
 import prompts from 'prompts';
 import { $ } from 'bun';
-import { z } from 'zod';
+import { type } from 'arktype';
 
 const cli = cac('setup-gcp-auth');
 
 // --- Schemas & Types ---
 
-const GlobalOptionsSchema = z.object({
-  projectId: z.string().optional(),
-  repo: z.string().optional(),
-  serviceAccount: z.string().default('github-actions-deployer'),
+// Base definition for Global Options
+const GlobalOptionsSchema = type({
+  "projectId?": "string",
+  "repo?": "string",
+  // serviceAccount has a default in CAC, so it will be present
+  "serviceAccount": "string",
 });
 
-const AuthOptionsSchema = GlobalOptionsSchema.extend({
-  pool: z.string().default('github-actions-pool'),
-  provider: z.string().default('github-actions-provider'),
+// Since spreading .json might be unstable or untyped, let's use intersection or re-definition.
+// Re-definition is safest for simple schemas to avoid TS complexity in this script.
+
+const AuthOptionsSchema = type({
+  "projectId?": "string",
+  "repo?": "string",
+  "serviceAccount": "string",
+  "pool": "string",
+  "provider": "string",
 });
 
-const SecretOptionsSchema = GlobalOptionsSchema.extend({
-  secretKey: z.string().optional(),
-  secretValue: z.string().optional(),
+const SecretOptionsSchema = type({
+  "projectId?": "string",
+  "repo?": "string",
+  "serviceAccount": "string",
+  "secretKey?": "string",
+  "secretValue?": "string",
 });
 
-type GlobalOptions = z.infer<typeof GlobalOptionsSchema>;
-type AuthOptions = z.infer<typeof AuthOptionsSchema>;
-type SecretOptions = z.infer<typeof SecretOptionsSchema>;
+const SetupOptionsSchema = type({
+    "projectId?": "string",
+    "repo?": "string",
+    "serviceAccount": "string",
+    "pool?": "string",
+    "provider?": "string",
+    "databaseUrl?": "string",
+    "secretKey?": "string",
+    "secretValue?": "string",
+});
+
+type GlobalOptions = typeof GlobalOptionsSchema.infer;
+type AuthOptions = typeof AuthOptionsSchema.infer;
+type SecretOptions = typeof SecretOptionsSchema.infer;
+type SetupOptions = typeof SetupOptionsSchema.infer;
 
 // --- Helpers ---
 
-/**
- * Runs a command with user confirmation and error handling.
- * @param command The shell command string to run.
- * @param description A brief description of what this command does.
- * @param ignoreFailure If true, will not throw on failure (useful for "check if exists" commands).
- */
 async function askToRun(command: string, description: string, ignoreFailure = false) {
   console.log(`\n🔹 [Step] ${description}`);
   console.log(`   Command: ${command}`);
@@ -53,7 +70,6 @@ async function askToRun(command: string, description: string, ignoreFailure = fa
   }
 
   try {
-    // We use sh -c to allow complex shell features like pipes or ||
     await $`sh -c ${command}`;
     console.log('✅ Success');
   } catch (err: any) {
@@ -64,21 +80,10 @@ async function askToRun(command: string, description: string, ignoreFailure = fa
 
     console.error('\n❌ Command Failed!');
     console.error(`Error Output: ${err.stderr?.toString() || err.message}`);
-    console.error(`\n--- LLM Debug Helper ---`);
-    console.error(`The command '${command}' failed.`);
-    console.error(`Error details: ${err.stderr?.toString() || err.stdout?.toString() || err.message}`);
-    console.error(`Please analyze why this Google Cloud SDK command failed. Common issues include:`);
-    console.error(`- Insufficient permissions for the active user.`);
-    console.error(`- The resource already exists (if not handled).`);
-    console.error(`- Incorrect Project ID or arguments.`);
-    console.error(`------------------------\n`);
     process.exit(1);
   }
 }
 
-/**
- * Ensures projectId and repo are available, prompting if necessary.
- */
 async function ensureContext<T extends GlobalOptions>(options: T): Promise<T> {
   let { projectId, repo } = options;
 
@@ -114,34 +119,30 @@ async function ensureContext<T extends GlobalOptions>(options: T): Promise<T> {
 
 async function setupAuth(options: AuthOptions) {
   // Validate options
-  const parsed = AuthOptionsSchema.parse(options);
+  const parsed = AuthOptionsSchema.assert(options);
   const { projectId, repo, serviceAccount, pool, provider } = parsed as Required<AuthOptions>;
   const serviceAccountEmail = `${serviceAccount}@${projectId}.iam.gserviceaccount.com`;
 
   console.log(`\n🚀 Starting Auth Setup for ${projectId} (Repo: ${repo})`);
 
-  // 1. Create Service Account
   await askToRun(
     `gcloud iam service-accounts create ${serviceAccount} --project "${projectId}" --display-name="GitHub Actions Deployer" || echo "Service account likely exists"`,
     'Create Service Account (idempotent)',
     true
   );
 
-  // 2. Create Workload Identity Pool
   await askToRun(
     `gcloud iam workload-identity-pools create ${pool} --project "${projectId}" --location="global" --display-name="GitHub Actions Pool" || echo "Pool likely exists"`,
     'Create Workload Identity Pool (idempotent)',
     true
   );
 
-  // 3. Create Workload Identity Provider
   await askToRun(
     `gcloud iam workload-identity-pools providers create-oidc ${provider} --project "${projectId}" --location="global" --workload-identity-pool="${pool}" --display-name="GitHub Actions Provider" --attribute-mapping="google.subject=assertion.sub,attribute.actor=assertion.actor,attribute.repository=assertion.repository" --issuer-uri="https://token.actions.githubusercontent.com" || echo "Provider likely exists"`,
     'Create Workload Identity Provider (idempotent)',
     true
   );
 
-  // 4. Get Pool ID
   console.log(`\n🔹 [Step] Fetching Pool ID...`);
   let poolId = '';
   try {
@@ -155,13 +156,11 @@ async function setupAuth(options: AuthOptions) {
     process.exit(1);
   }
 
-  // 5. Allow GitHub Actions to Impersonate Service Account
   await askToRun(
     `gcloud iam service-accounts add-iam-policy-binding "${serviceAccountEmail}" --project "${projectId}" --role="roles/iam.workloadIdentityUser" --member="principalSet://iam.googleapis.com/${poolId}/attribute.repository/${repo}"`,
     'Bind Workload Identity to Service Account'
   );
 
-  // 6. Grant Permissions
   await askToRun(
     `gcloud projects add-iam-policy-binding "${projectId}" --member="serviceAccount:${serviceAccountEmail}" --role="roles/artifactregistry.writer"`,
     'Grant Artifact Registry Writer'
@@ -175,11 +174,9 @@ async function setupAuth(options: AuthOptions) {
     'Grant Service Account User'
   );
 
-  // 7. Output Secrets
   console.log('\n✅ Auth Setup Actions Completed.');
   console.log('Calculating secret values...');
 
-  // Get Project Number
   const projectNum = (await $`gcloud projects describe ${projectId} --format="value(projectNumber)"`.text()).trim();
   const providerResourceName = `projects/${projectNum}/locations/global/workloadIdentityPools/${pool}/providers/${provider}`;
 
@@ -189,16 +186,14 @@ async function setupAuth(options: AuthOptions) {
 }
 
 async function setupSecrets(options: SecretOptions) {
-  // Validate options
-  const parsed = SecretOptionsSchema.parse(options);
-  const { projectId, serviceAccount } = parsed as Required<SecretOptions>; // global options are ensured by ensureContext but schema check helps
+  const parsed = SecretOptionsSchema.assert(options);
+  const { projectId, serviceAccount } = parsed as Required<SecretOptions>;
   let { secretKey, secretValue } = parsed;
 
   console.log(`\n🚀 Starting Secret Setup for ${projectId}`);
 
   const serviceAccountEmail = `${serviceAccount}@${projectId}.iam.gserviceaccount.com`;
 
-  // Prompt for Secret Key if missing
   if (!secretKey) {
     const response = await prompts({
       type: 'text',
@@ -214,10 +209,9 @@ async function setupSecrets(options: SecretOptions) {
     process.exit(1);
   }
 
-  // Prompt for Secret Value if missing
   if (!secretValue) {
     const response = await prompts({
-      type: 'password', // Mask input
+      type: 'password',
       name: 'secretValue',
       message: `Enter the value for ${secretKey}:`,
     });
@@ -229,17 +223,14 @@ async function setupSecrets(options: SecretOptions) {
     process.exit(1);
   }
 
-  // Derive GCP Secret Name (lowercase)
-  const gcpSecretName = secretKey.toLowerCase().replace(/_/g, '-'); // Google secrets usually prefer hyphens or valid chars
+  const gcpSecretName = secretKey.toLowerCase().replace(/_/g, '-');
 
-  // 1. Create Secret (idempotent-ish)
   await askToRun(
     `gcloud secrets create ${gcpSecretName} --project "${projectId}" --replication-policy="automatic" || echo "Secret likely exists"`,
     `Create Secret '${gcpSecretName}'`,
     true
   );
 
-  // 2. Add Secret Version
   console.log(`\n🔹 [Step] Add new version to secret '${gcpSecretName}'`);
   const confirm = await prompts({
     type: 'confirm',
@@ -271,7 +262,6 @@ async function setupSecrets(options: SecretOptions) {
     console.log('Skipping...');
   }
 
-  // 3. Grant Access to Service Account
   await askToRun(
     `gcloud secrets add-iam-policy-binding ${gcpSecretName} --project "${projectId}" --member="serviceAccount:${serviceAccountEmail}" --role="roles/secretmanager.secretAccessor"`,
     `Grant Service Account access to '${gcpSecretName}'`
@@ -282,14 +272,12 @@ async function setupSecrets(options: SecretOptions) {
 
 // --- CLI Definitions ---
 
-// Shared options
 const sharedOptions = (c: any) => {
   c.option('--project-id <id>', 'Google Cloud Project ID')
    .option('--repo <repo>', 'GitHub Repository (owner/repo)')
    .option('--service-account <name>', 'Service Account Name', { default: 'github-actions-deployer' });
 };
 
-// 1. Auth Command
 const authCmd = cli.command('auth', 'Setup only Workload Identity')
   .option('--pool <name>', 'Workload Identity Pool Name', { default: 'github-actions-pool' })
   .option('--provider <name>', 'Workload Identity Provider Name', { default: 'github-actions-provider' });
@@ -301,26 +289,24 @@ authCmd.action(async (options: AuthOptions) => {
   await setupAuth(ctx);
 });
 
-// 2. Secrets Command
 const secretCmd = cli.command('secrets', 'Setup a Secret (e.g. DATABASE_URL)')
   .option('--secret-key <key>', 'Secret Key (e.g. DATABASE_URL)')
   .option('--secret-value <val>', 'Secret Value')
-  // Aliases for backward compat / ease of use
   .option('--database-url <url>', 'Alias for --secret-value when key is DATABASE_URL');
 
 sharedOptions(secretCmd);
 
-secretCmd.action(async (options: any) => {
+secretCmd.action(async (options: SecretOptions & { databaseUrl?: string }) => {
   const ctx = await ensureContext(options);
-  // normalization
   if (options.databaseUrl && !options.secretValue) {
-    options.secretKey = 'DATABASE_URL';
     options.secretValue = options.databaseUrl;
+    if (!options.secretKey) {
+       options.secretKey = 'DATABASE_URL';
+    }
   }
   await setupSecrets(ctx);
 });
 
-// 3. Setup Command (Default/All)
 const setupCmd = cli.command('setup', 'Setup Everything (Auth + DATABASE_URL)')
   .option('--pool <name>', 'Workload Identity Pool Name', { default: 'github-actions-pool' })
   .option('--provider <name>', 'Workload Identity Provider Name', { default: 'github-actions-provider' })
@@ -328,17 +314,21 @@ const setupCmd = cli.command('setup', 'Setup Everything (Auth + DATABASE_URL)')
 
 sharedOptions(setupCmd);
 
-setupCmd.action(async (options: any) => {
+setupCmd.action(async (options: SetupOptions) => {
   const ctx = await ensureContext(options);
-  await setupAuth(ctx);
+  // Default values for auth (cac provided)
+  const authOpts: AuthOptions = {
+      ...ctx,
+      pool: options.pool || 'github-actions-pool',
+      provider: options.provider || 'github-actions-provider'
+  };
+  await setupAuth(authOpts);
 
-  // For 'setup', we default to DATABASE_URL if provided or prompt for it
   if (options.databaseUrl) {
       await setupSecrets({
           ...ctx,
           secretKey: 'DATABASE_URL',
           secretValue: options.databaseUrl,
-          secretName: 'DATABASE_URL' // Unused in new logic but types might match
       });
   } else {
       console.log('\n❓ Do you want to configure DATABASE_URL now?');
@@ -348,7 +338,6 @@ setupCmd.action(async (options: any) => {
                ...ctx,
                secretKey: 'DATABASE_URL',
                secretValue: undefined,
-               secretName: 'DATABASE_URL'
            });
       }
   }

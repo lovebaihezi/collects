@@ -2,8 +2,8 @@ name: Deploy Services
 
 on:
   push:
-    branches: [ "main" ]
-    tags: [ "v*" ]
+    branches: ["main"]
+    tags: ["v*"]
   pull_request:
   schedule:
     - cron: "0 0 * * *"
@@ -40,8 +40,8 @@ jobs:
         id: auth
         uses: google-github-actions/auth@v2
         with:
-          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+          workload_identity_provider: "projects/145756646168/locations/global/workloadIdentityPools/github-actions-pool/providers/github-provider"
+          service_account: "github-actions-sa@braided-case-416903.iam.gserviceaccount.com"
 
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v2

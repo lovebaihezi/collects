@@ -12,16 +12,20 @@ const cli = cac('services');
 async function runCommand(command: string, context: string) {
   try {
     // We use Bun.spawn to have better control or just use $ if simple
-    // Using $ from bun as imported
-    await $`${{ raw: command }}`;
+    // Using $ from bun as imported. We capture stdout to keep the UI clean.
+    const { stdout } = await $`${{ raw: command }}`;
+    return stdout.toString();
   } catch (err: any) {
     p.log.error(`COMMAND FAILED: ${command}`);
-    p.log.error(`ERROR: ${err.message || err}`);
+
+    // Attempt to extract useful error output from Bun's ShellError
+    const errorOutput = err.stderr?.toString() || err.stdout?.toString() || err.message || String(err);
+    p.log.error(`ERROR: ${errorOutput.trim()}`);
 
     const llmPrompt = `
 I ran the command \`${command}\` to ${context} and got this error:
 \`\`\`
-${err.message || err}
+${errorOutput.trim()}
 \`\`\`
 How do I fix this in Google Cloud?
 `;
@@ -95,6 +99,7 @@ cli.command('actions-setup', 'Setup GitHub Actions with Google Cloud Workload Id
 
     const projectId = projectGroup.projectId;
     const repo = projectGroup.repo;
+    const owner = repo.split('/')[0];
 
     const poolName = 'github-actions-pool';
     const providerName = 'github-provider';
@@ -127,7 +132,7 @@ cli.command('actions-setup', 'Setup GitHub Actions with Google Cloud Workload Id
     const providerExists = await checkResource(`gcloud iam workload-identity-pools providers describe ${providerName} --workload-identity-pool=${poolName} --project=${projectId} --location=global`);
     if (!providerExists) {
       await confirmAndRun(
-        `gcloud iam workload-identity-pools providers create-oidc ${providerName} --project=${projectId} --location=global --workload-identity-pool=${poolName} --display-name="GitHub Provider" --attribute-mapping="google.subject=assertion.sub,attribute.actor=assertion.actor,attribute.repository=assertion.repository" --issuer-uri="https://token.actions.githubusercontent.com"`,
+        `gcloud iam workload-identity-pools providers create-oidc ${providerName} --project=${projectId} --location=global --workload-identity-pool=${poolName} --display-name="GitHub Provider" --attribute-mapping="google.subject=assertion.sub,attribute.actor=assertion.actor,attribute.repository=assertion.repository,attribute.repository_owner=assertion.repository_owner" --issuer-uri="https://token.actions.githubusercontent.com" --attribute-condition="attribute.repository_owner=='${owner}' && attribute.repository=='${repo}'"`,
         'Create Workload Identity Provider'
       );
     } else {

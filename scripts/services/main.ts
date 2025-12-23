@@ -1,27 +1,47 @@
 #!/usr/bin/env bun
-import { cac } from 'cac';
-import * as p from '@clack/prompts';
-import { $ } from 'bun';
-import { type } from 'arktype';
+import { cac } from "cac";
+import * as p from "@clack/prompts";
+import { $ } from "bun";
+import { type } from "arktype";
 
-const cli = cac('services');
+const cli = cac("services");
+
+/**
+ * Context for GitHub Actions setup
+ */
+interface SetupContext {
+  projectId: string;
+  repo: string;
+  owner: string;
+  projectNumber: string;
+  poolName: string;
+  providerName: string;
+  saName: string;
+  saEmail: string;
+  poolId: string;
+  providerId: string;
+}
 
 /**
  * Runs a shell command with error handling and LLM prompt generation.
  */
 async function runCommand(command: string, context: string) {
+  const s = p.spinner();
   try {
     // We use Bun.spawn to have better control or just use $ if simple
     // Using $ from bun as imported. We capture stdout to keep the UI clean.
-    const { stdout } = await $`${{ raw: command }}`;
+    s.start("Run Google Cloud CLI: ", command);
+    const { stdout } = await $`${{ raw: command }}`.quiet();
+    s.stop("GCLI succeeded");
     return stdout.toString();
   } catch (err: any) {
+    s.stop("Failed to run command: ", command);
     p.log.error(`COMMAND FAILED: ${command}`);
 
-    let errorOutput = '';
+    let errorOutput = "";
 
     // ShellError is not exported from 'bun' in the current version, so we check the name/properties
-    if (err.name === 'ShellError' || (err.stdout && err.stderr)) {
+    if (err.name === "ShellError" || (err.stdout && err.stderr)) {
       errorOutput = err.stdout.toString() + err.stderr.toString();
     } else {
       errorOutput = err.message || String(err);
@@ -29,15 +49,15 @@ async function runCommand(command: string, context: string) {
 
     p.log.error(`ERROR: ${errorOutput.trim()}`);
 
-    const llmPrompt = `
-I ran the command \`${command}\` to ${context} and got this error:
-\`\`\`
-${errorOutput.trim()}
-\`\`\`
-How do I fix this in Google Cloud?
-`;
+    const llmPrompt = `I ran the command \`${command}\` to ${context} and got this error:
 
-    p.note(llmPrompt, 'PROMPT FOR LLM');
+${errorOutput.trim()}
+
+How do I fix this in Google Cloud?`;
+
+    p.log.info("To get help from an AI assistant, use the following prompt:");
+    p.log.message(llmPrompt);
+
     process.exit(1);
   }
 }
@@ -50,16 +70,16 @@ async function confirmAndRun(command: string, context: string) {
   p.log.message(`Command: ${command}`);
 
   const shouldRun = await p.confirm({
-    message: 'Do you want to run this command?',
+    message: "Do you want to run this command?",
   });
 
   if (p.isCancel(shouldRun) || !shouldRun) {
-    p.log.warn('Operation cancelled by user.');
+    p.log.warn("Operation cancelled by user.");
     process.exit(0);
   }
 
   await runCommand(command, context);
-  p.log.success('Command executed successfully.');
+  p.log.success("Command executed successfully.");
 }
 
 /**
@@ -77,141 +97,312 @@ async function checkResource(command: string): Promise<boolean> {
   }
 }
 
-cli.command('actions-setup', 'Setup GitHub Actions with Google Cloud Workload Identity Federation')
-  .action(async () => {
-    p.intro('GitHub Actions + Google Cloud Workload Identity Federation Setup');
+/**
+ * Validates and parses repository format
+ */
+function validateRepo(repo: string): { owner: string; repo: string } {
+  const repoType = type(/^[^/]+\/[^/]+$/);
+  const result = repoType(repo);
 
-    const projectGroup = await p.group({
-      projectId: () => p.text({
-        message: 'Enter your Google Cloud Project ID:',
-        placeholder: 'my-gcp-project-id',
-        validate: (value) => {
-          if (!value) return 'Project ID is required';
-        }
-      }),
-      repo: () => p.text({
-        message: 'Enter your GitHub Repository (owner/repo):',
-        placeholder: 'username/repository',
-        validate: (value) => {
-          if (!value) return 'Repository is required';
-          if (!value.includes('/')) return 'Format must be owner/repo';
-        }
-      })
-    }, {
-      onCancel: () => {
-        p.cancel('Operation cancelled.');
-        process.exit(0);
-      }
-    });
+  if (result instanceof type.errors) {
+    p.log.error(`Invalid repository format: ${result.summary}`);
+    process.exit(1);
+  }
 
-    const projectId = projectGroup.projectId;
-    const repo = projectGroup.repo;
+  const [owner, repoName] = result.split("/");
+  return { owner, repo: repoName };
+}
 
-    // Validate repo format using ArkType
-    const repoType = type(/^[^/]+\/[^/]+$/);
-    const result = repoType(repo);
+/**
+ * Gets project number from project ID
+ */
+async function getProjectNumber(projectId: string): Promise<string> {
+  const projectNumber =
+    await $`gcloud projects describe ${projectId} --format="value(projectNumber)"`.text();
+  return projectNumber.trim();
+}
 
-    if (result instanceof type.errors) {
-      p.log.error(`Invalid repository format: ${result.summary}`);
-      process.exit(1);
-    }
+/**
+ * Creates setup context from inputs
+ */
+async function createSetupContext(
+  projectId: string,
+  repo: string,
+): Promise<SetupContext> {
+  const { owner } = validateRepo(repo);
+  const projectNumber = await getProjectNumber(projectId);
 
-    const owner = result.split('/')[0];
+  const poolName = "github-actions-pool";
+  const providerName = "github-provider";
+  const saName = "github-actions-sa";
+  const saEmail = `${saName}@${projectId}.iam.gserviceaccount.com`;
+  const poolId = `projects/${projectNumber}/locations/global/workloadIdentityPools/${poolName}`;
+  const providerId = `${poolId}/providers/${providerName}`;
 
-    const poolName = 'github-actions-pool';
-    const providerName = 'github-provider';
-    const saName = 'github-actions-sa';
-    const saEmail = `${saName}@${projectId}.iam.gserviceaccount.com`;
-    const poolId = `projects/${projectId}/locations/global/workloadIdentityPools/${poolName}`;
-    const providerId = `${poolId}/providers/${providerName}`;
+  return {
+    projectId,
+    repo,
+    owner,
+    projectNumber,
+    poolName,
+    providerName,
+    saName,
+    saEmail,
+    poolId,
+    providerId,
+  };
+}
 
-    // 1. Enable IAM Credentials API
-    // We check if it's enabled by trying to describe it or just ensuring it's enabled.
-    // Simpler to just attempt enabling or check.
-    // Let's assume we confirm enabling.
-    await confirmAndRun(
-      `gcloud services enable iamcredentials.googleapis.com --project ${projectId}`,
-      'Enable IAM Credentials API'
-    );
+/**
+ * Checks if workload identity pool exists
+ */
+async function checkPoolExists(ctx: SetupContext): Promise<boolean> {
+  return checkResource(
+    `gcloud iam workload-identity-pools describe ${ctx.poolName} --project=${ctx.projectId} --location=global`,
+  );
+}
 
-    // 2. Create Workload Identity Pool
-    const poolExists = await checkResource(`gcloud iam workload-identity-pools describe ${poolName} --project=${projectId} --location=global`);
-    if (!poolExists) {
-      await confirmAndRun(
-        `gcloud iam workload-identity-pools create ${poolName} --project=${projectId} --location=global --display-name="GitHub Actions Pool"`,
-        'Create Workload Identity Pool'
-      );
-    } else {
-      p.log.info(`Workload Identity Pool '${poolName}' already exists.`);
-    }
+/**
+ * Checks if workload identity provider exists
+ */
+async function checkProviderExists(ctx: SetupContext): Promise<boolean> {
+  return checkResource(
+    `gcloud iam workload-identity-pools providers describe ${ctx.providerName} --workload-identity-pool=${ctx.poolName} --project=${ctx.projectId} --location=global`,
+  );
+}
 
-    // 3. Create Workload Identity Provider
-    const providerExists = await checkResource(`gcloud iam workload-identity-pools providers describe ${providerName} --workload-identity-pool=${poolName} --project=${projectId} --location=global`);
-    if (!providerExists) {
-      await confirmAndRun(
-        `gcloud iam workload-identity-pools providers create-oidc ${providerName} --project=${projectId} --location=global --workload-identity-pool=${poolName} --display-name="GitHub Provider" --attribute-mapping="google.subject=assertion.sub,attribute.actor=assertion.actor,attribute.repository=assertion.repository,attribute.repository_owner=assertion.repository_owner" --issuer-uri="https://token.actions.githubusercontent.com" --attribute-condition="attribute.repository_owner=='${owner}' && attribute.repository=='${repo}'"`,
-        'Create Workload Identity Provider'
-      );
-    } else {
-      p.log.info(`Workload Identity Provider '${providerName}' already exists.`);
-    }
+/**
+ * Checks if service account exists
+ */
+async function checkServiceAccountExists(ctx: SetupContext): Promise<boolean> {
+  return checkResource(
+    `gcloud iam service-accounts describe ${ctx.saEmail} --project=${ctx.projectId}`,
+  );
+}
 
-    // 4. Create Service Account
-    const saExists = await checkResource(`gcloud iam service-accounts describe ${saEmail} --project=${projectId}`);
-    if (!saExists) {
-      await confirmAndRun(
-        `gcloud iam service-accounts create ${saName} --project=${projectId} --display-name="GitHub Actions Service Account"`,
-        'Create Service Account'
-      );
-    } else {
-      p.log.info(`Service Account '${saName}' already exists.`);
-    }
+/**
+ * Enables IAM Credentials API
+ */
+async function enableIAMCredentialsAPI(ctx: SetupContext): Promise<void> {
+  await confirmAndRun(
+    `gcloud services enable iamcredentials.googleapis.com --project ${ctx.projectId}`,
+    "Enable IAM Credentials API",
+  );
+}
 
-    // 5. Bind Service Account to Pool (Allow GitHub Actions to impersonate this SA)
-    // We specifically allow the specific repository
-    const principalSet = `principalSet://iam.googleapis.com/${poolId}/attribute.repository/${repo}`;
-    // It's hard to check exact binding existence easily without parsing JSON.
-    // Running this multiple times is generally safe/idempotent (it just updates policy).
-    await confirmAndRun(
-      `gcloud iam service-accounts add-iam-policy-binding ${saEmail} --project=${projectId} --role="roles/iam.workloadIdentityUser" --member="${principalSet}"`,
-      `Allow GitHub Repo '${repo}' to impersonate Service Account`
-    );
+/**
+ * Creates workload identity pool
+ */
+async function createWorkloadIdentityPool(ctx: SetupContext): Promise<void> {
+  await confirmAndRun(
+    `gcloud iam workload-identity-pools create ${ctx.poolName} --project=${ctx.projectId} --location=global --display-name="GitHub Actions Pool"`,
+    "Create Workload Identity Pool",
+  );
+}
 
-    // 6. Grant Roles to Service Account
-    const roles = [
-      'roles/artifactregistry.writer',
-      'roles/secretmanager.secretAccessor',
-      'roles/run.admin',
-      'roles/iam.serviceAccountUser'
-    ];
+/**
+ * Creates workload identity provider
+ */
+async function createWorkloadIdentityProvider(
+  ctx: SetupContext,
+): Promise<void> {
+  await confirmAndRun(
+    `gcloud iam workload-identity-pools providers create-oidc ${ctx.providerName} --project=${ctx.projectId} --location=global --workload-identity-pool=${ctx.poolName} --display-name="GitHub Provider" --attribute-mapping="google.subject=assertion.sub,attribute.actor=assertion.actor,attribute.repository=assertion.repository,attribute.repository_owner=assertion.repository_owner" --issuer-uri="https://token.actions.githubusercontent.com" --attribute-condition="attribute.repository_owner=='${ctx.owner}' && attribute.repository=='${ctx.repo}'"`,
+    "Create Workload Identity Provider",
+  );
+}
 
-    for (const role of roles) {
-      await confirmAndRun(
-        `gcloud projects add-iam-policy-binding ${projectId} --member="serviceAccount:${saEmail}" --role="${role}"`,
-        `Grant '${role}' to Service Account`
-      );
-    }
+/**
+ * Creates service account
+ */
+async function createServiceAccount(ctx: SetupContext): Promise<void> {
+  await confirmAndRun(
+    `gcloud iam service-accounts create ${ctx.saName} --project=${ctx.projectId} --display-name="GitHub Actions Service Account"`,
+    "Create Service Account",
+  );
+}
 
-    p.outro('Setup Complete!');
+/**
+ * Binds service account to workload identity pool
+ */
+async function bindServiceAccountToPool(ctx: SetupContext): Promise<void> {
+  const principalSet = `principalSet://iam.googleapis.com/projects/${ctx.projectNumber}/locations/global/workloadIdentityPools/${ctx.poolName}/attribute.repository/${ctx.repo}`;
+  await confirmAndRun(
+    `gcloud iam service-accounts add-iam-policy-binding ${ctx.saEmail} --project=${ctx.projectId} --role="roles/iam.workloadIdentityUser" --member="${principalSet}"`,
+    `Allow GitHub Repo '${ctx.repo}' to impersonate Service Account`,
+  );
+}
 
-    const yamlOutput = `
+/**
+ * Grants a role to service account
+ */
+async function grantRoleToServiceAccount(
+  ctx: SetupContext,
+  role: string,
+): Promise<void> {
+  await confirmAndRun(
+    `gcloud projects add-iam-policy-binding ${ctx.projectId} --member="serviceAccount:${ctx.saEmail}" --role="${role}" --condition=None`,
+    `Grant '${role}' to Service Account`,
+  );
+}
+
+/**
+ * Grants all necessary roles to service account
+ */
+async function grantRolesToServiceAccount(ctx: SetupContext): Promise<void> {
+  const roles = [
+    "roles/artifactregistry.writer",
+    "roles/secretmanager.secretAccessor",
+    "roles/run.admin",
+    "roles/iam.serviceAccountUser",
+  ];
+
+  for (const role of roles) {
+    await grantRoleToServiceAccount(ctx, role);
+  }
+}
+
+/**
+ * Displays the final workflow YAML
+ */
+function displayWorkflowYAML(ctx: SetupContext): void {
+  const yamlOutput = `
 # Add this to your GitHub Actions workflow:
 
 - id: 'auth'
   name: 'Authenticate to Google Cloud'
   uses: 'google-github-actions/auth@v2'
   with:
-    workload_identity_provider: '${providerId}'
-    service_account: '${saEmail}'
+    workload_identity_provider: '${ctx.providerId}'
+    service_account: '${ctx.saEmail}'
 `;
 
-    // Using console.log specifically for the copy-paste block
-    console.log(yamlOutput);
+  console.log(yamlOutput);
+}
+
+/**
+ * Options for building setup context
+ */
+interface BuildSetupOptions {
+  projectId?: string;
+  repo?: string;
+}
+
+/**
+ * Builds setup context from command-line options or prompts
+ * Uses early return pattern to avoid let variables
+ */
+async function buildSetupContext(
+  options: BuildSetupOptions,
+): Promise<SetupContext> {
+  // Early return if both options are provided
+  if (options.projectId && options.repo) {
+    return createSetupContext(options.projectId, options.repo);
+  }
+
+  // Prompt for missing options
+  const projectGroup = await p.group(
+    {
+      projectId: () =>
+        options.projectId
+          ? Promise.resolve(options.projectId)
+          : p.text({
+              message: "Enter your Google Cloud Project ID:",
+              placeholder: "my-gcp-project-id",
+              validate: (value) => {
+                if (!value) return "Project ID is required";
+              },
+            }),
+      repo: () =>
+        options.repo
+          ? Promise.resolve(options.repo)
+          : p.text({
+              message: "Enter your GitHub Repository (owner/repo):",
+              placeholder: "username/repository",
+              validate: (value) => {
+                if (!value) return "Repository is required";
+                if (!value.includes("/")) return "Format must be owner/repo";
+              },
+            }),
+    },
+    {
+      onCancel: () => {
+        p.cancel("Operation cancelled.");
+        process.exit(0);
+      },
+    },
+  );
+
+  return createSetupContext(projectGroup.projectId, projectGroup.repo);
+}
+
+/**
+ * Main setup orchestration
+ */
+async function setupGitHubActions(ctx: SetupContext): Promise<void> {
+  p.log.info(`Using Project Number: ${ctx.projectNumber}`);
+  p.log.info(`Using repo: ${ctx.repo}`);
+
+  // 1. Enable IAM Credentials API
+  await enableIAMCredentialsAPI(ctx);
+
+  // 2. Create Workload Identity Pool
+  const poolExists = await checkPoolExists(ctx);
+  if (!poolExists) {
+    await createWorkloadIdentityPool(ctx);
+  } else {
+    p.log.info(`Workload Identity Pool '${ctx.poolName}' already exists.`);
+  }
+
+  // 3. Create Workload Identity Provider
+  const providerExists = await checkProviderExists(ctx);
+  if (!providerExists) {
+    await createWorkloadIdentityProvider(ctx);
+  } else {
+    p.log.info(
+      `Workload Identity Provider '${ctx.providerName}' already exists.`,
+    );
+  }
+
+  // 4. Create Service Account
+  const saExists = await checkServiceAccountExists(ctx);
+  if (!saExists) {
+    await createServiceAccount(ctx);
+  } else {
+    p.log.info(`Service Account '${ctx.saName}' already exists.`);
+  }
+
+  // 5. Bind Service Account to Pool
+  await bindServiceAccountToPool(ctx);
+
+  // 6. Grant Roles to Service Account
+  await grantRolesToServiceAccount(ctx);
+
+  p.outro("Setup Complete!");
+  displayWorkflowYAML(ctx);
+}
+
+cli
+  .command(
+    "actions-setup",
+    "Setup GitHub Actions with Google Cloud Workload Identity Federation",
+  )
+  .option("--project-id <projectId>", "Google Cloud Project ID")
+  .option("--repo <repo>", "GitHub Repository (owner/repo)")
+  .action(async (options) => {
+    p.intro("GitHub Actions + Google Cloud Workload Identity Federation Setup");
+
+    // CAC converts `--project-id` into `options.projectId` (camelCase),
+    // but our `buildSetupContext` expects `projectId`/`repo`.
+    const ctx = await buildSetupContext({
+      projectId: options.projectId,
+      repo: options.repo,
+    });
+    await setupGitHubActions(ctx);
   });
 
-cli.command('', 'Show help')
-  .action(() => {
-    const helpText = `
+cli.command("", "Show help").action(() => {
+  const helpText = `
 # Services Helper Script
 
 This script helps manage Google Cloud setup for the Collects services.
@@ -239,13 +430,15 @@ Sets up Workload Identity Federation for GitHub Actions to deploy to Google Clou
 **Example:**
 \`\`\`bash
 bun run main.ts actions-setup
+# Or with options:
+bun run main.ts actions-setup --project-id my-gcp-project-id --repo username/repository
 \`\`\`
 
 ---
 Run \`bun run main.ts --help\` for CLI details.
 `;
-    console.log(helpText);
-  });
+  console.log(helpText);
+});
 
 cli.help();
 cli.parse();

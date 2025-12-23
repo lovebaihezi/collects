@@ -1,5 +1,6 @@
 mod ui
 mod services
+mod scripts
 
 set shell := ["bash", "-c"]
 
@@ -79,12 +80,3 @@ docker-run image_tag: (docker-build image_tag)
         -e PORT=3000 \
         -e DATABASE_URL=$(gcloud secrets versions access latest --secret=database-url) \
         "${FULL_IMAGE_NAME}"
-
-# Runs the setup script for Google Cloud Authentication.
-# Usage: just setup-gcp-auth [args]
-# Example: just setup-gcp-auth --project-id my-project --repo my/repo
-# If arguments are omitted, the script will prompt for them.
-[working-directory: 'scripts/services']
-setup-secrets *args:
-    bun install
-    bun run main.ts {{args}}

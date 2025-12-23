@@ -46,14 +46,11 @@ gcloud-deploy env image_tag:
         SECRET_SUFFIX="-{{env}}"
     fi
 
-    # Handle the case where prod might not use a suffix (or uses -prod if configured that way, but we assume no suffix for prod per standard)
-    # However, if user followed "Option A: Use different secret names per env", prod usually implies the base name or specific prod name.
     # Assuming:
-    # internal -> database-url-internal
+    # pr -> database-url-pr
     # test -> database-url-test
     # nightly -> database-url-nightly
-    # prod -> database-url (as implied by existing justfile)
-
+    # prod -> database-url
     DATABASE_SECRET="database-url${SECRET_SUFFIX}"
     CLERK_SECRET="clerk-frontend-api${SECRET_SUFFIX}"
 
@@ -64,5 +61,5 @@ gcloud-deploy env image_tag:
         --region "${GCP_REGION}" \
         --platform managed \
         --allow-unauthenticated \
-        --set-env-vars "ENV=prod" \
+        --set-env-vars "ENV={{env}}" \
         --set-secrets "DATABASE_URL=${DATABASE_SECRET}:latest,CLERK_FRONTEND_API=${CLERK_SECRET}:latest"

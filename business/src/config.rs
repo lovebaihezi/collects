@@ -24,6 +24,8 @@ impl Default for BusinessConfig {
         Self {
             api_base_url: if cfg!(feature = "env_test") {
                 "https://collects-test.lqxclqxc.com".to_string()
+            } else if cfg!(feature = "env_pr") {
+                "https://collects-pr.lqxclqxc.com".to_string()
             } else if cfg!(feature = "env_internal") {
                 "https://collects-internal.lqxclqxc.com".to_string()
             } else if cfg!(feature = "env_nightly") {

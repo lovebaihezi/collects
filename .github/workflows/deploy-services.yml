@@ -53,7 +53,7 @@ jobs:
         id: env
         run: |
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            echo "ENV=internal" >> $GITHUB_ENV
+            echo "ENV=pr" >> $GITHUB_ENV
             echo "TAG=pr-${{ github.event.pull_request.number }}" >> $GITHUB_ENV
           elif [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" == "refs/heads/main" ]]; then
             echo "ENV=test" >> $GITHUB_ENV
@@ -67,7 +67,11 @@ jobs:
           fi
 
       - name: Build and Push Docker Image
-        run: just docker-push ${{ env.TAG }}
+        run: |
+          # just docker-push ${{ env.TAG }}
+          echo "TODO"
 
       - name: Deploy to Cloud Run
-        run: just services::gcloud-deploy ${{ env.ENV }} ${{ env.TAG }}
+        run: |
+          # just services::gcloud-deploy ${{ env.ENV }} ${{ env.TAG }}
+          echo "TODO"

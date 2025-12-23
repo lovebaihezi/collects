@@ -85,6 +85,6 @@ docker-run image_tag: (docker-build image_tag)
 # Example: just setup-gcp-auth --project-id my-project --repo my/repo
 # If arguments are omitted, the script will prompt for them.
 [working-directory: 'scripts/setup-gcp-auth']
-setup-gcp-auth *args:
+setup-secrets *args:
     bun install
     bun run main.ts {{args}}

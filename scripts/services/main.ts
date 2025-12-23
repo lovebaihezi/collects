@@ -18,8 +18,15 @@ async function runCommand(command: string, context: string) {
   } catch (err: any) {
     p.log.error(`COMMAND FAILED: ${command}`);
 
-    // Attempt to extract useful error output from Bun's ShellError
-    const errorOutput = err.stderr?.toString() || err.stdout?.toString() || err.message || String(err);
+    let errorOutput = '';
+
+    // ShellError is not exported from 'bun' in the current version, so we check the name/properties
+    if (err.name === 'ShellError' || (err.stdout && err.stderr)) {
+      errorOutput = err.stdout.toString() + err.stderr.toString();
+    } else {
+      errorOutput = err.message || String(err);
+    }
+
     p.log.error(`ERROR: ${errorOutput.trim()}`);
 
     const llmPrompt = `
@@ -99,7 +106,17 @@ cli.command('actions-setup', 'Setup GitHub Actions with Google Cloud Workload Id
 
     const projectId = projectGroup.projectId;
     const repo = projectGroup.repo;
-    const owner = repo.split('/')[0];
+
+    // Validate repo format using ArkType
+    const repoType = type(/^[^/]+\/[^/]+$/);
+    const result = repoType(repo);
+
+    if (result instanceof type.errors) {
+      p.log.error(`Invalid repository format: ${result.summary}`);
+      process.exit(1);
+    }
+
+    const owner = result.split('/')[0];
 
     const poolName = 'github-actions-pool';
     const providerName = 'github-provider';

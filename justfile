@@ -5,7 +5,7 @@ mod scripts
 set shell := ["bash", "-c"]
 
 # Install development tools (lefthook, typos)
-install-deps:
+install-deps: scripts::install
     cargo install typos-cli
     go install github.com/evilmartians/lefthook@latest
 
@@ -14,7 +14,7 @@ install-hooks: install-deps
     lefthook install
 
 # Run cargo fmt check on the workspace
-check-fmt:
+check-fmt: scripts::check-fmt
     cargo fmt --all -- --check
 
 # Run cargo clippy on the workspace

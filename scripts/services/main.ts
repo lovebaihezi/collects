@@ -30,12 +30,12 @@ async function runCommand(command: string, context: string) {
   try {
     // We use Bun.spawn to have better control or just use $ if simple
     // Using $ from bun as imported. We capture stdout to keep the UI clean.
-    s.start("Run Google Cloud CLI: ", command);
+    s.start(`Run Google Cloud CLI: ${command}`);
     const { stdout } = await $`${{ raw: command }}`.quiet();
     s.stop("GCLI succeeded");
     return stdout.toString();
   } catch (err: any) {
-    s.stop("Failed to run command: ", command);
+    s.stop(`Failed to run command: ${command}`);
     p.log.error(`COMMAND FAILED: ${command}`);
 
     let errorOutput = "";
@@ -263,6 +263,19 @@ async function grantRolesToServiceAccount(ctx: SetupContext): Promise<void> {
 }
 
 /**
+ * Grants Secret Accessor role to the default compute service account
+ */
+async function grantSecretAccessorToComputeServiceAccount(
+  ctx: SetupContext,
+): Promise<void> {
+  const computeSaEmail = `${ctx.projectNumber}-compute@developer.gserviceaccount.com`;
+  await confirmAndRun(
+    `gcloud projects add-iam-policy-binding ${ctx.projectId} --member="serviceAccount:${computeSaEmail}" --role="roles/secretmanager.secretAccessor" --condition=None`,
+    `Grant 'roles/secretmanager.secretAccessor' to Default Compute Service Account (${computeSaEmail})`,
+  );
+}
+
+/**
  * Displays the final workflow YAML
  */
 function displayWorkflowYAML(ctx: SetupContext): void {
@@ -377,6 +390,9 @@ async function setupGitHubActions(ctx: SetupContext): Promise<void> {
 
   // 6. Grant Roles to Service Account
   await grantRolesToServiceAccount(ctx);
+
+  // 7. Grant Secret Accessor to Compute Service Account
+  await grantSecretAccessorToComputeServiceAccount(ctx);
 
   p.outro("Setup Complete!");
   displayWorkflowYAML(ctx);

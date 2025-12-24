@@ -1,4 +1,5 @@
 {
+  "license": "GPL-3.0-or-later",
   "dependencies": {
     "@clack/prompts": "^0.11.0",
     "@types/bun": "^1.3.5",

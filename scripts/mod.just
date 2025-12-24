@@ -16,5 +16,5 @@ services *args: install
     bun run main.ts {{args}}
 
 [working-directory: 'services']
-init-db token: install
-    bun run main.ts init-db-secret --token {{token}}
+init-db token project_id: install
+    bun run main.ts init-db-secret --token {{token}} --project-id {{project_id}}

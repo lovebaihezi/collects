@@ -14,3 +14,7 @@ check-fmt:
 [working-directory: 'services']
 services *args: install
     bun run main.ts {{args}}
+
+[working-directory: 'services']
+init-db token: install
+    bun run main.ts init-db-secret --token {{token}}

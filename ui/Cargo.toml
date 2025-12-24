@@ -3,6 +3,7 @@ name = "collects-ui"
 version = "0.1.0"
 authors = ["BoWen Chai <chaibowen.i@gmail.com>"]
 edition = "2024"
+license = "MIT"
 
 [package.metadata.docs.rs]
 all-features = true
@@ -43,3 +44,4 @@ tokio = { workspace = true, features = ["full", "test-util"] }
 env_test = ["collects-business/env_test"]
 env_internal = ["collects-business/env_internal"]
 env_nightly = ["collects-business/env_nightly"]
+env_pr = ["collects-business/env_pr"]

@@ -1,0 +1,75 @@
+name: Deploy Services
+
+on:
+  push:
+    branches: ["main"]
+    tags: ["v*"]
+  pull_request:
+  schedule:
+    - cron: "0 0 * * *"
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install System Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly
+          targets: x86_64-unknown-linux-musl
+
+      - name: Setup Just
+        uses: extractions/setup-just@v2
+
+      - name: Google Auth
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: "projects/145756646168/locations/global/workloadIdentityPools/github-actions-pool/providers/github-provider"
+          service_account: "github-actions-sa@braided-case-416903.iam.gserviceaccount.com"
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Login to Artifact Registry
+        run: gcloud auth configure-docker us-east1-docker.pkg.dev
+
+      - name: Determine Environment
+        id: env
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            echo "ENV=pr" >> $GITHUB_ENV
+            echo "TAG=pr-${{ github.event.pull_request.number }}" >> $GITHUB_ENV
+          elif [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" == "refs/heads/main" ]]; then
+            echo "ENV=test" >> $GITHUB_ENV
+            echo "TAG=main-${{ github.sha }}" >> $GITHUB_ENV
+          elif [[ "${{ github.event_name }}" == "schedule" ]]; then
+            echo "ENV=nightly" >> $GITHUB_ENV
+            echo "TAG=nightly-$(date +%Y%m%d)" >> $GITHUB_ENV
+          elif [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" == refs/tags/v* ]]; then
+             echo "ENV=prod" >> $GITHUB_ENV
+             echo "TAG=${{ github.ref_name }}" >> $GITHUB_ENV
+          fi
+
+      - name: Build and Push Docker Image
+        run: |
+          just docker-push ${{ env.TAG }}
+
+      - name: Deploy to Cloud Run
+        run: |
+          just services::gcloud-deploy ${{ env.ENV }} ${{ env.TAG }}

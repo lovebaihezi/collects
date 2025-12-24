@@ -1,5 +1,22 @@
 default: fmt
 
+# =============================================================================
+# Helper function for mapping environment to secret name
+# This is sourced by all environment-aware commands
+# =============================================================================
+# Usage: SECRET_NAME=$(get_secret_name <env>)
+# Environments: prod, test, pr, nightly, internal
+_get_secret_name := '''
+get_secret_name() {
+    local env="$1"
+    case "$env" in
+        prod)     echo "database-url" ;;
+        internal) echo "database-url-internal" ;;
+        *)        echo "database-url-$env" ;;
+    esac
+}
+'''
+
 build:
     cargo b
 
@@ -13,15 +30,12 @@ dev:
 
 # Run the service using a specific environment's database
 # Usage: just services::dev-env test
-# Environments: test, pr, nightly, prod (default)
+# Environments: test, pr, nightly, prod (default), internal
 dev-env env='prod':
     #!/bin/bash
     set -eu
-    if [ "{{env}}" == "prod" ]; then
-        SECRET_NAME="database-url"
-    else
-        SECRET_NAME="database-url-{{env}}"
-    fi
+    {{_get_secret_name}}
+    SECRET_NAME=$(get_secret_name "{{env}}")
     DATABASE_URL=$(gcloud secrets versions access latest --secret="${SECRET_NAME}")
     ENV=local DATABASE_URL="${DATABASE_URL}" PORT=3000 cargo r
 
@@ -37,14 +51,12 @@ release-run:
 
 # Run the release build using a specific environment's database
 # Usage: just services::release-run-env test
+# Environments: test, pr, nightly, prod (default), internal
 release-run-env env='prod':
     #!/bin/bash
     set -eu
-    if [ "{{env}}" == "prod" ]; then
-        SECRET_NAME="database-url"
-    else
-        SECRET_NAME="database-url-{{env}}"
-    fi
+    {{_get_secret_name}}
+    SECRET_NAME=$(get_secret_name "{{env}}")
     DATABASE_URL=$(gcloud secrets versions access latest --secret="${SECRET_NAME}")
     ENV=production DATABASE_URL="${DATABASE_URL}" PORT=3000 cargo r --release
 
@@ -64,13 +76,8 @@ lint:
 migrate env='prod':
     #!/bin/bash
     set -eu
-    if [ "{{env}}" == "prod" ]; then
-        SECRET_NAME="database-url"
-    elif [ "{{env}}" == "internal" ]; then
-        SECRET_NAME="database-url-internal"
-    else
-        SECRET_NAME="database-url-{{env}}"
-    fi
+    {{_get_secret_name}}
+    SECRET_NAME=$(get_secret_name "{{env}}")
     DATABASE_URL=$(gcloud secrets versions access latest --secret="${SECRET_NAME}")
     echo "Running migrations on {{env}} environment..."
     DATABASE_URL="${DATABASE_URL}" sqlx migrate run --source ./migrations
@@ -80,13 +87,8 @@ migrate env='prod':
 migrate-revert env='prod':
     #!/bin/bash
     set -eu
-    if [ "{{env}}" == "prod" ]; then
-        SECRET_NAME="database-url"
-    elif [ "{{env}}" == "internal" ]; then
-        SECRET_NAME="database-url-internal"
-    else
-        SECRET_NAME="database-url-{{env}}"
-    fi
+    {{_get_secret_name}}
+    SECRET_NAME=$(get_secret_name "{{env}}")
     DATABASE_URL=$(gcloud secrets versions access latest --secret="${SECRET_NAME}")
     echo "Reverting last migration on {{env}} environment..."
     DATABASE_URL="${DATABASE_URL}" sqlx migrate revert --source ./migrations
@@ -96,13 +98,8 @@ migrate-revert env='prod':
 migrate-info env='prod':
     #!/bin/bash
     set -eu
-    if [ "{{env}}" == "prod" ]; then
-        SECRET_NAME="database-url"
-    elif [ "{{env}}" == "internal" ]; then
-        SECRET_NAME="database-url-internal"
-    else
-        SECRET_NAME="database-url-{{env}}"
-    fi
+    {{_get_secret_name}}
+    SECRET_NAME=$(get_secret_name "{{env}}")
     DATABASE_URL=$(gcloud secrets versions access latest --secret="${SECRET_NAME}")
     echo "Migration status for {{env}} environment:"
     DATABASE_URL="${DATABASE_URL}" sqlx migrate info --source ./migrations
@@ -117,13 +114,8 @@ migrate-add name:
 sqlx-prepare env='internal':
     #!/bin/bash
     set -eu
-    if [ "{{env}}" == "prod" ]; then
-        SECRET_NAME="database-url"
-    elif [ "{{env}}" == "internal" ]; then
-        SECRET_NAME="database-url-internal"
-    else
-        SECRET_NAME="database-url-{{env}}"
-    fi
+    {{_get_secret_name}}
+    SECRET_NAME=$(get_secret_name "{{env}}")
     DATABASE_URL=$(gcloud secrets versions access latest --secret="${SECRET_NAME}")
     echo "Preparing sqlx offline data from {{env}} environment..."
     DATABASE_URL="${DATABASE_URL}" cargo sqlx prepare --workspace

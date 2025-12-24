@@ -68,8 +68,7 @@ jobs:
 
       - name: Build and Push Docker Image
         run: |
-          # just docker-push ${{ env.TAG }}
-          echo "TODO"
+          just docker-push ${{ env.TAG }}
 
       - name: Deploy to Cloud Run
         run: |

@@ -210,6 +210,8 @@ export async function initDbSecret(token: string) {
   await updateSecret("database-url", databaseUrl);
   await updateSecret("database-url-internal", databaseUrlInternal);
   await updateSecret("database-url-test", databaseUrlTest);
+  // PR environment uses database-url-pr which also points to the test branch/user
+  await updateSecret("database-url-pr", databaseUrlTest);
 
   p.outro("Neon Database Setup Complete!");
   p.log.info(`Project: ${projectName}`);

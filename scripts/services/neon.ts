@@ -172,6 +172,17 @@ export async function initDbSecret(token: string, projectId: string) {
   }
 
   // 5. Build connection strings and update secrets
+  if (!adminRole.password || !webUserRole.password) {
+    p.log.error(
+      "Passwords not returned for roles. Cannot create connection strings.",
+    );
+    process.exit(1);
+  }
+  if (!webUserRoleTestPass) {
+    p.log.error("Password for test branch web_user not obtained.");
+    process.exit(1);
+  }
+
   const getConnString = (
     user: string,
     pass: string,
@@ -183,19 +194,19 @@ export async function initDbSecret(token: string, projectId: string) {
 
   const databaseUrl = getConnString(
     webUserRole.name,
-    webUserRole.password!,
+    webUserRole.password,
     mainEndpoint.host,
     dbName,
   );
   const databaseUrlInternal = getConnString(
     adminRole.name,
-    adminRole.password!,
+    adminRole.password,
     mainEndpoint.host,
     dbName,
   );
   const databaseUrlTest = getConnString(
     "web_user",
-    webUserRoleTestPass!,
+    webUserRoleTestPass,
     testEndpoint.host,
     dbName,
   );

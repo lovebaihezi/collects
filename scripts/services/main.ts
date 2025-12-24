@@ -1,13 +1,24 @@
 #!/usr/bin/env bun
 import { cac } from "cac";
 import * as p from "@clack/prompts";
+import { $ } from "bun";
 import {
   checkResource,
   confirmAndRun,
   getProjectNumber,
   validateRepo,
 } from "./utils.ts";
-import { initDbSecret } from "./neon.ts";
+import {
+  initDbSecret,
+  getDatabaseUrl,
+  getSecretNameForEnv,
+  listNeonBranches,
+  createNeonBranch,
+  deleteNeonBranch,
+  getBranchConnectionString,
+  updateSecret,
+  type DbEnv,
+} from "./neon.ts";
 
 const cli = cac("services");
 
@@ -333,11 +344,249 @@ cli
     await initDbSecret(options.token);
   });
 
+// =============================================================================
+// Database Migration Commands
+// =============================================================================
+
+cli
+  .command("migrate <env>", "Run sqlx migrations on a specific environment")
+  .option("--source <path>", "Path to migrations directory", {
+    default: "../services/migrations",
+  })
+  .action(async (env: DbEnv, options) => {
+    p.intro(`Running migrations on ${env} environment`);
+
+    const s = p.spinner();
+    s.start("Fetching database URL from Google Cloud Secrets...");
+
+    try {
+      const databaseUrl = await getDatabaseUrl(env);
+      s.stop("Database URL retrieved.");
+
+      s.start("Running migrations...");
+      await $`DATABASE_URL=${databaseUrl} sqlx migrate run --source ${options.source}`;
+      s.stop("Migrations complete.");
+
+      p.outro(`Successfully applied migrations to ${env} environment.`);
+    } catch (e: unknown) {
+      s.stop("Migration failed.");
+      const errorMessage = e instanceof Error ? e.message : String(e);
+      p.log.error(`Failed to run migrations: ${errorMessage}`);
+      process.exit(1);
+    }
+  });
+
+cli
+  .command(
+    "migrate-info <env>",
+    "Check migration status on a specific environment",
+  )
+  .option("--source <path>", "Path to migrations directory", {
+    default: "../services/migrations",
+  })
+  .action(async (env: DbEnv, options) => {
+    p.intro(`Checking migration status on ${env} environment`);
+
+    const s = p.spinner();
+    s.start("Fetching database URL from Google Cloud Secrets...");
+
+    try {
+      const databaseUrl = await getDatabaseUrl(env);
+      s.stop("Database URL retrieved.");
+
+      p.log.info("Migration status:");
+      await $`DATABASE_URL=${databaseUrl} sqlx migrate info --source ${options.source}`;
+
+      p.outro("Done.");
+    } catch (e: unknown) {
+      s.stop("Failed.");
+      const errorMessage = e instanceof Error ? e.message : String(e);
+      p.log.error(`Failed to check migration status: ${errorMessage}`);
+      process.exit(1);
+    }
+  });
+
+cli
+  .command(
+    "migrate-revert <env>",
+    "Revert the last migration on a specific environment",
+  )
+  .option("--source <path>", "Path to migrations directory", {
+    default: "../services/migrations",
+  })
+  .action(async (env: DbEnv, options) => {
+    p.intro(`Reverting last migration on ${env} environment`);
+
+    const confirmed = await p.confirm({
+      message: `Are you sure you want to revert the last migration on ${env}?`,
+    });
+
+    if (p.isCancel(confirmed) || !confirmed) {
+      p.cancel("Operation cancelled.");
+      process.exit(0);
+    }
+
+    const s = p.spinner();
+    s.start("Fetching database URL from Google Cloud Secrets...");
+
+    try {
+      const databaseUrl = await getDatabaseUrl(env);
+      s.stop("Database URL retrieved.");
+
+      s.start("Reverting migration...");
+      await $`DATABASE_URL=${databaseUrl} sqlx migrate revert --source ${options.source}`;
+      s.stop("Migration reverted.");
+
+      p.outro(`Successfully reverted last migration on ${env} environment.`);
+    } catch (e: unknown) {
+      s.stop("Revert failed.");
+      const errorMessage = e instanceof Error ? e.message : String(e);
+      p.log.error(`Failed to revert migration: ${errorMessage}`);
+      process.exit(1);
+    }
+  });
+
+// =============================================================================
+// Neon Branch Management Commands
+// =============================================================================
+
+cli
+  .command("neon-branches", "List all Neon branches for a project")
+  .option("--token <token>", "Neon API Token")
+  .option("--project-id <projectId>", "Neon Project ID")
+  .action(async (options) => {
+    if (!options.token || !options.projectId) {
+      console.error("Error: --token and --project-id are required");
+      process.exit(1);
+    }
+
+    p.intro("Listing Neon branches");
+
+    try {
+      const branches = await listNeonBranches(options.token, options.projectId);
+      p.log.info("Branches:");
+      for (const branch of branches) {
+        console.log(`  - ${branch.name} (${branch.id})`);
+      }
+      p.outro("Done.");
+    } catch (e: unknown) {
+      const errorMessage = e instanceof Error ? e.message : String(e);
+      p.log.error(`Failed to list branches: ${errorMessage}`);
+      process.exit(1);
+    }
+  });
+
+cli
+  .command("neon-create-branch <name>", "Create a new Neon branch")
+  .option("--token <token>", "Neon API Token")
+  .option("--project-id <projectId>", "Neon Project ID")
+  .option("--parent <parentId>", "Parent branch ID")
+  .action(async (name: string, options) => {
+    if (!options.token || !options.projectId || !options.parent) {
+      console.error(
+        "Error: --token, --project-id, and --parent are required",
+      );
+      process.exit(1);
+    }
+
+    p.intro(`Creating Neon branch: ${name}`);
+
+    const s = p.spinner();
+    s.start("Creating branch...");
+
+    try {
+      const branch = await createNeonBranch(
+        options.token,
+        options.projectId,
+        name,
+        options.parent,
+      );
+      s.stop("Branch created.");
+      p.log.success(`Branch created: ${branch.name} (${branch.id})`);
+      p.outro("Done.");
+    } catch (e: unknown) {
+      s.stop("Failed.");
+      const errorMessage = e instanceof Error ? e.message : String(e);
+      p.log.error(`Failed to create branch: ${errorMessage}`);
+      process.exit(1);
+    }
+  });
+
+cli
+  .command(
+    "neon-update-secret <env>",
+    "Update a Google Cloud Secret with a Neon branch connection string",
+  )
+  .option("--token <token>", "Neon API Token")
+  .option("--project-id <projectId>", "Neon Project ID")
+  .option("--branch-id <branchId>", "Neon Branch ID")
+  .option("--role <role>", "Database role name", { default: "web_user" })
+  .option("--database <database>", "Database name", { default: "collects" })
+  .action(async (env: DbEnv, options) => {
+    if (!options.token || !options.projectId || !options.branchId) {
+      console.error(
+        "Error: --token, --project-id, and --branch-id are required",
+      );
+      process.exit(1);
+    }
+
+    p.intro(`Updating ${env} environment secret with Neon branch connection`);
+
+    const s = p.spinner();
+    s.start("Getting connection string from Neon...");
+
+    try {
+      const connString = await getBranchConnectionString(
+        options.token,
+        options.projectId,
+        options.branchId,
+        options.role,
+        options.database,
+      );
+
+      if (!connString) {
+        s.stop("Failed.");
+        p.log.error("Could not get connection string for the branch.");
+        process.exit(1);
+      }
+
+      s.stop("Connection string retrieved.");
+
+      const secretName = getSecretNameForEnv(env);
+      await updateSecret(secretName, connString);
+
+      p.outro(`Successfully updated ${secretName} secret.`);
+    } catch (e: unknown) {
+      s.stop("Failed.");
+      const errorMessage = e instanceof Error ? e.message : String(e);
+      p.log.error(`Failed to update secret: ${errorMessage}`);
+      process.exit(1);
+    }
+  });
+
+cli
+  .command("show-db-url <env>", "Display the database URL for an environment (masked)")
+  .action(async (env: DbEnv) => {
+    p.intro(`Getting database URL for ${env} environment`);
+
+    try {
+      const url = await getDatabaseUrl(env);
+      // Mask the password in the URL for display
+      const maskedUrl = url.replace(/:([^:@]+)@/, ":****@");
+      p.log.info(`Database URL (masked): ${maskedUrl}`);
+      p.outro("Done.");
+    } catch (e: unknown) {
+      const errorMessage = e instanceof Error ? e.message : String(e);
+      p.log.error(`Failed to get database URL: ${errorMessage}`);
+      process.exit(1);
+    }
+  });
+
 cli.command("", "Show help").action(() => {
   const helpText = `
 # Services Helper Script
 
-This script helps manage Google Cloud setup for the Collects services.
+This script helps manage Google Cloud setup, database migrations, and Neon branch management for the Collects services.
 
 ## Usage
 
@@ -364,6 +613,88 @@ Sets up Workload Identity Federation for GitHub Actions to deploy to Google Clou
 bun run main.ts actions-setup
 # Or with options:
 bun run main.ts actions-setup --project-id my-gcp-project-id --repo username/repository
+\`\`\`
+
+### \`init-db-secret\`
+
+Initializes a new Neon database project and updates Google Cloud Secrets.
+
+**Example:**
+\`\`\`bash
+bun run main.ts init-db-secret --token <neon-api-token>
+\`\`\`
+
+---
+
+## Database Migration Commands
+
+### \`migrate <env>\`
+
+Run sqlx migrations on a specific environment.
+Environments: prod, test, pr, nightly, internal
+
+**Example:**
+\`\`\`bash
+bun run main.ts migrate internal
+bun run main.ts migrate test --source ../services/migrations
+\`\`\`
+
+### \`migrate-info <env>\`
+
+Check migration status on a specific environment.
+
+**Example:**
+\`\`\`bash
+bun run main.ts migrate-info prod
+\`\`\`
+
+### \`migrate-revert <env>\`
+
+Revert the last migration on a specific environment (with confirmation).
+
+**Example:**
+\`\`\`bash
+bun run main.ts migrate-revert test
+\`\`\`
+
+---
+
+## Neon Branch Management Commands
+
+### \`neon-branches\`
+
+List all Neon branches for a project.
+
+**Example:**
+\`\`\`bash
+bun run main.ts neon-branches --token <token> --project-id <project-id>
+\`\`\`
+
+### \`neon-create-branch <name>\`
+
+Create a new Neon branch from a parent branch.
+
+**Example:**
+\`\`\`bash
+bun run main.ts neon-create-branch feature-xyz --token <token> --project-id <project-id> --parent <parent-branch-id>
+\`\`\`
+
+### \`neon-update-secret <env>\`
+
+Update a Google Cloud Secret with a Neon branch connection string.
+
+**Example:**
+\`\`\`bash
+bun run main.ts neon-update-secret pr --token <token> --project-id <project-id> --branch-id <branch-id>
+\`\`\`
+
+### \`show-db-url <env>\`
+
+Display the database URL for an environment (password masked).
+
+**Example:**
+\`\`\`bash
+bun run main.ts show-db-url prod
 \`\`\`
 
 ---

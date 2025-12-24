@@ -1,13 +1,121 @@
 import { createApiClient, EndpointType } from "@neondatabase/api-client";
 import * as p from "@clack/prompts";
 import { $ } from "bun";
-import { runCommand } from "./utils.ts";
+
+/**
+ * Environment types for database connections
+ */
+export type DbEnv = "prod" | "test" | "pr" | "nightly" | "internal";
+
+/**
+ * Maps environment names to their corresponding Google Cloud Secret names
+ */
+export function getSecretNameForEnv(env: DbEnv): string {
+  switch (env) {
+    case "prod":
+      return "database-url";
+    case "internal":
+      return "database-url-internal";
+    default:
+      return `database-url-${env}`;
+  }
+}
+
+/**
+ * Gets the DATABASE_URL from Google Cloud Secrets for a given environment
+ */
+export async function getDatabaseUrl(env: DbEnv): Promise<string> {
+  const secretName = getSecretNameForEnv(env);
+  const url = await $`gcloud secrets versions access latest --secret=${secretName}`.text();
+  return url.trim();
+}
+
+/**
+ * Lists all Neon branches for a project
+ */
+export async function listNeonBranches(token: string, projectId: string) {
+  const neon = createApiClient({ apiKey: token });
+  const response = await neon.listProjectBranches({ projectId });
+  return response.data.branches;
+}
+
+/**
+ * Creates a new Neon branch from an existing branch
+ */
+export async function createNeonBranch(
+  token: string,
+  projectId: string,
+  branchName: string,
+  parentBranchId: string,
+) {
+  const neon = createApiClient({ apiKey: token });
+  const response = await neon.createProjectBranch(projectId, {
+    branch: {
+      name: branchName,
+      parent_id: parentBranchId,
+    },
+  });
+  return response.data.branch;
+}
+
+/**
+ * Deletes a Neon branch
+ */
+export async function deleteNeonBranch(
+  token: string,
+  projectId: string,
+  branchId: string,
+) {
+  const neon = createApiClient({ apiKey: token });
+  await neon.deleteProjectBranch(projectId, branchId);
+}
+
+/**
+ * Gets connection string for a Neon branch
+ */
+export async function getBranchConnectionString(
+  token: string,
+  projectId: string,
+  branchId: string,
+  roleName: string,
+  dbName: string,
+): Promise<string | null> {
+  const neon = createApiClient({ apiKey: token });
+
+  // Get endpoint for the branch
+  const endpointsResp = await neon.listProjectEndpoints(projectId);
+  const endpoint = endpointsResp.data.endpoints.find(
+    (ep) => ep.branch_id === branchId,
+  );
+
+  if (!endpoint) {
+    return null;
+  }
+
+  // Get role password
+  const rolesResp = await neon.listProjectBranchRoles(projectId, branchId);
+  const role = rolesResp.data.roles.find((r) => r.name === roleName);
+
+  if (!role || !role.password) {
+    // Try to reset password to get it
+    const resetResp = await neon.resetProjectBranchRolePassword(
+      projectId,
+      branchId,
+      roleName,
+    );
+    const password = resetResp.data.role.password;
+    if (!password) return null;
+    return `postgres://${roleName}:${password}@${endpoint.host}/${dbName}?sslmode=require`;
+  }
+
+  return `postgres://${roleName}:${role.password}@${endpoint.host}/${dbName}?sslmode=require`;
+}
 
 /**
  * Updates a Google Cloud Secret with a new value.
  * If the secret doesn't exist, it creates it.
  */
-async function updateSecret(secretName: string, value: string) {
+export async function updateSecret(secretName: string, value: string) {
   p.log.info(`Updating secret: ${secretName}`);
 
   // Check if secret exists

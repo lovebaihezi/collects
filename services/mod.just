@@ -3,20 +3,22 @@ default: fmt
 build:
     cargo b
 
+# Run locally using the local development database
 dev:
     env \
         ENV=local \
-        DATABASE_URL=$(gcloud secrets versions access latest --secret=database-url) \
+        DATABASE_URL=$(gcloud secrets versions access latest --secret=database-url-local) \
         PORT=3000 \
         cargo r
 
 release:
     RUSTFLAGS="-C target-feature=+crt-static" cargo build --release --target=x86_64-unknown-linux-musl
 
+# Run release build locally using the local development database
 release-run:
     env \
-        ENV=production \
-        DATABASE_URL=$(gcloud secrets versions access latest --secret=database-url) \
+        ENV=local \
+        DATABASE_URL=$(gcloud secrets versions access latest --secret=database-url-local) \
         PORT=3000 \
         cargo r --release
 
@@ -27,6 +29,8 @@ lint:
     cargo clippy
 
 # Deploys the service to Cloud Run
+# Environments: prod, internal, test, pr
+# Usage: just services::gcloud-deploy prod 20251017-1
 gcloud-deploy env image_tag:
     #!/bin/bash
     set -eux
@@ -38,22 +42,21 @@ gcloud-deploy env image_tag:
     FULL_IMAGE_NAME="${GCP_REGION}-docker.pkg.dev/${PROJECT_ID}/${REPOSITORY_NAME}/${IMAGE_NAME}:{{image_tag}}"
 
     # Determine service name and secret suffix based on environment
+    # Mapping:
+    #   prod     -> collects-services          -> database-url
+    #   internal -> collects-services-internal -> database-url-internal
+    #   test     -> collects-services-test     -> database-url-test
+    #   pr       -> collects-services-pr       -> database-url-pr
     if [ "{{env}}" == "prod" ]; then
         SERVICE_NAME="collects-services"
-        SECRET_SUFFIX=""
+        DATABASE_SECRET="database-url"
     else
         SERVICE_NAME="collects-services-{{env}}"
-        SECRET_SUFFIX="-{{env}}"
+        DATABASE_SECRET="database-url-{{env}}"
     fi
 
-    # Assuming:
-    # pr -> database-url-pr
-    # test -> database-url-test
-    # nightly -> database-url-nightly
-    # prod -> database-url
-    DATABASE_SECRET="database-url${SECRET_SUFFIX}"
-
     echo "Deploying ${FULL_IMAGE_NAME} to Cloud Run service ${SERVICE_NAME} in ${GCP_REGION}..."
+    echo "Using database secret: ${DATABASE_SECRET}"
 
     gcloud run deploy "${SERVICE_NAME}" \
         --image "${FULL_IMAGE_NAME}" \

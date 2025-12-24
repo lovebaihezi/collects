@@ -330,15 +330,41 @@ cli
   .option("--token <token>", "Neon API Token")
   .option("--project-id <projectId>", "Neon Project ID")
   .action(async (options) => {
-    if (!options.token) {
-      console.error("Error: --token is required");
-      process.exit(1);
+    p.intro("Neon Database Secret Setup");
+
+    // Prompt for token if not provided
+    const token = options.token
+      ? options.token
+      : await p.text({
+          message: "Enter your Neon API Token:",
+          placeholder: "neon_api_xxxxx",
+          validate: (value) => {
+            if (!value) return "Neon API Token is required";
+          },
+        });
+
+    if (p.isCancel(token)) {
+      p.cancel("Operation cancelled.");
+      process.exit(0);
     }
-    if (!options.projectId) {
-      console.error("Error: --project-id is required");
-      process.exit(1);
+
+    // Prompt for project ID if not provided
+    const projectId = options.projectId
+      ? options.projectId
+      : await p.text({
+          message: "Enter your Neon Project ID:",
+          placeholder: "project-id-xxxx",
+          validate: (value) => {
+            if (!value) return "Neon Project ID is required";
+          },
+        });
+
+    if (p.isCancel(projectId)) {
+      p.cancel("Operation cancelled.");
+      process.exit(0);
     }
-    await initDbSecret(options.token, options.projectId);
+
+    await initDbSecret(token as string, projectId as string);
   });
 
 cli.command("", "Show help").action(() => {
@@ -372,6 +398,26 @@ Sets up Workload Identity Federation for GitHub Actions to deploy to Google Clou
 bun run main.ts actions-setup
 # Or with options:
 bun run main.ts actions-setup --project-id my-gcp-project-id --repo username/repository
+\`\`\`
+
+### \`init-db-secret\`
+
+Initializes Neon Database branches and updates Google Cloud Secrets with connection URLs.
+
+**What it does:**
+1. Fetches Neon project branches (expects 'main'/'production' and 'development'/'dev').
+2. Creates a restricted 'app_user' role on production (for least-privilege in prod).
+3. Resets passwords for all roles to generate fresh credentials.
+4. Creates/updates Google Cloud secrets for all environments:
+   - \`database-url\` (prod, restricted role)
+   - \`database-url-internal\` (internal, admin role on production)
+   - \`database-url-test\` (test, admin role on development)
+   - \`database-url-pr\` (pr, admin role on development)
+   - \`database-url-local\` (local dev, admin role on development)
+
+**Example:**
+\`\`\`bash
+bun run main.ts init-db-secret --token <NEON_API_TOKEN> --project-id <NEON_PROJECT_ID>
 \`\`\`
 
 ---

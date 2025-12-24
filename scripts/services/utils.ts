@@ -14,7 +14,7 @@ export async function runCommand(command: string, context: string) {
     const { stdout } = await $`${{ raw: command }}`.quiet();
     s.stop("GCLI succeeded");
     return stdout.toString();
-  } catch (err: any) {
+  } catch (err: unknown) {
     s.stop(`Failed to run command: ${command}`);
     p.log.error(`COMMAND FAILED: ${command}`);
 

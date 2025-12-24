@@ -76,7 +76,7 @@ docker-run image_tag: (docker-build image_tag)
     FULL_IMAGE_NAME="${GCP_REGION}-docker.pkg.dev/${PROJECT_ID}/${REPOSITORY_NAME}/${IMAGE_NAME}:{{image_tag}}"
 
     docker run --rm -p 3000:3000 \
-        -e ENV=prod \
+        -e ENV=local \
         -e PORT=3000 \
-        -e DATABASE_URL=$(gcloud secrets versions access latest --secret=database-url) \
+        -e DATABASE_URL=$(gcloud secrets versions access latest --secret=database-url-local) \
         "${FULL_IMAGE_NAME}"

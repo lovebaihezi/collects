@@ -3,6 +3,7 @@ name = "collects-business"
 version = "0.1.0"
 authors = ["BoWen Chai <chaibowen.i@gmail.com>"]
 edition = "2024"
+license = "MIT"
 
 [dependencies]
 anyhow = { workspace = true}

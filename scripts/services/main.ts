@@ -323,14 +323,22 @@ cli
   });
 
 cli
-  .command("init-db-secret", "Initialize Neon Database and update Secrets")
+  .command(
+    "init-db-secret",
+    "Initialize Neon Database branches and update Secrets",
+  )
   .option("--token <token>", "Neon API Token")
+  .option("--project-id <projectId>", "Neon Project ID")
   .action(async (options) => {
     if (!options.token) {
       console.error("Error: --token is required");
       process.exit(1);
     }
-    await initDbSecret(options.token);
+    if (!options.projectId) {
+      console.error("Error: --project-id is required");
+      process.exit(1);
+    }
+    await initDbSecret(options.token, options.projectId);
   });
 
 cli.command("", "Show help").action(() => {

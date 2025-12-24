@@ -33,154 +33,101 @@ async function updateSecret(secretName: string, value: string) {
   }
 }
 
-export async function initDbSecret(token: string) {
+export async function initDbSecret(token: string, projectId: string) {
   const neon = createApiClient({
     apiKey: token,
   });
 
-  const projectName = "collects-app";
   const dbName = "collects";
 
-  p.intro(`Initializing Neon Database: ${projectName}`);
+  p.intro(`Initializing Neon Database branches for project: ${projectId}`);
 
-  // 1. Create Project
-  p.log.info(`Creating Neon project: ${projectName}...`);
+  // 1. Get project info and main branch
+  p.log.info("Fetching project information...");
+  let mainBranchId: string;
+  let mainBranch: any;
 
-  let project;
-  try {
-    const response = await neon.createProject({
-      project: {
-        name: projectName,
-        pg_version: 16,
-      },
-    });
-    project = response.data.project;
-  } catch (e: any) {
-    p.log.error(`Failed to create project: ${e.message || e}`);
-    process.exit(1);
-  }
-
-  const projectId = project.id;
-  p.log.success(`Project created: ${projectId}`);
-
-  // Wait for project to be fully available
-  p.log.info("Waiting for project to be fully available...");
-  const waitSpinner = p.spinner();
-  waitSpinner.start("Checking project availability...");
-
-  let projectReady = false;
-  let attempts = 0;
-  const maxAttempts = 3; // 3 attempts * 15 seconds = 45 seconds max wait
-  const waitDuration = 15000; // 15 seconds
-
-  while (!projectReady && attempts < maxAttempts) {
-    attempts++;
-    try {
-      // Try to list branches - if this succeeds with branches, the project is ready
-      const branchesResp = await neon.listProjectBranches({ projectId });
-      if (branchesResp.data.branches && branchesResp.data.branches.length > 0) {
-        projectReady = true;
-        waitSpinner.stop("Project is ready!");
-      }
-    } catch (e: any) {
-      // Project not ready yet (API error), continue waiting
-      p.log.warn(
-        `Attempt ${attempts}/${maxAttempts}: Project not ready yet - ${e.message || e}`,
-      );
-    }
-
-    // Wait before next attempt if project is not ready yet
-    if (!projectReady && attempts < maxAttempts) {
-      await new Promise((resolve) => setTimeout(resolve, waitDuration));
-    }
-  }
-
-  if (!projectReady) {
-    waitSpinner.stop("Project availability check timed out");
-    p.log.error(
-      "Project creation timed out. The project may still be initializing.",
-    );
-    process.exit(1);
-  }
-
-  // 2. Create Database
-  p.log.info(`Creating database: ${dbName}...`);
   try {
     const branchesResp = await neon.listProjectBranches({ projectId });
-    const mainBranch = branchesResp.data.branches.find(
-      (b: any) => b.name === "main",
-    );
+    mainBranch = branchesResp.data.branches.find((b: any) => b.name === "main");
 
     if (!mainBranch) {
-      throw new Error("Main branch not found after project creation");
+      throw new Error("Main branch not found in project");
     }
-
-    await neon.createProjectBranchDatabase(projectId, mainBranch.id, {
-      database: {
-        name: dbName,
-        owner_name: "neondb_owner",
-      },
-    });
+    mainBranchId = mainBranch.id;
+    p.log.success(`Found main branch: ${mainBranchId}`);
   } catch (e: any) {
-    p.log.error(`Failed to create database: ${e.message || e}`);
+    p.log.error(`Failed to get project branches: ${e.message || e}`);
     process.exit(1);
   }
-  p.log.success(`Database created: ${dbName}`);
 
-  // 3. Configure Roles
-  p.log.info("Configuring roles...");
+  // 2. Get or create roles on main branch
+  p.log.info("Checking roles on main branch...");
   let adminRole;
   let webUserRole;
-  let mainBranchId: string;
 
   try {
-    // Get main branch again or reuse
-    const branchesResp = await neon.listProjectBranches({ projectId });
-    const mainBranch = branchesResp.data.branches.find(
-      (b: any) => b.name === "main",
-    );
-    if (!mainBranch) throw new Error("Main branch missing");
-    mainBranchId = mainBranch.id;
-
-    // Create admin on Main
-    const adminResp = await neon.createProjectBranchRole(
+    const rolesResp = await neon.listProjectBranchRoles(
       projectId,
       mainBranchId,
-      {
-        role: { name: "admin" },
-      },
     );
-    adminRole = adminResp.data.role;
+    const roles = rolesResp.data.roles;
 
-    // Create web_user on Main
-    const webUserResp = await neon.createProjectBranchRole(
-      projectId,
-      mainBranchId,
-      {
-        role: { name: "web_user" },
-      },
-    );
-    webUserRole = webUserResp.data.role;
+    adminRole = roles.find((r: any) => r.name === "admin");
+    webUserRole = roles.find((r: any) => r.name === "web_user");
+
+    if (!adminRole) {
+      p.log.info("Creating admin role...");
+      const adminResp = await neon.createProjectBranchRole(
+        projectId,
+        mainBranchId,
+        {
+          role: { name: "admin" },
+        },
+      );
+      adminRole = adminResp.data.role;
+    }
+
+    if (!webUserRole) {
+      p.log.info("Creating web_user role...");
+      const webUserResp = await neon.createProjectBranchRole(
+        projectId,
+        mainBranchId,
+        {
+          role: { name: "web_user" },
+        },
+      );
+      webUserRole = webUserResp.data.role;
+    }
+
+    p.log.success("Roles configured on main: admin, web_user");
   } catch (e: any) {
-    p.log.error(`Failed to create roles: ${e.message || e}`);
+    p.log.error(`Failed to configure roles: ${e.message || e}`);
     process.exit(1);
   }
-  p.log.success("Roles created on main: admin, web_user");
 
-  // 4. Sets up Branches
-  p.log.info("Setting up branches...");
+  // 3. Get or create test branch
+  p.log.info("Checking test branch...");
   let testBranch;
   let webUserRoleTestPass: string | undefined;
 
   try {
-    // Create test branch from main
-    const testBranchResp = await neon.createProjectBranch(projectId, {
-      branch: {
-        name: "test",
-        parent_id: mainBranchId,
-      },
-    });
-    testBranch = testBranchResp.data.branch;
+    const branchesResp = await neon.listProjectBranches({ projectId });
+    testBranch = branchesResp.data.branches.find((b: any) => b.name === "test");
+
+    if (!testBranch) {
+      p.log.info("Creating test branch from main...");
+      const testBranchResp = await neon.createProjectBranch(projectId, {
+        branch: {
+          name: "test",
+          parent_id: mainBranchId,
+        },
+      });
+      testBranch = testBranchResp.data.branch;
+      p.log.success("Test branch created");
+    } else {
+      p.log.success(`Test branch already exists: ${testBranch.id}`);
+    }
 
     // Reset password for web_user on test branch to get a valid password for it
     p.log.info("Resetting web_user password on test branch...");
@@ -191,19 +138,11 @@ export async function initDbSecret(token: string) {
     );
     webUserRoleTestPass = resetResp.data.role.password;
   } catch (e: any) {
-    p.log.error(`Failed to setup branches: ${e.message || e}`);
+    p.log.error(`Failed to setup test branch: ${e.message || e}`);
     process.exit(1);
   }
-  p.log.success("Branches setup: main, test");
 
-  // 5. Update Secrets
-  if (!adminRole.password || !webUserRole.password) {
-    p.log.warn("Passwords not returned for roles. This might cause issues.");
-  }
-  if (!webUserRoleTestPass) {
-    p.log.warn("Password for test branch web_user not obtained.");
-  }
-
+  // 4. Get endpoints
   p.log.info("Fetching endpoints...");
   let mainEndpoint;
   let testEndpoint;
@@ -232,6 +171,7 @@ export async function initDbSecret(token: string) {
     process.exit(1);
   }
 
+  // 5. Build connection strings and update secrets
   const getConnString = (
     user: string,
     pass: string,
@@ -268,8 +208,8 @@ export async function initDbSecret(token: string) {
   // PR environment uses database-url-pr which also points to the test branch/user
   await updateSecret("database-url-pr", databaseUrlTest);
 
-  p.outro("Neon Database Setup Complete!");
-  p.log.info(`Project: ${projectName}`);
+  p.outro("Neon Database branches setup complete!");
+  p.log.info(`Project ID: ${projectId}`);
   p.log.info(
     "Next steps: Run SQL migrations using the admin credentials (database-url-internal).",
   );

@@ -3,6 +3,7 @@ name = "collects-states"
 version = "0.1.0"
 authors = ["BoWen Chai <chaibowen.i@gmail.com>"]
 edition = "2024"
+license = "GPL-3.0-or-later"
 
 [dependencies]
 flume = { workspace = true }

@@ -104,8 +104,11 @@ export async function initDbSecret(token: string) {
         projectReady = true;
         waitSpinner.stop("Project is ready!");
       }
-    } catch (e) {
+    } catch (e: any) {
       // Project not ready yet (API error), continue waiting
+      p.log.warn(
+        `Attempt ${attempts}/${maxAttempts}: Project not ready yet - ${e.message || e}`,
+      );
     }
 
     // Wait before next attempt if project is not ready yet

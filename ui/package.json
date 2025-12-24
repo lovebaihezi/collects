@@ -6,7 +6,7 @@
   "scripts": {},
   "keywords": [],
   "author": "",
-  "license": "GPL-3.0-or-later",
+  "license": "MIT",
   "packageManager": "pnpm@10.18.2",
   "dependencies": {
     "typescript": "^5.9.3",

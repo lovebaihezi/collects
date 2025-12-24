@@ -8,7 +8,7 @@ fmt: install
 
 [working-directory: 'services']
 check-fmt:
-    bun prettier --check main.ts
+    bun prettier --check main.ts neon.ts utils.ts
 
 # Runs the setup script to get the yaml config
 [working-directory: 'services']

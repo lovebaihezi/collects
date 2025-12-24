@@ -118,7 +118,8 @@ export async function initDbSecret(token: string, projectId: string) {
     process.exit(1);
   }
 
-  // 3. Get or create development branch (for development environment)
+  // 3. Get or create development branch (for local, main, and PR environments)
+  // Note: Neon may auto-create a "development" branch, we use it for non-production environments
   p.log.info("Checking development branch...");
   let devBranch;
   let webUserRoleDevPass: string | undefined;
@@ -156,47 +157,10 @@ export async function initDbSecret(token: string, projectId: string) {
     process.exit(1);
   }
 
-  // 4. Get or create test branch (for testing/PR environments)
-  p.log.info("Checking test branch...");
-  let testBranch;
-  let webUserRoleTestPass: string | undefined;
-
-  try {
-    const branchesResp = await neon.listProjectBranches({ projectId });
-    testBranch = branchesResp.data.branches.find((b: any) => b.name === "test");
-
-    if (!testBranch) {
-      p.log.info("Creating test branch from production...");
-      const testBranchResp = await neon.createProjectBranch(projectId, {
-        branch: {
-          name: "test",
-          parent_id: productionBranchId,
-        },
-      });
-      testBranch = testBranchResp.data.branch;
-      p.log.success("Test branch created");
-    } else {
-      p.log.success(`Test branch already exists: ${testBranch.id}`);
-    }
-
-    // Reset password for web_user on test branch to get a valid password for it
-    p.log.info("Resetting web_user password on test branch...");
-    const resetResp = await neon.resetProjectBranchRolePassword(
-      projectId,
-      testBranch.id,
-      "web_user",
-    );
-    webUserRoleTestPass = resetResp.data.role.password;
-  } catch (e: any) {
-    p.log.error(`Failed to setup test branch: ${e.message || e}`);
-    process.exit(1);
-  }
-
-  // 5. Get endpoints
+  // 4. Get endpoints
   p.log.info("Fetching endpoints...");
   let productionEndpoint;
   let devEndpoint;
-  let testEndpoint;
 
   try {
     const endpointsResp = await neon.listProjectEndpoints(projectId);
@@ -206,7 +170,6 @@ export async function initDbSecret(token: string, projectId: string) {
       (ep: any) => ep.branch_id === productionBranchId,
     );
     devEndpoint = endpoints.find((ep: any) => ep.branch_id === devBranch.id);
-    testEndpoint = endpoints.find((ep: any) => ep.branch_id === testBranch.id);
 
     if (!productionEndpoint) throw new Error("Production endpoint not found");
 
@@ -220,23 +183,12 @@ export async function initDbSecret(token: string, projectId: string) {
       });
       devEndpoint = epResp.data.endpoint;
     }
-
-    if (!testEndpoint) {
-      p.log.info("Creating endpoint for test branch...");
-      const epResp = await neon.createProjectEndpoint(projectId, {
-        endpoint: {
-          branch_id: testBranch.id,
-          type: EndpointType.ReadWrite,
-        },
-      });
-      testEndpoint = epResp.data.endpoint;
-    }
   } catch (e: any) {
     p.log.error(`Failed to fetch/create endpoints: ${e.message || e}`);
     process.exit(1);
   }
 
-  // 6. Build connection strings and update secrets
+  // 5. Build connection strings and update secrets
   if (!adminRole.password || !webUserRole.password) {
     p.log.error(
       "Passwords not returned for roles. Cannot create connection strings.",
@@ -245,10 +197,6 @@ export async function initDbSecret(token: string, projectId: string) {
   }
   if (!webUserRoleDevPass) {
     p.log.error("Password for development branch web_user not obtained.");
-    process.exit(1);
-  }
-  if (!webUserRoleTestPass) {
-    p.log.error("Password for test branch web_user not obtained.");
     process.exit(1);
   }
 
@@ -261,45 +209,55 @@ export async function initDbSecret(token: string, projectId: string) {
     return `postgres://${user}:${pass}@${host}/${db}?sslmode=require`;
   };
 
-  // Production environment connection strings
+  // === Production branch connection strings ===
+  // Production environment (web_user role)
   const databaseUrl = getConnString(
     webUserRole.name,
     webUserRole.password,
     productionEndpoint.host,
     dbName,
   );
+  // Internal/admin environment (admin role for migrations)
   const databaseUrlInternal = getConnString(
     adminRole.name,
     adminRole.password,
     productionEndpoint.host,
     dbName,
   );
-  // Development environment connection string
-  const databaseUrlDev = getConnString(
-    "web_user",
-    webUserRoleDevPass,
-    devEndpoint.host,
+  // Nightly environment (uses production branch with web_user)
+  const databaseUrlNightly = getConnString(
+    webUserRole.name,
+    webUserRole.password,
+    productionEndpoint.host,
     dbName,
   );
-  // Test/PR environment connection string
-  const databaseUrlTest = getConnString(
-    "web_user",
-    webUserRoleTestPass,
-    testEndpoint.host,
+
+  // === Development branch connection strings ===
+  // Used for: local development, main branch deployments, and PR environments
+  const databaseUrlDev = getConnString(
+    webUserRole.name,
+    webUserRoleDevPass,
+    devEndpoint.host,
     dbName,
   );
 
   p.log.info("Updating Google Cloud Secrets...");
 
-  await updateSecret("database-url", databaseUrl);
-  await updateSecret("database-url-internal", databaseUrlInternal);
-  await updateSecret("database-url-dev", databaseUrlDev);
-  await updateSecret("database-url-test", databaseUrlTest);
-  // PR environment uses database-url-pr which also points to the test branch/user
-  await updateSecret("database-url-pr", databaseUrlTest);
+  // Production branch secrets
+  await updateSecret("database-url", databaseUrl); // Production environment
+  await updateSecret("database-url-internal", databaseUrlInternal); // Admin/migrations
+  await updateSecret("database-url-nightly", databaseUrlNightly); // Nightly environment
+
+  // Development branch secrets (for local, main, and PR environments)
+  await updateSecret("database-url-dev", databaseUrlDev); // Local development
+  await updateSecret("database-url-main", databaseUrlDev); // Main branch deployments
+  await updateSecret("database-url-pr", databaseUrlDev); // PR environments
 
   p.outro("Neon Database branches setup complete!");
   p.log.info(`Project ID: ${projectId}`);
+  p.log.info("Branch structure:");
+  p.log.info("  - Production branch → prod, internal (admin), nightly");
+  p.log.info("  - Development branch → local, main, PR environments");
   p.log.info(
     "Next steps: Run SQL migrations using the admin credentials (database-url-internal).",
   );

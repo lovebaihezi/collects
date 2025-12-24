@@ -10,9 +10,7 @@ anyhow = { workspace = true}
 axum = { workspace = true }
 axum-extra = { workspace = true }
 http = { workspace = true }
-jsonwebtoken = { workspace = true }
 opendal = { workspace = true }
-reqwest = { workspace = true, default-features = true }
 serde = { workspace = true }
 serde-env = { workspace = true }
 tower = { workspace = true }
@@ -28,7 +26,6 @@ tracing-opentelemetry = { workspace = true }
 opentelemetry = { workspace = true }
 opentelemetry_sdk = { workspace = true }
 mimalloc = { workspace = true }
-openssl = { version = "*", features = ["vendored"] }
 
 [dev-dependencies]
 axum-test = "18.1.0"

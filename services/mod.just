@@ -52,7 +52,6 @@ gcloud-deploy env image_tag:
     # nightly -> database-url-nightly
     # prod -> database-url
     DATABASE_SECRET="database-url${SECRET_SUFFIX}"
-    CLERK_SECRET="clerk-frontend-api${SECRET_SUFFIX}"
 
     echo "Deploying ${FULL_IMAGE_NAME} to Cloud Run service ${SERVICE_NAME} in ${GCP_REGION}..."
 
@@ -62,4 +61,4 @@ gcloud-deploy env image_tag:
         --platform managed \
         --allow-unauthenticated \
         --set-env-vars "ENV={{env}}" \
-        --set-secrets "DATABASE_URL=${DATABASE_SECRET}:latest,CLERK_FRONTEND_API=${CLERK_SECRET}:latest"
+        --set-secrets "DATABASE_URL=${DATABASE_SECRET}:latest"

@@ -93,23 +93,24 @@ export async function initDbSecret(token: string) {
   let projectReady = false;
   let attempts = 0;
   const maxAttempts = 3; // 3 attempts * 15 seconds = 45 seconds max wait
+  const waitDuration = 15000; // 15 seconds
 
   while (!projectReady && attempts < maxAttempts) {
+    attempts++;
     try {
       // Try to list branches - if this succeeds with branches, the project is ready
       const branchesResp = await neon.listProjectBranches({ projectId });
       if (branchesResp.data.branches && branchesResp.data.branches.length > 0) {
         projectReady = true;
         waitSpinner.stop("Project is ready!");
-      } else {
-        // API succeeded but no branches yet, wait and retry
-        await new Promise((resolve) => setTimeout(resolve, 15000)); // Wait 15 seconds
-        attempts++;
       }
     } catch (e) {
-      // Project not ready yet (API error), wait and retry
-      await new Promise((resolve) => setTimeout(resolve, 15000)); // Wait 15 seconds
-      attempts++;
+      // Project not ready yet (API error), continue waiting
+    }
+
+    // Wait before next attempt if project is not ready yet
+    if (!projectReady && attempts < maxAttempts) {
+      await new Promise((resolve) => setTimeout(resolve, waitDuration));
     }
   }
 

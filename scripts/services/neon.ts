@@ -23,30 +23,8 @@ async function updateSecret(secretName: string, value: string) {
   const s = p.spinner();
   s.start("Adding secret version...");
   try {
-    // Securely pass value via stdin using Bun.spawn to avoid shell interpolation and logging
-    const proc = Bun.spawn(
-      ["gcloud", "secrets", "versions", "add", secretName, "--data-file=-"],
-      {
-        stdin: "pipe",
-        stdout: "ignore",
-        stderr: "pipe",
-      },
-    );
-
-    // Write value to stdin
-    if (proc.stdin) {
-      proc.stdin.write(value);
-      proc.stdin.flush();
-      proc.stdin.end();
-    }
-
-    const exitCode = await proc.exited;
-
-    if (exitCode !== 0) {
-      const stderr = await new Response(proc.stderr).text();
-      throw new Error(stderr);
-    }
-
+    // Securely pass value via stdin using pipe to avoid shell interpolation
+    await $`echo ${value} | gcloud secrets versions add ${secretName} --data-file=-`.quiet();
     s.stop("Secret updated.");
   } catch (err: any) {
     s.stop("Failed to update secret.");

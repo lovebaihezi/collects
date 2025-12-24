@@ -5,6 +5,7 @@ import {
   type Endpoint,
 } from "@neondatabase/api-client";
 import * as p from "@clack/prompts";
+import { $ } from "bun";
 import { confirmAndRun } from "./utils.ts";
 
 /**
@@ -190,8 +191,6 @@ async function updateGCloudSecret(
   secretName: string,
   databaseUrl: string,
 ): Promise<void> {
-  const { $ } = await import("bun");
-
   // Check if secret exists
   let secretExists = false;
   try {
@@ -390,30 +389,16 @@ export async function initDbSecret(
   // Step 4: Summary
   p.log.step("Summary");
 
-  console.log(
-    "\n┌─────────────────────────────────────────────────────────────────┐",
-  );
-  console.log(
-    "│ Environment Setup Complete                                      │",
-  );
-  console.log(
-    "├─────────────────────────────────────────────────────────────────┤",
-  );
-
   for (const config of ENV_CONFIGS) {
     const branchInfo =
       config.branchName === "production" ? productionInfo : developmentInfo;
     const role = config.useAdminRole
       ? branchInfo.adminRole
       : branchInfo.restrictedRole;
-    console.log(
-      `│ ${config.env.padEnd(10)} │ ${config.secretName.padEnd(22)} │ ${(role?.name || "N/A").padEnd(15)} │`,
+    p.log.success(
+      `${config.env}: ${config.secretName} -> ${role?.name || "N/A"}`,
     );
   }
-
-  console.log(
-    "└─────────────────────────────────────────────────────────────────┘\n",
-  );
 
   p.outro("Database secrets initialized successfully!");
 }

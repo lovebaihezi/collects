@@ -13,6 +13,7 @@ use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 pub mod config;
 pub mod database;
+pub mod storage;
 pub mod telemetry;
 pub mod users;
 

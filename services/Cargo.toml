@@ -8,10 +8,13 @@ include = ["LICENSE", "**/*.rs", "Cargo.toml"]
 
 [dependencies]
 anyhow = { workspace = true}
+async-trait = { workspace = true }
 axum = { workspace = true }
 axum-extra = { workspace = true }
 http = { workspace = true }
+jsonwebtoken = { workspace = true }
 opendal = { workspace = true }
+reqwest = { workspace = true }
 serde = { workspace = true }
 serde-env = { workspace = true }
 tower = { workspace = true }

@@ -1,0 +1,57 @@
+name: Cleanup PR Environment
+
+on:
+  pull_request:
+    types: [closed]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  cleanup:
+    name: Cleanup PR Resources
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Google Auth
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: "projects/145756646168/locations/global/workloadIdentityPools/github-actions-pool/providers/github-provider"
+          service_account: "github-actions-sa@braided-case-416903.iam.gserviceaccount.com"
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Delete Docker Image
+        run: |
+          set -x
+          
+          GCP_REGION="us-east1"
+          PROJECT_ID=$(gcloud config get-value project)
+          REPOSITORY_NAME="collects-services"
+          IMAGE_NAME="collects-services"
+          TAG="pr-${{ github.event.pull_request.number }}"
+          
+          # Try to delete the Docker image tag
+          if gcloud artifacts docker images delete \
+            "${GCP_REGION}-docker.pkg.dev/${PROJECT_ID}/${REPOSITORY_NAME}/${IMAGE_NAME}:${TAG}" \
+            --quiet \
+            --delete-tags 2>/dev/null; then
+            echo "Successfully deleted Docker image with tag: ${TAG}"
+          else
+            echo "Docker image with tag ${TAG} not found or already deleted"
+          fi
+
+      - name: Cleanup Summary
+        run: |
+          echo "## Cleanup Summary for PR #${{ github.event.pull_request.number }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- Docker image \`pr-${{ github.event.pull_request.number }}\` deleted" >> $GITHUB_STEP_SUMMARY
+          echo "- Cloud Run service \`collects-services-pr\` is shared and remains active" >> $GITHUB_STEP_SUMMARY
+          echo "- Cloudflare Worker \`pr\` environment is shared and remains active" >> $GITHUB_STEP_SUMMARY

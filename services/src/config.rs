@@ -216,8 +216,8 @@ impl Config {
         let port = match port {
             Some(port) => port,
             None if matches!(env, Env::Local) => {
-                info!("PORT not set, defaulting to 3000 for local environment");
-                3000
+                info!("PORT not set, defaulting to 8080 for local environment");
+                8080
             }
             None => anyhow::bail!("PORT must be set for {} environment", env),
         };

@@ -75,8 +75,13 @@ import sys
 import tomllib
 from pathlib import Path
 
-version = tomllib.loads(Path("ui/Cargo.toml").read_text())["package"]["version"]
-if not re.fullmatch(r"\d{4}\.\d{2}\.\d{2}\+[1-9]\d*", version):
+data = tomllib.loads(Path("ui/Cargo.toml").read_text())
+try:
+    version = data["package"]["version"]
+except KeyError as exc:
+    raise SystemExit(f"UI Cargo.toml missing package.version: {exc}")
+
+if not re.fullmatch(r"\d{4}\.\d{2}\.\d{2}\+[1-9]\d{0,1}", version):
     sys.exit(f"UI version \"{version}\" does not match required format YYYY.MM.DD+N")
 
 date_part = version.split("+", 1)[0]

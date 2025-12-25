@@ -116,16 +116,21 @@ async function getRolesForBranch(
 
 /**
  * Creates a restricted role for production use (best practice)
+ * Checks if role exists first, if yes - reset password, if no - create it
  */
 async function ensureRestrictedRole(
   client: ReturnType<typeof createApiClient>,
   projectId: string,
   branchId: string,
-  existingRoles: Role[],
 ): Promise<Role> {
-  const existing = existingRoles.find((r) => r.name === RESTRICTED_ROLE_NAME);
+  // Get all roles to check if restricted role exists
+  const roles = await getRolesForBranch(client, projectId, branchId);
+  const existing = roles.find((r) => r.name === RESTRICTED_ROLE_NAME);
+
   if (existing) {
-    p.log.info(`Restricted role '${RESTRICTED_ROLE_NAME}' already exists`);
+    p.log.info(
+      `Restricted role '${RESTRICTED_ROLE_NAME}' already exists, resetting password...`,
+    );
     // Reset password to get a fresh one
     const resetResponse = await client.resetProjectBranchRolePassword(
       projectId,
@@ -152,19 +157,36 @@ function findAdminRole(roles: Role[]): Role | undefined {
 }
 
 /**
- * Resets password for a role and returns the role with password
+ * Ensures admin role exists and returns it with a fresh password
+ * Admin role should always exist (Neon creates it by default), but we check just in case
  */
-async function resetRolePassword(
+async function ensureAdminRole(
   client: ReturnType<typeof createApiClient>,
   projectId: string,
   branchId: string,
-  roleName: string,
+  branchName: string,
 ): Promise<Role> {
-  p.log.info(`Resetting password for role '${roleName}'...`);
+  // Get all roles
+  const roles = await getRolesForBranch(client, projectId, branchId);
+
+  // Find admin role (ends with _owner)
+  const adminRole = roles.find((r) => r.name.endsWith(ADMIN_ROLE_SUFFIX));
+
+  if (!adminRole) {
+    p.log.error(
+      `No admin role (*${ADMIN_ROLE_SUFFIX}) found on branch '${branchName}'`,
+    );
+    p.log.info(`Available roles: ${roles.map((r) => r.name).join(", ")}`);
+    throw new Error(`Admin role not found on branch '${branchName}'`);
+  }
+
+  p.log.info(`Found admin role '${adminRole.name}', resetting password...`);
+
+  // Reset password to get a fresh one
   const response = await client.resetProjectBranchRolePassword(
     projectId,
     branchId,
-    roleName,
+    adminRole.name,
   );
   return response.data.role;
 }
@@ -233,6 +255,7 @@ async function updateGCloudSecret(
 
 /**
  * Sets up a branch with all necessary roles and returns connection info
+ * Ensures all roles exist and have fresh passwords
  */
 async function setupBranch(
   client: ReturnType<typeof createApiClient>,
@@ -246,26 +269,12 @@ async function setupBranch(
   const endpoint = await getEndpointForBranch(client, projectId, branch.id);
   p.log.info(`Found endpoint: ${endpoint.host}`);
 
-  // Get roles
-  const roles = await getRolesForBranch(client, projectId, branch.id);
-  p.log.info(
-    `Found ${roles.length} roles: ${roles.map((r) => r.name).join(", ")}`,
-  );
-
-  // Find admin role
-  const adminRole = findAdminRole(roles);
-  if (!adminRole) {
-    throw new Error(
-      `No admin role (*${ADMIN_ROLE_SUFFIX}) found on branch '${branch.name}'`,
-    );
-  }
-
-  // Reset admin role password to get a fresh one
-  const adminRoleWithPassword = await resetRolePassword(
+  // Ensure admin role exists and get it with fresh password
+  const adminRoleWithPassword = await ensureAdminRole(
     client,
     projectId,
     branch.id,
-    adminRole.name,
+    branch.name,
   );
 
   const result: BranchInfo = {
@@ -280,7 +289,6 @@ async function setupBranch(
       client,
       projectId,
       branch.id,
-      roles,
     );
   }
 
@@ -311,6 +319,7 @@ export async function initDbSecret(
   );
 
   // Find production and development branches
+  // Neon creates default branches, but names may vary
   const productionBranch =
     findBranchByName(branches, "main") ||
     findBranchByName(branches, "production");
@@ -323,7 +332,10 @@ export async function initDbSecret(
       "No production branch found (looked for 'main' or 'production')",
     );
     p.log.info(`Available branches: ${branches.map((b) => b.name).join(", ")}`);
-    process.exit(1);
+    p.log.error(
+      "Please ensure your Neon project has a 'main' or 'production' branch",
+    );
+    throw new Error("Production branch not found");
   }
 
   if (!developmentBranch) {
@@ -331,7 +343,10 @@ export async function initDbSecret(
       "No development branch found (looked for 'development' or 'dev')",
     );
     p.log.info(`Available branches: ${branches.map((b) => b.name).join(", ")}`);
-    process.exit(1);
+    p.log.error(
+      "Please ensure your Neon project has a 'development' or 'dev' branch",
+    );
+    throw new Error("Development branch not found");
   }
 
   p.log.success(

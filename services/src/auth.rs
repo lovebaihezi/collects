@@ -5,13 +5,13 @@
 //! for middleware and extractors.
 
 use axum::{
+    Json,
     extract::{FromRequestParts, Request},
-    http::{header::AUTHORIZATION, request::Parts, StatusCode},
+    http::{StatusCode, header::AUTHORIZATION, request::Parts},
     middleware::Next,
     response::{IntoResponse, Response},
-    Json,
 };
-use jsonwebtoken::{decode, decode_header, Algorithm, DecodingKey, Validation};
+use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode, decode_header};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
@@ -110,17 +110,18 @@ pub async fn zero_trust_middleware(
     next: Next,
 ) -> Result<Response, AuthError> {
     // Extract token from headers
-    let token = extract_token_from_headers(request.headers())
-        .ok_or_else(|| AuthError {
-            error: "missing_token".to_string(),
-            message: "No authentication token provided".to_string(),
-        })?;
+    let token = extract_token_from_headers(request.headers()).ok_or_else(|| AuthError {
+        error: "missing_token".to_string(),
+        message: "No authentication token provided".to_string(),
+    })?;
 
     // Validate token
-    let claims = validate_token(token, &config).await.map_err(|e| AuthError {
-        error: "invalid_token".to_string(),
-        message: format!("Token validation failed: {}", e),
-    })?;
+    let claims = validate_token(token, &config)
+        .await
+        .map_err(|e| AuthError {
+            error: "invalid_token".to_string(),
+            message: format!("Token validation failed: {}", e),
+        })?;
 
     // Insert claims into request extensions for later use
     request.extensions_mut().insert(claims);
@@ -195,7 +196,7 @@ struct JwksResponse {
 }
 
 /// Fetch public key from Cloudflare's JWKS endpoint
-/// 
+///
 /// TODO: Implement caching for JWKS keys to reduce external calls and improve performance.
 /// Consider using a cache with TTL (e.g., 1 hour) to avoid fetching keys on every request.
 /// This would improve response times and reduce dependency on Cloudflare's JWKS endpoint.
@@ -206,7 +207,10 @@ async fn fetch_public_key(jwks_url: &str, kid: &str) -> Result<DecodingKey, Stri
         .map_err(|e| format!("Failed to fetch JWKS: {}", e))?;
 
     if !response.status().is_success() {
-        return Err(format!("JWKS endpoint returned status: {}", response.status()));
+        return Err(format!(
+            "JWKS endpoint returned status: {}",
+            response.status()
+        ));
     }
 
     let jwks: JwksResponse = response
@@ -236,10 +240,7 @@ where
 {
     type Rejection = AuthError;
 
-    async fn from_request_parts(
-        parts: &mut Parts,
-        _state: &S,
-    ) -> Result<Self, Self::Rejection> {
+    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
         // Extract claims from request extensions (set by middleware)
         let claims = parts
             .extensions

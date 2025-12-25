@@ -54,9 +54,7 @@ async fn test_auth_route_always_accessible() {
                 .method("POST")
                 .uri("/auth/verify-otp")
                 .header("content-type", "application/json")
-                .body(Body::from(
-                    r#"{"username": "testuser", "code": "123456"}"#,
-                ))
+                .body(Body::from(r#"{"username": "testuser", "code": "123456"}"#))
                 .expect("Failed to create request"),
         )
         .await

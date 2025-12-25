@@ -13,12 +13,12 @@ use std::sync::Arc;
 use tower_http::trace::TraceLayer;
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 
+pub mod auth;
 pub mod config;
 pub mod database;
 pub mod storage;
 pub mod telemetry;
 pub mod users;
-pub mod auth;
 
 struct HeaderExtractor<'a>(&'a axum::http::HeaderMap);
 

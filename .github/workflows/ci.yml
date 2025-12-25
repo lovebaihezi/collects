@@ -58,11 +58,11 @@ jobs:
         working-directory: scripts/services
         run: bun install --frozen-lockfile
 
-      - name: Check Format
+      - name: Project Format
         run: just check-fmt
 
-      - name: Check Clippy
-        run: just check-clippy
+      - name: Project Lint
+        run: just check-lint
 
       - name: Check Typos
         run: just check-typos

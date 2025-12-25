@@ -59,6 +59,15 @@ pub enum OtpError {
 /// The issuer name used in TOTP configuration.
 pub const ISSUER: &str = "Collects";
 
+/// Number of digits in the OTP code.
+const OTP_DIGITS: usize = 6;
+
+/// Number of time steps to allow for skew (before and after current time).
+const OTP_SKEW: u8 = 1;
+
+/// Duration of each time step in seconds.
+const OTP_STEP: u64 = 30;
+
 /// Generates a new TOTP secret and returns the configuration for a user.
 ///
 /// # Arguments
@@ -89,9 +98,9 @@ pub fn generate_otp_secret(username: &str) -> Result<(String, String), OtpError>
     // Create TOTP configuration with issuer and account name
     let totp = TOTP::new(
         Algorithm::SHA1,
-        6,  // 6 digit codes
-        1,  // 1 step tolerance
-        30, // 30 second step
+        OTP_DIGITS,
+        OTP_SKEW,
+        OTP_STEP,
         secret_bytes,
         Some(ISSUER.to_string()),
         username.to_string(),
@@ -126,16 +135,24 @@ pub fn verify_otp(secret_base32: &str, code: &str) -> Result<bool, OtpError> {
 
     let totp = TOTP::new(
         Algorithm::SHA1,
-        6,
-        1,
-        30,
+        OTP_DIGITS,
+        OTP_SKEW,
+        OTP_STEP,
         secret_bytes,
         Some(ISSUER.to_string()),
         String::new(), // account_name not needed for verification
     )
     .map_err(|e| OtpError::TotpCreation(e.to_string()))?;
 
-    Ok(totp.check_current(code).unwrap_or(false))
+    // Note: check_current returns Err only on system time errors, which are unlikely
+    // but should be logged if they occur. In production, a false return is safe.
+    match totp.check_current(code) {
+        Ok(valid) => Ok(valid),
+        Err(e) => {
+            tracing::warn!("OTP verification encountered a system time error: {}", e);
+            Ok(false)
+        }
+    }
 }
 
 /// Generates the current OTP code for a given secret.
@@ -161,9 +178,9 @@ pub fn generate_current_otp(secret_base32: &str) -> Result<String, OtpError> {
 
     let totp = TOTP::new(
         Algorithm::SHA1,
-        6,
-        1,
-        30,
+        OTP_DIGITS,
+        OTP_SKEW,
+        OTP_STEP,
         secret_bytes,
         Some(ISSUER.to_string()),
         String::new(), // account_name not needed for code generation

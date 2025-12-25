@@ -174,7 +174,12 @@ where
     }
 
     // Validate that code is not empty and is 6 digits
-    if payload.code.len() != 6 || !payload.code.chars().all(|c| c.is_ascii_digit()) {
+    // Use a simple length check and digit validation - this is format validation only
+    // The actual OTP comparison uses constant-time comparison in the totp-rs library
+    let is_valid_format =
+        payload.code.len() == 6 && payload.code.bytes().all(|b| b.is_ascii_digit());
+
+    if !is_valid_format {
         return (
             StatusCode::BAD_REQUEST,
             Json(VerifyOtpResponse {

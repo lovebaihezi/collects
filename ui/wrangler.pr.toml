@@ -1,9 +1,9 @@
-name = "collects-app"
+name = "collects-app-pr"
 main = "src/worker.ts"
 compatibility_date = "2025-09-15"
 
 [[routes]]
-pattern = "collects.lqxclqxc.com"
+pattern = "collects-pr.lqxclqxc.com"
 custom_domain = true
 
 [assets]
@@ -13,7 +13,7 @@ run_worker_first = [ "/api/*" ]
 
 [[kv_namespaces]]
 binding = "KV"
-id = "a4dafe7674c2440b81e4ec2e5889f1ba"
+id = "fac40588d16f4fa8b7c8f36de6445649"
 
 [vars]
-API_BASE = "https://collects-api-145756646168.us-east1.run.app"
+API_BASE = "https://collects-api-pr-145756646168.us-east1.run.app"

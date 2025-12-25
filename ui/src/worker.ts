@@ -1,6 +1,7 @@
 async function handleApi(req: Request, env: Env): Promise<Response> {
   const url = new URL(req.url);
-  const apiBase = "https://collects-api-145756646168.us-east1.run.app";
+  const projectNumber = "145756646168";
+  const apiBase = env.API_BASE || `https://collects-api-${projectNumber}.us-east1.run.app`;
   const newPath = url.pathname.substring("/api".length);
   const newUrl = new URL(apiBase + newPath);
   newUrl.search = url.search;

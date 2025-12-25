@@ -84,14 +84,15 @@ jobs:
             echo "TAG=main-${{ github.sha }}" >> "$GITHUB_ENV"
 
             if git diff --name-only "$BASE" HEAD -- services/Cargo.toml | grep -q .; then
-              VERSION="$(sed -n 's/^version *= *"\(.*\)"/\1/p' services/Cargo.toml | head -n 1)"
-              python - "$VERSION" <<'PY'
+              VERSION="$(python - <<'PY'
 import datetime
 import re
 import sys
+import tomllib
+from pathlib import Path
 
-version = sys.argv[1]
-if not re.fullmatch(r"20\d{2}\.\d{2}\.\d{2}\+[1-9]\d*", version):
+version = tomllib.loads(Path("services/Cargo.toml").read_text())["package"]["version"]
+if not re.fullmatch(r"\d{4}\.\d{2}\.\d{2}\+[1-9]\d*", version):
     sys.exit(f"Service version \"{version}\" does not match required format YYYY.MM.DD+N")
 
 date_part = version.split("+", 1)[0]
@@ -99,7 +100,10 @@ try:
     datetime.datetime.strptime(date_part, "%Y.%m.%d")
 except ValueError as exc:
     sys.exit(f"Service version date component \"{date_part}\" is not a valid calendar date: {exc}")
+
+print(version)
 PY
+)"
               echo "ENV=prod" >> "$GITHUB_ENV"
               echo "TAG=$VERSION" >> "$GITHUB_ENV"
             fi

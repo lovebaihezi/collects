@@ -63,5 +63,6 @@ gcloud-deploy env image_tag:
         --region "${GCP_REGION}" \
         --platform managed \
         --allow-unauthenticated \
+        --startup-probe httpGet.path=/is_health,httpGet.port=8080,initialDelaySeconds=24,timeoutSeconds=240,periodSeconds=240,failureThreshold=3 \
         --set-env-vars "ENV={{env}}" \
         --set-secrets "DATABASE_URL=${DATABASE_SECRET}:latest"

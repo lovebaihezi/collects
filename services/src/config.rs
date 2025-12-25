@@ -35,6 +35,9 @@ pub struct Config {
     cf_bucket: Option<String>,
     gcs_bucket: Option<String>,
     gcs_credentials: Option<String>,
+    // Cloudflare Zero Trust configuration
+    cf_access_team_domain: Option<String>,
+    cf_access_aud: Option<String>,
 }
 
 // An intermediate struct for deserializing environment variables
@@ -52,10 +55,16 @@ struct RawConfig {
     cf_bucket: Option<String>,
     gcs_bucket: Option<String>,
     gcs_credentials: Option<String>,
+    // Cloudflare Zero Trust configuration
+    cf_access_team_domain: Option<String>,
+    cf_access_aud: Option<String>,
 }
 
 impl Config {
-    #[cfg(test)]
+    /// Create a test configuration with default values.
+    /// 
+    /// This function is available for both unit tests and integration tests.
+    /// It should not be used in production code.
     pub fn new_for_test() -> Self {
         Self {
             env: Env::Local,
@@ -68,6 +77,8 @@ impl Config {
             cf_bucket: None,
             gcs_bucket: None,
             gcs_credentials: None,
+            cf_access_team_domain: None,
+            cf_access_aud: None,
         }
     }
 
@@ -120,6 +131,14 @@ impl Config {
         self.gcs_credentials.as_deref()
     }
 
+    pub fn cf_access_team_domain(&self) -> Option<&str> {
+        self.cf_access_team_domain.as_deref()
+    }
+
+    pub fn cf_access_aud(&self) -> Option<&str> {
+        self.cf_access_aud.as_deref()
+    }
+
     /// Initializes configuration by reading from environment variables
     /// and applying environment-aware defaults.
     pub fn init() -> anyhow::Result<Self> {
@@ -159,6 +178,8 @@ impl Config {
             cf_bucket: raw_config.cf_bucket,
             gcs_bucket: raw_config.gcs_bucket,
             gcs_credentials: raw_config.gcs_credentials,
+            cf_access_team_domain: raw_config.cf_access_team_domain,
+            cf_access_aud: raw_config.cf_access_aud,
         })
     }
 }

@@ -4,10 +4,12 @@ use axum::{
     Router,
     extract::{Request, State},
     http::StatusCode,
+    middleware,
     response::IntoResponse,
     routing::{any, get},
 };
 use opentelemetry::{global, propagation::Extractor};
+use std::sync::Arc;
 use tower_http::trace::TraceLayer;
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 
@@ -16,6 +18,7 @@ pub mod database;
 pub mod storage;
 pub mod telemetry;
 pub mod users;
+pub mod auth;
 
 struct HeaderExtractor<'a>(&'a axum::http::HeaderMap);
 
@@ -29,13 +32,16 @@ impl<'a> Extractor for HeaderExtractor<'a> {
     }
 }
 
-pub async fn routes<S>(storage: S, _config: Config) -> Router
+pub async fn routes<S>(storage: S, config: Config) -> Router
 where
     S: SqlStorage + Clone + Send + Sync + 'static,
 {
+    // Build the protected internal routes with Zero Trust middleware if configured
+    let internal_routes = create_internal_routes::<S>(&config);
+
     Router::new()
         .route("/is-health", get(health_check::<S>))
-        .nest("/internal", users::internal_routes::<S>())
+        .nest("/internal", internal_routes)
         .nest("/auth", users::auth_routes::<S>())
         .fallback(any(catch_all))
         .layer(
@@ -62,6 +68,30 @@ where
             }),
         )
         .with_state(storage)
+}
+
+/// Create internal routes with optional Zero Trust middleware
+fn create_internal_routes<S>(config: &Config) -> Router<S>
+where
+    S: SqlStorage + Clone + Send + Sync + 'static,
+{
+    if let (Some(team_domain), Some(audience)) =
+        (config.cf_access_team_domain(), config.cf_access_aud())
+    {
+        let zero_trust_config = Arc::new(auth::ZeroTrustConfig::new(
+            team_domain.to_string(),
+            audience.to_string(),
+        ));
+
+        users::internal_routes::<S>().layer(middleware::from_fn(move |req, next| {
+            let config = Arc::clone(&zero_trust_config);
+            auth::zero_trust_middleware(config, req, next)
+        }))
+    } else {
+        // If Zero Trust is not configured, use routes without authentication
+        // This is useful for local development
+        users::internal_routes::<S>()
+    }
 }
 
 async fn health_check<S>(State(storage): State<S>) -> impl IntoResponse

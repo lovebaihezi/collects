@@ -14,6 +14,7 @@ use tracing_opentelemetry::OpenTelemetrySpanExt;
 pub mod config;
 pub mod database;
 pub mod telemetry;
+pub mod users;
 
 struct HeaderExtractor<'a>(&'a axum::http::HeaderMap);
 
@@ -33,6 +34,8 @@ where
 {
     Router::new()
         .route("/is-health", get(health_check::<S>))
+        .nest("/internal", users::internal_routes::<S>())
+        .nest("/auth", users::auth_routes::<S>())
         .fallback(any(catch_all))
         .layer(
             TraceLayer::new_for_http().make_span_with(|request: &Request<_>| {

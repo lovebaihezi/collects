@@ -31,7 +31,7 @@ mod tests {
         ])
         .expect("RawConfig should deserialize");
 
-        let config = Config::from_raw(raw);
+        let config = Config::from_raw(raw).expect("pr config should build");
         assert_eq!(config.server_addr(), "0.0.0.0");
         assert_eq!(config.port(), 8080);
     }
@@ -76,7 +76,7 @@ struct RawConfig {
     env: Env,
     database_url: String,
     server_addr: Option<String>,
-    port: u16,
+    port: Option<u16>,
     // Storage configuration (optional)
     cf_account_id: Option<String>,
     cf_access_key_id: Option<String>,
@@ -175,10 +175,10 @@ impl Config {
 
         // First, deserialize into a temporary struct that allows for optional fields
         let raw_config: RawConfig = serde_env::from_iter(vars())?;
-        Ok(Self::from_raw(raw_config))
+        Self::from_raw(raw_config)
     }
 
-    fn from_raw(raw_config: RawConfig) -> Self {
+    fn from_raw(raw_config: RawConfig) -> anyhow::Result<Self> {
         let RawConfig {
             env,
             database_url,
@@ -213,8 +213,17 @@ impl Config {
             }
         };
 
+        let port = match port {
+            Some(port) => port,
+            None if matches!(env, Env::Local) => {
+                info!("PORT not set, defaulting to 3000 for local environment");
+                3000
+            }
+            None => anyhow::bail!("PORT must be set for {} environment", env),
+        };
+
         // Construct the final, validated Config struct
-        Config {
+        Ok(Config {
             env,
             database_url,
             port,
@@ -227,6 +236,6 @@ impl Config {
             gcs_credentials,
             cf_access_team_domain,
             cf_access_aud,
-        }
+        })
     }
 }

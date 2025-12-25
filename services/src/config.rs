@@ -9,6 +9,32 @@ pub enum Env {
     Local,
     #[serde(rename = "prod")]
     Prod,
+    #[serde(rename = "internal")]
+    Internal,
+    #[serde(rename = "test")]
+    Test,
+    #[serde(rename = "pr")]
+    Pr,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_env::from_iter;
+
+    #[test]
+    fn default_server_addr_for_pr_is_public() {
+        let raw: RawConfig = from_iter(vec![
+            ("ENV", "pr"),
+            ("DATABASE_URL", "postgres://example"),
+            ("PORT", "8080"),
+        ])
+        .expect("RawConfig should deserialize");
+
+        let config = Config::from_raw(raw);
+        assert_eq!(config.server_addr(), "0.0.0.0");
+        assert_eq!(config.port(), 8080);
+    }
 }
 
 impl Display for Env {
@@ -16,6 +42,9 @@ impl Display for Env {
         match self {
             Env::Local => write!(f, "local"),
             Env::Prod => write!(f, "prod"),
+            Env::Internal => write!(f, "internal"),
+            Env::Test => write!(f, "test"),
+            Env::Pr => write!(f, "pr"),
         }
     }
 }
@@ -146,40 +175,58 @@ impl Config {
 
         // First, deserialize into a temporary struct that allows for optional fields
         let raw_config: RawConfig = serde_env::from_iter(vars())?;
+        Ok(Self::from_raw(raw_config))
+    }
+
+    fn from_raw(raw_config: RawConfig) -> Self {
+        let RawConfig {
+            env,
+            database_url,
+            server_addr,
+            port,
+            cf_account_id,
+            cf_access_key_id,
+            cf_secret_access_key,
+            cf_bucket,
+            gcs_bucket,
+            gcs_credentials,
+            cf_access_team_domain,
+            cf_access_aud,
+        } = raw_config;
 
         // Apply the default logic for `server_addr` based on the environment
-        let server_addr = match raw_config.server_addr {
+        let server_addr = match server_addr {
             Some(addr) => {
                 info!("Using provided SERVER_ADDR: {}", addr);
                 addr
             }
             None => {
-                let default_addr = match raw_config.env {
-                    Env::Prod => "0.0.0.0",
+                let default_addr = match env {
                     Env::Local => "127.0.0.1",
+                    _ => "0.0.0.0",
                 };
                 info!(
                     "SERVER_ADDR not set, defaulting to {} for {} environment",
-                    default_addr, raw_config.env
+                    default_addr, env
                 );
                 default_addr.to_string()
             }
         };
 
         // Construct the final, validated Config struct
-        Ok(Config {
-            env: raw_config.env,
-            database_url: raw_config.database_url,
-            port: raw_config.port,
+        Config {
+            env,
+            database_url,
+            port,
             server_addr,
-            cf_account_id: raw_config.cf_account_id,
-            cf_access_key_id: raw_config.cf_access_key_id,
-            cf_secret_access_key: raw_config.cf_secret_access_key,
-            cf_bucket: raw_config.cf_bucket,
-            gcs_bucket: raw_config.gcs_bucket,
-            gcs_credentials: raw_config.gcs_credentials,
-            cf_access_team_domain: raw_config.cf_access_team_domain,
-            cf_access_aud: raw_config.cf_access_aud,
-        })
+            cf_account_id,
+            cf_access_key_id,
+            cf_secret_access_key,
+            cf_bucket,
+            gcs_bucket,
+            gcs_credentials,
+            cf_access_team_domain,
+            cf_access_aud,
+        }
     }
 }

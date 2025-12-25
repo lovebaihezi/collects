@@ -17,7 +17,7 @@ axum = "0.8"
 axum-extra = { version = "0.12", features = ["typed-header"] }
 http = "1"
 jsonwebtoken = "9"
-opendal = "0.54"
+opendal = { version = "0.54", features = ["services-s3", "services-gcs"] }
 reqwest = { version = "0.12", default-features = false, features = ["json"] }
 chrono = { version = "0.4", features = ["serde"] }
 serde = { version = "1", features = ["derive"] }

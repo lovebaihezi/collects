@@ -28,6 +28,16 @@ pub struct Config {
     database_url: String,
     server_addr: String,
     port: u16,
+    // Storage configuration (optional)
+    cf_account_id: Option<String>,
+    cf_access_key_id: Option<String>,
+    cf_secret_access_key: Option<String>,
+    cf_bucket: Option<String>,
+    gcs_bucket: Option<String>,
+    gcs_credentials: Option<String>,
+    // Cloudflare Zero Trust configuration
+    cf_access_team_domain: Option<String>,
+    cf_access_aud: Option<String>,
 }
 
 // An intermediate struct for deserializing environment variables
@@ -38,16 +48,37 @@ struct RawConfig {
     database_url: String,
     server_addr: Option<String>,
     port: u16,
+    // Storage configuration (optional)
+    cf_account_id: Option<String>,
+    cf_access_key_id: Option<String>,
+    cf_secret_access_key: Option<String>,
+    cf_bucket: Option<String>,
+    gcs_bucket: Option<String>,
+    gcs_credentials: Option<String>,
+    // Cloudflare Zero Trust configuration
+    cf_access_team_domain: Option<String>,
+    cf_access_aud: Option<String>,
 }
 
 impl Config {
-    #[cfg(test)]
+    /// Create a test configuration with default values.
+    ///
+    /// This function is available for both unit tests and integration tests.
+    /// It should not be used in production code.
     pub fn new_for_test() -> Self {
         Self {
             env: Env::Local,
             database_url: "postgres://localhost:5432/test".to_string(),
             server_addr: "127.0.0.1".to_string(),
             port: 8080,
+            cf_account_id: None,
+            cf_access_key_id: None,
+            cf_secret_access_key: None,
+            cf_bucket: None,
+            gcs_bucket: None,
+            gcs_credentials: None,
+            cf_access_team_domain: None,
+            cf_access_aud: None,
         }
     }
 
@@ -73,6 +104,39 @@ impl Config {
 
     pub fn is_prod(&self) -> bool {
         matches!(self.env, Env::Prod)
+    }
+
+    // Storage configuration getters
+    pub fn cf_account_id(&self) -> Option<&str> {
+        self.cf_account_id.as_deref()
+    }
+
+    pub fn cf_access_key_id(&self) -> Option<&str> {
+        self.cf_access_key_id.as_deref()
+    }
+
+    pub fn cf_secret_access_key(&self) -> Option<&str> {
+        self.cf_secret_access_key.as_deref()
+    }
+
+    pub fn cf_bucket(&self) -> Option<&str> {
+        self.cf_bucket.as_deref()
+    }
+
+    pub fn gcs_bucket(&self) -> Option<&str> {
+        self.gcs_bucket.as_deref()
+    }
+
+    pub fn gcs_credentials(&self) -> Option<&str> {
+        self.gcs_credentials.as_deref()
+    }
+
+    pub fn cf_access_team_domain(&self) -> Option<&str> {
+        self.cf_access_team_domain.as_deref()
+    }
+
+    pub fn cf_access_aud(&self) -> Option<&str> {
+        self.cf_access_aud.as_deref()
     }
 
     /// Initializes configuration by reading from environment variables
@@ -108,6 +172,14 @@ impl Config {
             database_url: raw_config.database_url,
             port: raw_config.port,
             server_addr,
+            cf_account_id: raw_config.cf_account_id,
+            cf_access_key_id: raw_config.cf_access_key_id,
+            cf_secret_access_key: raw_config.cf_secret_access_key,
+            cf_bucket: raw_config.cf_bucket,
+            gcs_bucket: raw_config.gcs_bucket,
+            gcs_credentials: raw_config.gcs_credentials,
+            cf_access_team_domain: raw_config.cf_access_team_domain,
+            cf_access_aud: raw_config.cf_access_aud,
         })
     }
 }

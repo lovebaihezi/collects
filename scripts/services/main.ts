@@ -1,307 +1,14 @@
 #!/usr/bin/env bun
 import { cac } from "cac";
 import * as p from "@clack/prompts";
-import {
-  checkResource,
-  confirmAndRun,
-  getProjectNumber,
-  validateRepo,
-} from "./utils.ts";
 import { initDbSecret } from "./neon.ts";
+import {
+  buildSetupContext,
+  setupGitHubActions,
+  type BuildSetupOptions,
+} from "./gh-action.ts";
 
 const cli = cac("services");
-
-/**
- * Context for GitHub Actions setup
- */
-interface SetupContext {
-  projectId: string;
-  repo: string;
-  owner: string;
-  projectNumber: string;
-  poolName: string;
-  providerName: string;
-  saName: string;
-  saEmail: string;
-  poolId: string;
-  providerId: string;
-}
-
-/**
- * Creates setup context from inputs
- */
-async function createSetupContext(
-  projectId: string,
-  repo: string,
-): Promise<SetupContext> {
-  const { owner } = validateRepo(repo);
-  const projectNumber = await getProjectNumber(projectId);
-
-  const poolName = "github-actions-pool";
-  const providerName = "github-provider";
-  const saName = "github-actions-sa";
-  const saEmail = `${saName}@${projectId}.iam.gserviceaccount.com`;
-  const poolId = `projects/${projectNumber}/locations/global/workloadIdentityPools/${poolName}`;
-  const providerId = `${poolId}/providers/${providerName}`;
-
-  return {
-    projectId,
-    repo,
-    owner,
-    projectNumber,
-    poolName,
-    providerName,
-    saName,
-    saEmail,
-    poolId,
-    providerId,
-  };
-}
-
-/**
- * Checks if workload identity pool exists
- */
-async function checkPoolExists(ctx: SetupContext): Promise<boolean> {
-  return checkResource(
-    `gcloud iam workload-identity-pools describe ${ctx.poolName} --project=${ctx.projectId} --location=global`,
-  );
-}
-
-/**
- * Checks if workload identity provider exists
- */
-async function checkProviderExists(ctx: SetupContext): Promise<boolean> {
-  return checkResource(
-    `gcloud iam workload-identity-pools providers describe ${ctx.providerName} --workload-identity-pool=${ctx.poolName} --project=${ctx.projectId} --location=global`,
-  );
-}
-
-/**
- * Checks if service account exists
- */
-async function checkServiceAccountExists(ctx: SetupContext): Promise<boolean> {
-  return checkResource(
-    `gcloud iam service-accounts describe ${ctx.saEmail} --project=${ctx.projectId}`,
-  );
-}
-
-/**
- * Enables IAM Credentials API
- */
-async function enableIAMCredentialsAPI(ctx: SetupContext): Promise<void> {
-  await confirmAndRun(
-    `gcloud services enable iamcredentials.googleapis.com --project ${ctx.projectId}`,
-    "Enable IAM Credentials API",
-  );
-}
-
-/**
- * Creates workload identity pool
- */
-async function createWorkloadIdentityPool(ctx: SetupContext): Promise<void> {
-  await confirmAndRun(
-    `gcloud iam workload-identity-pools create ${ctx.poolName} --project=${ctx.projectId} --location=global --display-name="GitHub Actions Pool"`,
-    "Create Workload Identity Pool",
-  );
-}
-
-/**
- * Creates workload identity provider
- */
-async function createWorkloadIdentityProvider(
-  ctx: SetupContext,
-): Promise<void> {
-  await confirmAndRun(
-    `gcloud iam workload-identity-pools providers create-oidc ${ctx.providerName} --project=${ctx.projectId} --location=global --workload-identity-pool=${ctx.poolName} --display-name="GitHub Provider" --attribute-mapping="google.subject=assertion.sub,attribute.actor=assertion.actor,attribute.repository=assertion.repository,attribute.repository_owner=assertion.repository_owner" --issuer-uri="https://token.actions.githubusercontent.com" --attribute-condition="attribute.repository_owner=='${ctx.owner}' && attribute.repository=='${ctx.repo}'"`,
-    "Create Workload Identity Provider",
-  );
-}
-
-/**
- * Creates service account
- */
-async function createServiceAccount(ctx: SetupContext): Promise<void> {
-  await confirmAndRun(
-    `gcloud iam service-accounts create ${ctx.saName} --project=${ctx.projectId} --display-name="GitHub Actions Service Account"`,
-    "Create Service Account",
-  );
-}
-
-/**
- * Binds service account to workload identity pool
- */
-async function bindServiceAccountToPool(ctx: SetupContext): Promise<void> {
-  const principalSet = `principalSet://iam.googleapis.com/projects/${ctx.projectNumber}/locations/global/workloadIdentityPools/${ctx.poolName}/attribute.repository/${ctx.repo}`;
-  await confirmAndRun(
-    `gcloud iam service-accounts add-iam-policy-binding ${ctx.saEmail} --project=${ctx.projectId} --role="roles/iam.workloadIdentityUser" --member="${principalSet}"`,
-    `Allow GitHub Repo '${ctx.repo}' to impersonate Service Account`,
-  );
-}
-
-/**
- * Grants a role to service account
- */
-async function grantRoleToServiceAccount(
-  ctx: SetupContext,
-  role: string,
-): Promise<void> {
-  await confirmAndRun(
-    `gcloud projects add-iam-policy-binding ${ctx.projectId} --member="serviceAccount:${ctx.saEmail}" --role="${role}" --condition=None`,
-    `Grant '${role}' to Service Account`,
-  );
-}
-
-/**
- * Grants all necessary roles to service account
- */
-async function grantRolesToServiceAccount(ctx: SetupContext): Promise<void> {
-  const roles = [
-    "roles/artifactregistry.writer",
-    "roles/secretmanager.secretAccessor",
-    "roles/run.admin",
-    "roles/iam.serviceAccountUser",
-  ];
-
-  for (const role of roles) {
-    await grantRoleToServiceAccount(ctx, role);
-  }
-}
-
-/**
- * Grants Secret Accessor role to the default compute service account
- */
-async function grantSecretAccessorToComputeServiceAccount(
-  ctx: SetupContext,
-): Promise<void> {
-  const computeSaEmail = `${ctx.projectNumber}-compute@developer.gserviceaccount.com`;
-  await confirmAndRun(
-    `gcloud projects add-iam-policy-binding ${ctx.projectId} --member="serviceAccount:${computeSaEmail}" --role="roles/secretmanager.secretAccessor" --condition=None`,
-    `Grant 'roles/secretmanager.secretAccessor' to Default Compute Service Account (${computeSaEmail})`,
-  );
-}
-
-/**
- * Displays the final workflow YAML
- */
-function displayWorkflowYAML(ctx: SetupContext): void {
-  const yamlOutput = `
-# Add this to your GitHub Actions workflow:
-
-- id: 'auth'
-  name: 'Authenticate to Google Cloud'
-  uses: 'google-github-actions/auth@v2'
-  with:
-    workload_identity_provider: '${ctx.providerId}'
-    service_account: '${ctx.saEmail}'
-`;
-
-  console.log(yamlOutput);
-}
-
-/**
- * Options for building setup context
- */
-interface BuildSetupOptions {
-  projectId?: string;
-  repo?: string;
-}
-
-/**
- * Builds setup context from command-line options or prompts
- * Uses early return pattern to avoid let variables
- */
-async function buildSetupContext(
-  options: BuildSetupOptions,
-): Promise<SetupContext> {
-  // Early return if both options are provided
-  if (options.projectId && options.repo) {
-    return createSetupContext(options.projectId, options.repo);
-  }
-
-  // Prompt for missing options
-  const projectGroup = await p.group(
-    {
-      projectId: () =>
-        options.projectId
-          ? Promise.resolve(options.projectId)
-          : p.text({
-              message: "Enter your Google Cloud Project ID:",
-              placeholder: "my-gcp-project-id",
-              validate: (value) => {
-                if (!value) return "Project ID is required";
-              },
-            }),
-      repo: () =>
-        options.repo
-          ? Promise.resolve(options.repo)
-          : p.text({
-              message: "Enter your GitHub Repository (owner/repo):",
-              placeholder: "username/repository",
-              validate: (value) => {
-                if (!value) return "Repository is required";
-                if (!value.includes("/")) return "Format must be owner/repo";
-              },
-            }),
-    },
-    {
-      onCancel: () => {
-        p.cancel("Operation cancelled.");
-        process.exit(0);
-      },
-    },
-  );
-
-  return createSetupContext(projectGroup.projectId, projectGroup.repo);
-}
-
-/**
- * Main setup orchestration
- */
-async function setupGitHubActions(ctx: SetupContext): Promise<void> {
-  p.log.info(`Using Project Number: ${ctx.projectNumber}`);
-  p.log.info(`Using repo: ${ctx.repo}`);
-
-  // 1. Enable IAM Credentials API
-  await enableIAMCredentialsAPI(ctx);
-
-  // 2. Create Workload Identity Pool
-  const poolExists = await checkPoolExists(ctx);
-  if (!poolExists) {
-    await createWorkloadIdentityPool(ctx);
-  } else {
-    p.log.info(`Workload Identity Pool '${ctx.poolName}' already exists.`);
-  }
-
-  // 3. Create Workload Identity Provider
-  const providerExists = await checkProviderExists(ctx);
-  if (!providerExists) {
-    await createWorkloadIdentityProvider(ctx);
-  } else {
-    p.log.info(
-      `Workload Identity Provider '${ctx.providerName}' already exists.`,
-    );
-  }
-
-  // 4. Create Service Account
-  const saExists = await checkServiceAccountExists(ctx);
-  if (!saExists) {
-    await createServiceAccount(ctx);
-  } else {
-    p.log.info(`Service Account '${ctx.saName}' already exists.`);
-  }
-
-  // 5. Bind Service Account to Pool
-  await bindServiceAccountToPool(ctx);
-
-  // 6. Grant Roles to Service Account
-  await grantRolesToServiceAccount(ctx);
-
-  // 7. Grant Secret Accessor to Compute Service Account
-  await grantSecretAccessorToComputeServiceAccount(ctx);
-
-  p.outro("Setup Complete!");
-  displayWorkflowYAML(ctx);
-}
 
 cli
   .command(
@@ -318,19 +25,53 @@ cli
     const ctx = await buildSetupContext({
       projectId: options.projectId,
       repo: options.repo,
-    });
+    } as BuildSetupOptions);
     await setupGitHubActions(ctx);
   });
 
 cli
-  .command("init-db-secret", "Initialize Neon Database and update Secrets")
+  .command(
+    "init-db-secret",
+    "Initialize Neon Database branches and update Secrets",
+  )
   .option("--token <token>", "Neon API Token")
+  .option("--project-id <projectId>", "Neon Project ID")
   .action(async (options) => {
-    if (!options.token) {
-      console.error("Error: --token is required");
-      process.exit(1);
+    p.intro("Neon Database Secret Setup");
+
+    // Prompt for token if not provided
+    const token = options.token
+      ? options.token
+      : await p.text({
+          message: "Enter your Neon API Token:",
+          placeholder: "neon_api_xxxxx",
+          validate: (value) => {
+            if (!value) return "Neon API Token is required";
+          },
+        });
+
+    if (p.isCancel(token)) {
+      p.cancel("Operation cancelled.");
+      process.exit(0);
     }
-    await initDbSecret(options.token);
+
+    // Prompt for project ID if not provided
+    const projectId = options.projectId
+      ? options.projectId
+      : await p.text({
+          message: "Enter your Neon Project ID:",
+          placeholder: "project-id-xxxx",
+          validate: (value) => {
+            if (!value) return "Neon Project ID is required";
+          },
+        });
+
+    if (p.isCancel(projectId)) {
+      p.cancel("Operation cancelled.");
+      process.exit(0);
+    }
+
+    await initDbSecret(token as string, projectId as string);
   });
 
 cli.command("", "Show help").action(() => {
@@ -364,6 +105,26 @@ Sets up Workload Identity Federation for GitHub Actions to deploy to Google Clou
 bun run main.ts actions-setup
 # Or with options:
 bun run main.ts actions-setup --project-id my-gcp-project-id --repo username/repository
+\`\`\`
+
+### \`init-db-secret\`
+
+Initializes Neon Database branches and updates Google Cloud Secrets with connection URLs.
+
+**What it does:**
+1. Fetches Neon project branches (expects 'main'/'production' and 'development'/'dev').
+2. Creates a restricted 'app_user' role on production (for least-privilege in prod).
+3. Resets passwords for all roles to generate fresh credentials.
+4. Creates/updates Google Cloud secrets for all environments:
+   - \`database-url\` (prod, restricted role)
+   - \`database-url-internal\` (internal, admin role on production)
+   - \`database-url-test\` (test, admin role on development)
+   - \`database-url-pr\` (pr, admin role on development)
+   - \`database-url-local\` (local dev, admin role on development)
+
+**Example:**
+\`\`\`bash
+bun run main.ts init-db-secret --token <NEON_API_TOKEN> --project-id <NEON_PROJECT_ID>
 \`\`\`
 
 ---

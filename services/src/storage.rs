@@ -1,3 +1,57 @@
+//! OpenDAL Remote Storage Service
+//!
+//! This module provides a generic trait-based interface for remote storage services,
+//! similar to how `SqlStorage` provides a generic interface for SQL databases.
+//!
+//! # Architecture
+//!
+//! The module follows the same pattern as the database module:
+//! - `OpenDALDisk` trait: Generic interface for storage backends
+//! - `CFDisk`: Cloudflare R2 implementation
+//! - `GDDisk`: Google Cloud Storage implementation
+//!
+//! # Usage in Production
+//!
+//! In production, credentials should be read from Google Cloud Secret Manager at runtime.
+//! The configuration can be read from environment variables similar to `DATABASE_URL`:
+//!
+//! ```bash
+//! # Cloudflare R2 configuration
+//! CF_ACCOUNT_ID=$(gcloud secrets versions access latest --secret=cf-account-id)
+//! CF_ACCESS_KEY_ID=$(gcloud secrets versions access latest --secret=cf-access-key-id)
+//! CF_SECRET_ACCESS_KEY=$(gcloud secrets versions access latest --secret=cf-secret-access-key)
+//! CF_BUCKET=$(gcloud secrets versions access latest --secret=cf-bucket)
+//!
+//! # Google Cloud Storage configuration
+//! GCS_BUCKET=$(gcloud secrets versions access latest --secret=gcs-bucket)
+//! GCS_CREDENTIALS=$(gcloud secrets versions access latest --secret=gcs-credentials)
+//! ```
+//!
+//! # Example
+//!
+//! ```rust,no_run
+//! use collects_services::storage::{CFDisk, CFDiskConfig, OpenDALDisk};
+//!
+//! # async fn example() {
+//! // Create a CFDisk instance (production)
+//! # #[cfg(not(test))]
+//! let config = CFDiskConfig {
+//!     account_id: "your-account-id".to_string(),
+//!     access_key_id: "your-access-key".to_string(),
+//!     secret_access_key: "your-secret-key".to_string(),
+//!     bucket: "your-bucket".to_string(),
+//! };
+//! # #[cfg(not(test))]
+//! let disk = CFDisk::new(config);
+//!
+//! // Check connectivity
+//! # #[cfg(not(test))]
+//! if disk.could_connected().await {
+//!     println!("Successfully connected to Cloudflare R2");
+//! }
+//! # }
+//! ```
+
 use std::future::Future;
 
 /// Trait for OpenDAL-based remote storage services
@@ -140,12 +194,33 @@ mod tests {
     #[tokio::test]
     async fn test_cfdisk_could_connected() {
         let disk = CFDisk::new();
-        assert!(disk.could_connected().await, "CFDisk should be connectable in test mode");
+        assert!(
+            disk.could_connected().await,
+            "CFDisk should be connectable in test mode"
+        );
     }
 
     #[tokio::test]
     async fn test_gddisk_could_connected() {
         let disk = GDDisk::new();
-        assert!(disk.could_connected().await, "GDDisk should be connectable in test mode");
+        assert!(
+            disk.could_connected().await,
+            "GDDisk should be connectable in test mode"
+        );
+    }
+
+    // Example test showing how to use the generic trait
+    async fn check_storage_connection<T: OpenDALDisk>(storage: T) -> bool {
+        storage.could_connected().await
+    }
+
+    #[tokio::test]
+    async fn test_generic_storage_interface() {
+        let cf_disk = CFDisk::new();
+        let gd_disk = GDDisk::new();
+
+        // Both implementations work with the generic interface
+        assert!(check_storage_connection(cf_disk).await);
+        assert!(check_storage_connection(gd_disk).await);
     }
 }

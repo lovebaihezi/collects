@@ -11,6 +11,7 @@ use opentelemetry::{global, propagation::Extractor};
 use tower_http::trace::TraceLayer;
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 
+pub mod auth;
 pub mod config;
 pub mod database;
 pub mod telemetry;
@@ -31,8 +32,18 @@ pub async fn routes<S>(storage: S, _config: Config) -> Router
 where
     S: SqlStorage + Clone + Send + Sync + 'static,
 {
+    // Public routes (no auth required)
+    let public_routes = Router::new()
+        .route("/is-health", get(health_check::<S>));
+
+    // Internal routes (auth required)
+    let internal_routes = Router::new()
+        .route("/internal/status", get(internal_status::<S>))
+        .route_layer(axum::middleware::from_fn(auth::require_auth));
+
     Router::new()
-        .route("/is-health", get(health_check::<S>))
+        .merge(public_routes)
+        .merge(internal_routes)
         .fallback(any(catch_all))
         .layer(
             TraceLayer::new_for_http().make_span_with(|request: &Request<_>| {
@@ -69,6 +80,30 @@ where
     } else {
         (StatusCode::BAD_GATEWAY, "502")
     }
+}
+
+async fn internal_status<S>(State(storage): State<S>, request: Request) -> impl IntoResponse
+where
+    S: SqlStorage,
+{
+    // Extract authenticated user info
+    let user = auth::extract_auth_user(&request);
+    
+    let user_info = match user {
+        Some(u) => format!("User: {} ({})", u.email, u.user_id),
+        None => "No user info".to_string(),
+    };
+
+    let db_status = if storage.is_connected().await {
+        "connected"
+    } else {
+        "disconnected"
+    };
+
+    (
+        StatusCode::OK,
+        format!("Internal Status - DB: {}, {}", db_status, user_info),
+    )
 }
 
 async fn catch_all() -> impl IntoResponse {

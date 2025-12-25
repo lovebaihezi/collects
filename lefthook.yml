@@ -3,7 +3,7 @@ pre-commit:
   commands:
     fmt:
       run: just check-fmt
-    clippy:
-      run: just check-clippy
+    lint:
+      run: just check-lint
     typos:
       run: just check-typos

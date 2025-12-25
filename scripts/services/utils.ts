@@ -14,16 +14,16 @@ export async function runCommand(command: string, context: string) {
     const { stdout } = await $`${{ raw: command }}`.quiet();
     s.stop("GCLI succeeded");
     return stdout.toString();
-  } catch (err: any) {
+  } catch (err: unknown) {
     s.stop(`Failed to run command: ${command}`);
     p.log.error(`COMMAND FAILED: ${command}`);
 
     let errorOutput = "";
 
     // ShellError is not exported from 'bun' in the current version, so we check the name/properties
-    if (err.name === "ShellError" || (err.stdout && err.stderr)) {
+    if (err instanceof $.ShellError) {
       errorOutput = err.stdout.toString() + err.stderr.toString();
-    } else {
+    } else if (err instanceof Error) {
       errorOutput = err.message || String(err);
     }
 

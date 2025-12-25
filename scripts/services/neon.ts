@@ -1,264 +1,419 @@
-import { createApiClient, EndpointType } from "@neondatabase/api-client";
+import {
+  createApiClient,
+  type Branch,
+  type Role,
+  type Endpoint,
+} from "@neondatabase/api-client";
 import * as p from "@clack/prompts";
 import { $ } from "bun";
-import { runCommand } from "./utils.ts";
+import { confirmAndRun } from "./utils.ts";
 
 /**
- * Updates a Google Cloud Secret with a new value.
- * If the secret doesn't exist, it creates it.
+ * Environment configuration mapping.
+ * - prod: production branch, restricted role (best practice: minimal permissions)
+ * - internal: production branch, admin role (for admin tasks/migrations)
+ * - test: development branch, default role
+ * - pr: development branch, default role
+ * - local: development branch, default role (for local development)
  */
-async function updateSecret(secretName: string, value: string) {
-  p.log.info(`Updating secret: ${secretName}`);
+interface EnvConfig {
+  env: string;
+  branchName: "production" | "development";
+  secretName: string;
+  useAdminRole: boolean;
+  description: string;
+}
 
-  // Check if secret exists
-  try {
-    // Use quiet() to suppress output, throws if fails (non-zero exit)
-    await $`gcloud secrets describe ${secretName} --quiet`.quiet();
-  } catch {
-    // Create secret if it doesn't exist
-    p.log.info(`Secret ${secretName} does not exist. Creating it...`);
-    await $`gcloud secrets create ${secretName} --replication-policy="automatic"`.quiet();
+const ENV_CONFIGS: EnvConfig[] = [
+  {
+    env: "prod",
+    branchName: "production",
+    secretName: "database-url",
+    useAdminRole: false,
+    description: "Production environment (restricted role)",
+  },
+  {
+    env: "internal",
+    branchName: "production",
+    secretName: "database-url-internal",
+    useAdminRole: true,
+    description: "Internal environment (admin role for migrations)",
+  },
+  {
+    env: "test",
+    branchName: "development",
+    secretName: "database-url-test",
+    useAdminRole: true,
+    description: "Test environment",
+  },
+  {
+    env: "pr",
+    branchName: "development",
+    secretName: "database-url-pr",
+    useAdminRole: true,
+    description: "PR environment",
+  },
+  {
+    env: "local",
+    branchName: "development",
+    secretName: "database-url-local",
+    useAdminRole: true,
+    description: "Local development environment",
+  },
+];
+
+const RESTRICTED_ROLE_NAME = "app_user";
+const ADMIN_ROLE_SUFFIX = "_owner"; // Neon's default admin role pattern: neondb_owner
+
+interface BranchInfo {
+  branch: Branch;
+  endpoint: Endpoint;
+  adminRole: Role;
+  restrictedRole?: Role;
+}
+
+/**
+ * Finds a branch by name from a list of branches
+ */
+function findBranchByName(
+  branches: Branch[],
+  name: string,
+): Branch | undefined {
+  return branches.find((b) => b.name === name);
+}
+
+/**
+ * Gets the endpoint for a branch
+ */
+async function getEndpointForBranch(
+  client: ReturnType<typeof createApiClient>,
+  projectId: string,
+  branchId: string,
+): Promise<Endpoint> {
+  const response = await client.listProjectBranchEndpoints(projectId, branchId);
+  const endpoints = response.data.endpoints;
+
+  if (endpoints.length === 0) {
+    throw new Error(`No endpoint found for branch ${branchId}`);
   }
 
-  const s = p.spinner();
-  s.start("Adding secret version...");
+  // Return the read-write endpoint
+  const rwEndpoint = endpoints.find((e) => e.type === "read_write");
+  return rwEndpoint || endpoints[0];
+}
+
+/**
+ * Gets roles for a branch
+ */
+async function getRolesForBranch(
+  client: ReturnType<typeof createApiClient>,
+  projectId: string,
+  branchId: string,
+): Promise<Role[]> {
+  const response = await client.listProjectBranchRoles(projectId, branchId);
+  return response.data.roles;
+}
+
+/**
+ * Creates a restricted role for production use (best practice)
+ * Checks if role exists first, if yes - reset password, if no - create it
+ */
+async function ensureRestrictedRole(
+  client: ReturnType<typeof createApiClient>,
+  projectId: string,
+  branchId: string,
+): Promise<Role> {
+  // Get all roles to check if restricted role exists
+  const roles = await getRolesForBranch(client, projectId, branchId);
+  const existing = roles.find((r) => r.name === RESTRICTED_ROLE_NAME);
+
+  if (existing) {
+    p.log.info(
+      `Restricted role '${RESTRICTED_ROLE_NAME}' already exists, resetting password...`,
+    );
+    // Reset password to get a fresh one
+    const resetResponse = await client.resetProjectBranchRolePassword(
+      projectId,
+      branchId,
+      RESTRICTED_ROLE_NAME,
+    );
+    return resetResponse.data.role;
+  }
+
+  p.log.info(`Creating restricted role '${RESTRICTED_ROLE_NAME}'...`);
+  const response = await client.createProjectBranchRole(projectId, branchId, {
+    role: {
+      name: RESTRICTED_ROLE_NAME,
+    },
+  });
+  return response.data.role;
+}
+
+/**
+ * Gets the admin role (the *_owner role that Neon creates by default)
+ */
+function findAdminRole(roles: Role[]): Role | undefined {
+  return roles.find((r) => r.name.endsWith(ADMIN_ROLE_SUFFIX));
+}
+
+/**
+ * Ensures admin role exists and returns it with a fresh password
+ * Admin role should always exist (Neon creates it by default), but we check just in case
+ */
+async function ensureAdminRole(
+  client: ReturnType<typeof createApiClient>,
+  projectId: string,
+  branchId: string,
+  branchName: string,
+): Promise<Role> {
+  // Get all roles
+  const roles = await getRolesForBranch(client, projectId, branchId);
+
+  // Find admin role (ends with _owner)
+  const adminRole = roles.find((r) => r.name.endsWith(ADMIN_ROLE_SUFFIX));
+
+  if (!adminRole) {
+    p.log.error(
+      `No admin role (*${ADMIN_ROLE_SUFFIX}) found on branch '${branchName}'`,
+    );
+    p.log.info(`Available roles: ${roles.map((r) => r.name).join(", ")}`);
+    throw new Error(`Admin role not found on branch '${branchName}'`);
+  }
+
+  p.log.info(`Found admin role '${adminRole.name}', resetting password...`);
+
+  // Reset password to get a fresh one
+  const response = await client.resetProjectBranchRolePassword(
+    projectId,
+    branchId,
+    adminRole.name,
+  );
+  return response.data.role;
+}
+
+/**
+ * Builds a PostgreSQL connection URL
+ */
+function buildConnectionUrl(
+  host: string,
+  role: Role,
+  database: string = "neondb",
+): string {
+  if (!role.password) {
+    throw new Error(`Role '${role.name}' does not have a password`);
+  }
+  const encodedPassword = encodeURIComponent(role.password);
+  return `postgresql://${role.name}:${encodedPassword}@${host}/${database}?sslmode=require`;
+}
+
+/**
+ * Updates a Google Cloud Secret with a new database URL
+ */
+async function updateGCloudSecret(
+  secretName: string,
+  databaseUrl: string,
+): Promise<void> {
+  // Check if secret exists
+  let secretExists = false;
   try {
-    // Securely pass value via stdin using pipe to avoid shell interpolation
-    await $`echo ${value} | gcloud secrets versions add ${secretName} --data-file=-`.quiet();
-    s.stop("Secret updated.");
-  } catch (err: any) {
-    s.stop("Failed to update secret.");
-    p.log.error(`Failed to update secret ${secretName}: ${err.message}`);
-    process.exit(1);
+    await $`gcloud secrets describe ${secretName}`.quiet();
+    secretExists = true;
+  } catch {
+    secretExists = false;
+  }
+
+  if (!secretExists) {
+    // Create the secret first
+    await confirmAndRun(
+      `gcloud secrets create ${secretName} --replication-policy="automatic"`,
+      `Create secret '${secretName}'`,
+    );
+  }
+
+  // Show what we're about to do (masked for security)
+  const maskedUrl = databaseUrl.replace(/:([^@]+)@/, ":****@");
+  p.log.info(`Will update secret '${secretName}' with: ${maskedUrl}`);
+
+  const shouldRun = await p.confirm({
+    message: `Update secret '${secretName}'?`,
+  });
+
+  if (p.isCancel(shouldRun) || !shouldRun) {
+    p.log.warn(`Skipped updating secret '${secretName}'`);
+    return;
+  }
+
+  // Update the secret with the real value
+  try {
+    await $`echo -n ${databaseUrl} | gcloud secrets versions add ${secretName} --data-file=-`.quiet();
+    p.log.success(`Secret '${secretName}' updated successfully`);
+  } catch (err) {
+    p.log.error(`Failed to update secret '${secretName}'`);
+    throw err;
   }
 }
 
-export async function initDbSecret(token: string, projectId: string) {
-  const neon = createApiClient({
-    apiKey: token,
-  });
+/**
+ * Sets up a branch with all necessary roles and returns connection info
+ * Ensures all roles exist and have fresh passwords
+ */
+async function setupBranch(
+  client: ReturnType<typeof createApiClient>,
+  projectId: string,
+  branch: Branch,
+  needsRestrictedRole: boolean,
+): Promise<BranchInfo> {
+  p.log.info(`Setting up branch '${branch.name}' (${branch.id})...`);
 
-  const dbName = "collects";
+  // Get endpoint
+  const endpoint = await getEndpointForBranch(client, projectId, branch.id);
+  p.log.info(`Found endpoint: ${endpoint.host}`);
 
-  p.intro(`Initializing Neon Database branches for project: ${projectId}`);
+  // Ensure admin role exists and get it with fresh password
+  const adminRoleWithPassword = await ensureAdminRole(
+    client,
+    projectId,
+    branch.id,
+    branch.name,
+  );
 
-  // 1. Get project info and production branch (Neon's default branch is "production", not "main")
-  p.log.info("Fetching project information...");
-  let productionBranchId: string;
-  let productionBranch: any;
-
-  try {
-    const branchesResp = await neon.listProjectBranches({ projectId });
-    // Neon creates a default branch named "production" for new projects
-    productionBranch = branchesResp.data.branches.find(
-      (b: any) => b.name === "production",
-    );
-
-    // Fallback to finding the default branch if "production" is not found
-    if (!productionBranch) {
-      productionBranch = branchesResp.data.branches.find(
-        (b: any) => b.default === true,
-      );
-    }
-
-    if (!productionBranch) {
-      throw new Error(
-        "Production branch not found in project. Neon projects should have a 'production' branch by default.",
-      );
-    }
-    productionBranchId = productionBranch.id;
-    p.log.success(`Found production branch: ${productionBranchId}`);
-  } catch (e: any) {
-    p.log.error(`Failed to get project branches: ${e.message || e}`);
-    process.exit(1);
-  }
-
-  // 2. Get or create roles on production branch
-  p.log.info("Checking roles on production branch...");
-  let adminRole;
-  let webUserRole;
-
-  try {
-    const rolesResp = await neon.listProjectBranchRoles(
-      projectId,
-      productionBranchId,
-    );
-    const roles = rolesResp.data.roles;
-
-    adminRole = roles.find((r: any) => r.name === "admin");
-    webUserRole = roles.find((r: any) => r.name === "web_user");
-
-    if (!adminRole) {
-      p.log.info("Creating admin role...");
-      const adminResp = await neon.createProjectBranchRole(
-        projectId,
-        productionBranchId,
-        {
-          role: { name: "admin" },
-        },
-      );
-      adminRole = adminResp.data.role;
-    }
-
-    if (!webUserRole) {
-      p.log.info("Creating web_user role...");
-      const webUserResp = await neon.createProjectBranchRole(
-        projectId,
-        productionBranchId,
-        {
-          role: { name: "web_user" },
-        },
-      );
-      webUserRole = webUserResp.data.role;
-    }
-
-    p.log.success("Roles configured on production: admin, web_user");
-  } catch (e: any) {
-    p.log.error(`Failed to configure roles: ${e.message || e}`);
-    process.exit(1);
-  }
-
-  // 3. Get or create development branch (for local, main, and PR environments)
-  // Note: Neon may auto-create a "development" branch, we use it for non-production environments
-  p.log.info("Checking development branch...");
-  let devBranch;
-  let webUserRoleDevPass: string | undefined;
-
-  try {
-    const branchesResp = await neon.listProjectBranches({ projectId });
-    devBranch = branchesResp.data.branches.find(
-      (b: any) => b.name === "development",
-    );
-
-    if (!devBranch) {
-      p.log.info("Creating development branch from production...");
-      const devBranchResp = await neon.createProjectBranch(projectId, {
-        branch: {
-          name: "development",
-          parent_id: productionBranchId,
-        },
-      });
-      devBranch = devBranchResp.data.branch;
-      p.log.success("Development branch created");
-    } else {
-      p.log.success(`Development branch already exists: ${devBranch.id}`);
-    }
-
-    // Reset password for web_user on development branch to get a valid password for it
-    p.log.info("Resetting web_user password on development branch...");
-    const resetResp = await neon.resetProjectBranchRolePassword(
-      projectId,
-      devBranch.id,
-      "web_user",
-    );
-    webUserRoleDevPass = resetResp.data.role.password;
-  } catch (e: any) {
-    p.log.error(`Failed to setup development branch: ${e.message || e}`);
-    process.exit(1);
-  }
-
-  // 4. Get endpoints
-  p.log.info("Fetching endpoints...");
-  let productionEndpoint;
-  let devEndpoint;
-
-  try {
-    const endpointsResp = await neon.listProjectEndpoints(projectId);
-    const endpoints = endpointsResp.data.endpoints;
-
-    productionEndpoint = endpoints.find(
-      (ep: any) => ep.branch_id === productionBranchId,
-    );
-    devEndpoint = endpoints.find((ep: any) => ep.branch_id === devBranch.id);
-
-    if (!productionEndpoint) throw new Error("Production endpoint not found");
-
-    if (!devEndpoint) {
-      p.log.info("Creating endpoint for development branch...");
-      const epResp = await neon.createProjectEndpoint(projectId, {
-        endpoint: {
-          branch_id: devBranch.id,
-          type: EndpointType.ReadWrite,
-        },
-      });
-      devEndpoint = epResp.data.endpoint;
-    }
-  } catch (e: any) {
-    p.log.error(`Failed to fetch/create endpoints: ${e.message || e}`);
-    process.exit(1);
-  }
-
-  // 5. Build connection strings and update secrets
-  if (!adminRole.password || !webUserRole.password) {
-    p.log.error(
-      "Passwords not returned for roles. Cannot create connection strings.",
-    );
-    process.exit(1);
-  }
-  if (!webUserRoleDevPass) {
-    p.log.error("Password for development branch web_user not obtained.");
-    process.exit(1);
-  }
-
-  const getConnString = (
-    user: string,
-    pass: string,
-    host: string,
-    db: string,
-  ) => {
-    return `postgres://${user}:${pass}@${host}/${db}?sslmode=require`;
+  const result: BranchInfo = {
+    branch,
+    endpoint,
+    adminRole: adminRoleWithPassword,
   };
 
-  // === Production branch connection strings ===
-  // Production environment (web_user role)
-  const databaseUrl = getConnString(
-    webUserRole.name,
-    webUserRole.password,
-    productionEndpoint.host,
-    dbName,
-  );
-  // Internal/admin environment (admin role for migrations)
-  const databaseUrlInternal = getConnString(
-    adminRole.name,
-    adminRole.password,
-    productionEndpoint.host,
-    dbName,
-  );
-  // Nightly environment (uses production branch with web_user)
-  const databaseUrlNightly = getConnString(
-    webUserRole.name,
-    webUserRole.password,
-    productionEndpoint.host,
-    dbName,
-  );
+  // Create/get restricted role if needed (for production)
+  if (needsRestrictedRole) {
+    result.restrictedRole = await ensureRestrictedRole(
+      client,
+      projectId,
+      branch.id,
+    );
+  }
 
-  // === Development branch connection strings ===
-  // Used for: local development, main branch deployments, and PR environments
-  const databaseUrlDev = getConnString(
-    webUserRole.name,
-    webUserRoleDevPass,
-    devEndpoint.host,
-    dbName,
-  );
+  return result;
+}
 
-  p.log.info("Updating Google Cloud Secrets...");
+/**
+ * Main function to initialize database secrets
+ */
+export async function initDbSecret(
+  neonApiToken: string,
+  neonProjectId: string,
+): Promise<void> {
+  // Create API client
+  const client = createApiClient({
+    apiKey: neonApiToken,
+  });
 
-  // Production branch secrets
-  await updateSecret("database-url", databaseUrl); // Production environment
-  await updateSecret("database-url-internal", databaseUrlInternal); // Admin/migrations
-  await updateSecret("database-url-nightly", databaseUrlNightly); // Nightly environment
+  // Step 1: List branches
+  p.log.step("Fetching project branches...");
+  const branchesResponse = await client.listProjectBranches({
+    projectId: neonProjectId,
+  });
+  const branches = branchesResponse.data.branches;
 
-  // Development branch secrets (for local, main, and PR environments)
-  await updateSecret("database-url-dev", databaseUrlDev); // Local development
-  await updateSecret("database-url-main", databaseUrlDev); // Main branch deployments
-  await updateSecret("database-url-pr", databaseUrlDev); // PR environments
-
-  p.outro("Neon Database branches setup complete!");
-  p.log.info(`Project ID: ${projectId}`);
-  p.log.info("Branch structure:");
-  p.log.info("  - Production branch → prod, internal (admin), nightly");
-  p.log.info("  - Development branch → local, main, PR environments");
   p.log.info(
-    "Next steps: Run SQL migrations using the admin credentials (database-url-internal).",
+    `Found ${branches.length} branches: ${branches.map((b) => b.name).join(", ")}`,
   );
+
+  // Find production and development branches
+  // Neon creates default branches, but names may vary
+  const productionBranch =
+    findBranchByName(branches, "main") ||
+    findBranchByName(branches, "production");
+  const developmentBranch =
+    findBranchByName(branches, "development") ||
+    findBranchByName(branches, "dev");
+
+  if (!productionBranch) {
+    p.log.error(
+      "No production branch found (looked for 'main' or 'production')",
+    );
+    p.log.info(`Available branches: ${branches.map((b) => b.name).join(", ")}`);
+    p.log.error(
+      "Please ensure your Neon project has a 'main' or 'production' branch",
+    );
+    throw new Error("Production branch not found");
+  }
+
+  if (!developmentBranch) {
+    p.log.error(
+      "No development branch found (looked for 'development' or 'dev')",
+    );
+    p.log.info(`Available branches: ${branches.map((b) => b.name).join(", ")}`);
+    p.log.error(
+      "Please ensure your Neon project has a 'development' or 'dev' branch",
+    );
+    throw new Error("Development branch not found");
+  }
+
+  p.log.success(
+    `Found production branch: ${productionBranch.name} (${productionBranch.id})`,
+  );
+  p.log.success(
+    `Found development branch: ${developmentBranch.name} (${developmentBranch.id})`,
+  );
+
+  // Step 2: Setup branches
+  p.log.step("Setting up branches...");
+
+  // Production needs restricted role for best practices
+  const productionInfo = await setupBranch(
+    client,
+    neonProjectId,
+    productionBranch,
+    true,
+  );
+  const developmentInfo = await setupBranch(
+    client,
+    neonProjectId,
+    developmentBranch,
+    false,
+  );
+
+  // Step 3: Generate connection URLs and update secrets
+  p.log.step("Updating Google Cloud secrets...");
+
+  for (const config of ENV_CONFIGS) {
+    p.log.info(`\nProcessing ${config.env} (${config.description})...`);
+
+    const branchInfo =
+      config.branchName === "production" ? productionInfo : developmentInfo;
+    const role = config.useAdminRole
+      ? branchInfo.adminRole
+      : branchInfo.restrictedRole;
+
+    if (!role) {
+      p.log.error(
+        `No ${config.useAdminRole ? "admin" : "restricted"} role available for ${config.env}`,
+      );
+      process.exit(1);
+    }
+
+    const connectionUrl = buildConnectionUrl(branchInfo.endpoint.host, role);
+
+    // Show masked URL for verification
+    const maskedUrl = connectionUrl.replace(/:([^@]+)@/, ":****@");
+    p.log.info(`Connection URL: ${maskedUrl}`);
+
+    await updateGCloudSecret(config.secretName, connectionUrl);
+  }
+
+  // Step 4: Summary
+  p.log.step("Summary");
+
+  for (const config of ENV_CONFIGS) {
+    const branchInfo =
+      config.branchName === "production" ? productionInfo : developmentInfo;
+    const role = config.useAdminRole
+      ? branchInfo.adminRole
+      : branchInfo.restrictedRole;
+    p.log.success(
+      `${config.env}: ${config.secretName} -> ${role?.name || "N/A"}`,
+    );
+  }
+
+  p.outro("Database secrets initialized successfully!");
 }

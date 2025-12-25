@@ -99,6 +99,13 @@ impl CFDisk {
     }
 }
 
+#[cfg(test)]
+impl Default for CFDisk {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl OpenDALDisk for CFDisk {
     #[cfg(test)]
     async fn could_connected(&self) -> bool {
@@ -160,6 +167,13 @@ impl GDDisk {
     #[cfg(not(test))]
     pub fn new(config: GDDiskConfig) -> Self {
         Self { config }
+    }
+}
+
+#[cfg(test)]
+impl Default for GDDisk {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

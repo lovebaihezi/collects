@@ -37,23 +37,7 @@ where
     S: SqlStorage + Clone + Send + Sync + 'static,
 {
     // Build the protected internal routes with Zero Trust middleware if configured
-    let internal_routes = if let (Some(team_domain), Some(audience)) =
-        (config.cf_access_team_domain(), config.cf_access_aud())
-    {
-        let zero_trust_config = Arc::new(auth::ZeroTrustConfig::new(
-            team_domain.to_string(),
-            audience.to_string(),
-        ));
-
-        users::internal_routes::<S>().layer(middleware::from_fn(move |req, next| {
-            let config = Arc::clone(&zero_trust_config);
-            auth::zero_trust_middleware(config, req, next)
-        }))
-    } else {
-        // If Zero Trust is not configured, use routes without authentication
-        // This is useful for local development
-        users::internal_routes::<S>()
-    };
+    let internal_routes = create_internal_routes::<S>(&config);
 
     Router::new()
         .route("/is-health", get(health_check::<S>))
@@ -84,6 +68,30 @@ where
             }),
         )
         .with_state(storage)
+}
+
+/// Create internal routes with optional Zero Trust middleware
+fn create_internal_routes<S>(config: &Config) -> Router<S>
+where
+    S: SqlStorage + Clone + Send + Sync + 'static,
+{
+    if let (Some(team_domain), Some(audience)) =
+        (config.cf_access_team_domain(), config.cf_access_aud())
+    {
+        let zero_trust_config = Arc::new(auth::ZeroTrustConfig::new(
+            team_domain.to_string(),
+            audience.to_string(),
+        ));
+
+        users::internal_routes::<S>().layer(middleware::from_fn(move |req, next| {
+            let config = Arc::clone(&zero_trust_config);
+            auth::zero_trust_middleware(config, req, next)
+        }))
+    } else {
+        // If Zero Trust is not configured, use routes without authentication
+        // This is useful for local development
+        users::internal_routes::<S>()
+    }
 }
 
 async fn health_check<S>(State(storage): State<S>) -> impl IntoResponse

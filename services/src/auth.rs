@@ -174,14 +174,17 @@ async fn validate_token(token: &str, config: &ZeroTrustConfig) -> Result<AccessC
 
 /// JWKS key structure
 #[derive(Debug, Deserialize)]
-#[allow(dead_code)]
 struct JwksKey {
     kid: String,
     n: String,
     e: String,
+    /// Algorithm field - unused but part of JWKS spec
     #[serde(default)]
+    #[allow(dead_code)]
     alg: Option<String>,
+    /// Key type field - unused but part of JWKS spec
     #[serde(default)]
+    #[allow(dead_code)]
     kty: Option<String>,
 }
 
@@ -192,6 +195,10 @@ struct JwksResponse {
 }
 
 /// Fetch public key from Cloudflare's JWKS endpoint
+/// 
+/// TODO: Implement caching for JWKS keys to reduce external calls and improve performance.
+/// Consider using a cache with TTL (e.g., 1 hour) to avoid fetching keys on every request.
+/// This would improve response times and reduce dependency on Cloudflare's JWKS endpoint.
 async fn fetch_public_key(jwks_url: &str, kid: &str) -> Result<DecodingKey, String> {
     // Fetch JWKS from Cloudflare
     let response = reqwest::get(jwks_url)

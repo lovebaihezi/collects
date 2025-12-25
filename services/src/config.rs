@@ -61,9 +61,10 @@ struct RawConfig {
 }
 
 impl Config {
-    /// Create a test configuration with default values
-    /// This is only available when testing
-    #[doc(hidden)]
+    /// Create a test configuration with default values.
+    /// 
+    /// This function is available for both unit tests and integration tests.
+    /// It should not be used in production code.
     pub fn new_for_test() -> Self {
         Self {
             env: Env::Local,

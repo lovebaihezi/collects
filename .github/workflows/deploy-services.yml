@@ -107,6 +107,6 @@ jobs:
           just services::gcloud-deploy ${{ env.ENV }} ${{ env.TAG }}
 
       - name: Deploy to Internal Environment
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.check-version.outputs.version_changed != 'true'
         run: |
           just services::gcloud-deploy internal ${{ env.TAG }}

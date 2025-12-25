@@ -7,11 +7,11 @@ fmt: install
     bun prettier --write *.ts package.json tsconfig.json .oxlintrc.json
 
 [working-directory: 'services']
-check-fmt:
+check-fmt: install
     bun prettier --check *.ts package.json tsconfig.json .oxlintrc.json
 
 [working-directory: 'services']
-check-lint:
+check-lint: install
     bun oxlint --type-aware
 
 # Runs the setup script to get the yaml config

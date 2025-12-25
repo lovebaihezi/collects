@@ -98,7 +98,10 @@ where
     }
 }
 
-async fn health_check<S>(State(storage): State<S>, Extension(config): Extension<Config>) -> impl IntoResponse
+async fn health_check<S>(
+    State(storage): State<S>,
+    Extension(config): Extension<Config>,
+) -> impl IntoResponse
 where
     S: SqlStorage,
 {

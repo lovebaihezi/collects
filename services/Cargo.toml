@@ -27,6 +27,7 @@ tracing-opentelemetry = { workspace = true }
 opentelemetry = { workspace = true }
 opentelemetry_sdk = { workspace = true }
 mimalloc = { workspace = true }
+totp-rs = { version = "5.7.0", features = ["otpauth", "gen_secret"] }
 
 [dev-dependencies]
 axum-test = "18.1.0"

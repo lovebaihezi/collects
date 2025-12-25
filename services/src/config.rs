@@ -15,6 +15,8 @@ pub enum Env {
     Test,
     #[serde(rename = "pr")]
     Pr,
+    #[serde(rename = "nightly")]
+    Nightly,
 }
 
 #[cfg(test)]
@@ -45,6 +47,7 @@ impl Display for Env {
             Env::Internal => write!(f, "internal"),
             Env::Test => write!(f, "test"),
             Env::Pr => write!(f, "pr"),
+            Env::Nightly => write!(f, "nightly"),
         }
     }
 }

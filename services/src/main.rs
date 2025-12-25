@@ -16,7 +16,15 @@ const BUILD_BRANCH: &str = env!("BUILD_BRANCH");
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     // Load configuration first to determine environment for tracing
-    let config: Config = Config::init()?;
+    let config: Config = Config::init().map_err(|e| {
+        eprintln!("Failed to initialize configuration from environment:");
+        eprintln!("Error: {:?}", e);
+        eprintln!("\nEnvironment variables:");
+        for (key, value) in std::env::vars() {
+            eprintln!("  {}={:?}", key, value);
+        }
+        e
+    })?;
 
     // Initialize tracing
     telemetry::init_tracing(&config)?;

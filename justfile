@@ -54,7 +54,7 @@ docker-push image_tag: services::release
     #!/bin/bash
     set -eux
 
-    lsd target/x86_64-unknown-linux-musl/release
+    ls -al target/x86_64-unknown-linux-musl/release
 
     GCP_REGION="us-east1"
     PROJECT_ID=$(gcloud config get-value project)

@@ -29,6 +29,16 @@ pub fn extract_auth_user(request: &Request) -> Option<AuthUser> {
         .and_then(|v| v.to_str().ok())
         .map(String::from);
 
+    // Validate that required fields are non-empty
+    if user_id.is_empty() || email.is_empty() {
+        return None;
+    }
+
+    // Basic email format validation
+    if !email.contains('@') {
+        return None;
+    }
+
     Some(AuthUser {
         user_id,
         email,
@@ -124,6 +134,42 @@ mod tests {
         let mut headers = HeaderMap::new();
         headers.insert("X-Auth-User-Id", HeaderValue::from_static("user123"));
         // Missing email header
+
+        let request = Request::builder()
+            .uri("/test")
+            .body(axum::body::Body::empty())
+            .unwrap();
+
+        let mut request = request;
+        *request.headers_mut() = headers;
+
+        let user = extract_auth_user(&request);
+        assert!(user.is_none());
+    }
+
+    #[test]
+    fn test_extract_auth_user_empty_values() {
+        let mut headers = HeaderMap::new();
+        headers.insert("X-Auth-User-Id", HeaderValue::from_static(""));
+        headers.insert("X-Auth-User-Email", HeaderValue::from_static("user@example.com"));
+
+        let request = Request::builder()
+            .uri("/test")
+            .body(axum::body::Body::empty())
+            .unwrap();
+
+        let mut request = request;
+        *request.headers_mut() = headers;
+
+        let user = extract_auth_user(&request);
+        assert!(user.is_none());
+    }
+
+    #[test]
+    fn test_extract_auth_user_invalid_email() {
+        let mut headers = HeaderMap::new();
+        headers.insert("X-Auth-User-Id", HeaderValue::from_static("user123"));
+        headers.insert("X-Auth-User-Email", HeaderValue::from_static("invalid-email"));
 
         let request = Request::builder()
             .uri("/test")

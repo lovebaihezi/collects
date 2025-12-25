@@ -24,9 +24,12 @@ async function validateCfAccessToken(
     }
 
     // Decode the payload (base64url encoded)
-    const payload = JSON.parse(
-      atob(parts[1].replace(/-/g, "+").replace(/_/g, "/")),
-    );
+    // Add padding if needed for proper base64 decoding
+    let base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    while (base64.length % 4) {
+      base64 += "=";
+    }
+    const payload = JSON.parse(atob(base64));
 
     // Basic validation: check expiration
     const now = Math.floor(Date.now() / 1000);
@@ -42,14 +45,15 @@ async function validateCfAccessToken(
       name: payload.name || payload.common_name,
     };
   } catch (error) {
-    console.error("Error validating CF Access token:", error);
+    console.error("Error validating CF Access token");
     return null;
   }
 }
 
 async function handleApi(req: Request, env: Env): Promise<Response> {
   const url = new URL(req.url);
-  const apiBase = "https://collects-api-145756646168.us-east1.run.app";
+  const apiBase =
+    env.API_BASE_URL || "https://collects-api-145756646168.us-east1.run.app";
   const newPath = url.pathname.substring("/api".length);
   const newUrl = new URL(apiBase + newPath);
   newUrl.search = url.search;

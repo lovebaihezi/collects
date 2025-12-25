@@ -2,6 +2,10 @@ name = "collects-app"
 main = "src/worker.ts"
 compatibility_date = "2025-09-15"
 
+# Environment variables (optional)
+# [vars]
+# API_BASE_URL = "https://collects-api-145756646168.us-east1.run.app"
+
 [[routes]]
 pattern = "collects.lqxclqxc.com"
 custom_domain = true

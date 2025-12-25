@@ -17,8 +17,7 @@ install-hooks: install-deps
 check-fmt: scripts::check-fmt
     cargo fmt --all -- --check
 
-# Run cargo clippy on the workspace
-check-clippy:
+check-lint: scripts::check-lint
     cargo clippy --workspace --all-targets -- -D warnings
 
 # Run typos check

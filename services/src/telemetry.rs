@@ -17,8 +17,8 @@ pub fn init_tracing(config: &Config) -> anyhow::Result<()> {
             .init();
     } else {
         // Production: JSON logging with Stackdriver & Cloud Trace
-        let project_id = env::var("GOOGLE_CLOUD_PROJECT")
-            .context("GOOGLE_CLOUD_PROJECT environment variable is required in production")?;
+        let project_id = env::var("GCP_PROJECT_ID")
+            .context("GCP_PROJECT_ID environment variable must be set for production tracing")?;
 
         // Set the global propagator to trace-context (W3C)
         opentelemetry::global::set_text_map_propagator(TraceContextPropagator::new());

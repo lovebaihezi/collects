@@ -139,8 +139,8 @@ fn extract_token_from_headers(headers: &axum::http::HeaderMap) -> Option<&str> {
     if let Some(header_value) = headers.get(AUTHORIZATION) {
         let header_str = header_value.to_str().ok()?;
         // Remove "Bearer " prefix if present
-        if header_str.starts_with("Bearer ") {
-            return Some(&header_str[7..]);
+        if let Some(stripped) = header_str.strip_prefix("Bearer ") {
+            return Some(stripped);
         }
         return Some(header_str);
     }

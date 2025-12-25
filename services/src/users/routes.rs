@@ -2,6 +2,30 @@
 //!
 //! This module provides API endpoints for user creation with OTP setup
 //! and OTP verification for signin.
+//!
+//! ## Example: Using ZeroTrustAuth Extractor
+//!
+//! When Cloudflare Zero Trust is enabled, protected handlers can extract
+//! user information from validated JWT tokens:
+//!
+//! ```rust,ignore
+//! use axum::{Json, response::IntoResponse};
+//! use collects_services::auth::ZeroTrustAuth;
+//! use serde::Serialize;
+//!
+//! #[derive(Serialize)]
+//! struct WhoAmI {
+//!     email: String,
+//!     subject: String,
+//! }
+//!
+//! async fn whoami_handler(auth: ZeroTrustAuth) -> impl IntoResponse {
+//!     Json(WhoAmI {
+//!         email: auth.email().unwrap_or("unknown").to_string(),
+//!         subject: auth.subject().to_string(),
+//!     })
+//! }
+//! ```
 
 use axum::{Json, Router, extract::State, http::StatusCode, response::IntoResponse, routing::post};
 use serde::Serialize;

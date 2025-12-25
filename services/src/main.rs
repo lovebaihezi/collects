@@ -31,6 +31,12 @@ async fn main() -> anyhow::Result<()> {
         "Configuration loaded"
     );
 
+    // Create socket address
+    let addr = SocketAddr::from((config.server_addr().parse::<IpAddr>()?, config.port()));
+
+    // Start the server
+    let listener = tokio::net::TcpListener::bind(addr).await?;
+
     // Initialize database connection pool
     let pool = database::create_pool(&config).await?;
     let storage = PgStorage::new(pool);
@@ -38,13 +44,7 @@ async fn main() -> anyhow::Result<()> {
     // Build the application router
     let route = routes(storage, config.clone()).await;
 
-    // Create socket address
-    let addr = SocketAddr::from((config.server_addr().parse::<IpAddr>()?, config.port()));
-
     info!("Starting server on {}", addr);
-
-    // Start the server
-    let listener = tokio::net::TcpListener::bind(addr).await?;
     axum::serve(listener, route).await?;
 
     Ok(())

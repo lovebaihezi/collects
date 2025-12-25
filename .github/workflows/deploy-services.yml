@@ -85,19 +85,23 @@ jobs:
 
             if git diff --name-only "$BASE" HEAD -- services/Cargo.toml | grep -q .; then
               VERSION="$(sed -n 's/^version *= *"\(.*\)"/\1/p' services/Cargo.toml | head -n 1)"
-              if [[ "$VERSION" =~ ^20[0-9]{2}\.(0[1-9]|1[0-2])\.(0[1-9]|[12][0-9]|3[01])\+[0-9]+$ ]]; then
-                DATE_PART="${VERSION%%+*}"
-                DATE_CANON="${DATE_PART//./-}"
-                if ! date -d "$DATE_CANON" "+%Y.%m.%d" >/dev/null 2>&1; then
-                  echo "Service version date component \"$DATE_PART\" is not a valid calendar date" >&2
-                  exit 1
-                fi
-                echo "ENV=prod" >> "$GITHUB_ENV"
-                echo "TAG=$VERSION" >> "$GITHUB_ENV"
-              else
-                echo "Service version \"$VERSION\" does not match required format YYYY.MM.DD+N" >&2
-                exit 1
-              fi
+              python - "$VERSION" <<'PY'
+import datetime
+import re
+import sys
+
+version = sys.argv[1]
+if not re.fullmatch(r"20\d{2}\.\d{2}\.\d{2}\+[1-9]\d*", version):
+    sys.exit(f"Service version \"{version}\" does not match required format YYYY.MM.DD+N")
+
+date_part = version.split("+", 1)[0]
+try:
+    datetime.datetime.strptime(date_part, "%Y.%m.%d")
+except ValueError as exc:
+    sys.exit(f"Service version date component \"{date_part}\" is not a valid calendar date: {exc}")
+PY
+              echo "ENV=prod" >> "$GITHUB_ENV"
+              echo "TAG=$VERSION" >> "$GITHUB_ENV"
             fi
           fi
 

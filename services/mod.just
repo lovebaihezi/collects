@@ -29,7 +29,7 @@ lint:
     cargo clippy
 
 # Deploys the service to Cloud Run
-# Environments: prod, internal, test, pr
+# Environments: prod, internal, nightly, test, pr
 # Usage: just services::gcloud-deploy prod 20251017-1
 gcloud-deploy env image_tag:
     #!/bin/bash
@@ -44,11 +44,15 @@ gcloud-deploy env image_tag:
     # Determine service name and secret suffix based on environment
     # Mapping:
     #   prod     -> collects-services          -> database-url
+    #   nightly  -> collects-services-nightly  -> database-url (uses prod database)
     #   internal -> collects-services-internal -> database-url-internal
     #   test     -> collects-services-test     -> database-url-test
     #   pr       -> collects-services-pr       -> database-url-pr
     if [ "{{env}}" == "prod" ]; then
         SERVICE_NAME="collects-services"
+        DATABASE_SECRET="database-url"
+    elif [ "{{env}}" == "nightly" ]; then
+        SERVICE_NAME="collects-services-nightly"
         DATABASE_SECRET="database-url"
     else
         SERVICE_NAME="collects-services-{{env}}"

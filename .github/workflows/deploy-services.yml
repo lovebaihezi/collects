@@ -3,7 +3,6 @@ name: Deploy Services
 on:
   push:
     branches: ["main"]
-    tags: ["v*"]
   pull_request:
   schedule:
     - cron: "0 0 * * *"
@@ -12,9 +11,42 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  check-version:
+    name: Check Services Version Change
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      version_changed: ${{ steps.version_check.outputs.version_changed }}
+      current_version: ${{ steps.version_check.outputs.current_version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Check if Services version changed
+        id: version_check
+        run: |
+          if [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" == "refs/heads/main" ]]; then
+            CURRENT_VERSION=$(grep '^version = ' services/Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+            PREVIOUS_VERSION=$(git show HEAD^:services/Cargo.toml 2>/dev/null | grep '^version = ' | head -1 | sed 's/version = "\(.*\)"/\1/' || echo "")
+            echo "Current version: $CURRENT_VERSION"
+            echo "Previous version: $PREVIOUS_VERSION"
+            echo "current_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+            if [[ "$CURRENT_VERSION" != "$PREVIOUS_VERSION" && -n "$PREVIOUS_VERSION" ]]; then
+              echo "version_changed=true" >> $GITHUB_OUTPUT
+            else
+              echo "version_changed=false" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "version_changed=false" >> $GITHUB_OUTPUT
+            echo "current_version=" >> $GITHUB_OUTPUT
+          fi
+
   deploy:
     name: Deploy
     runs-on: ubuntu-latest
+    needs: check-version
     permissions:
       contents: read
       id-token: write
@@ -55,15 +87,15 @@ jobs:
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
             echo "ENV=pr" >> $GITHUB_ENV
             echo "TAG=pr-${{ github.event.pull_request.number }}" >> $GITHUB_ENV
+          elif [[ "${{ needs.check-version.outputs.version_changed }}" == "true" ]]; then
+            echo "ENV=prod" >> $GITHUB_ENV
+            echo "TAG=v${{ needs.check-version.outputs.current_version }}" >> $GITHUB_ENV
           elif [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" == "refs/heads/main" ]]; then
             echo "ENV=test" >> $GITHUB_ENV
             echo "TAG=main-${{ github.sha }}" >> $GITHUB_ENV
           elif [[ "${{ github.event_name }}" == "schedule" ]]; then
             echo "ENV=nightly" >> $GITHUB_ENV
             echo "TAG=nightly-$(date +%Y%m%d)" >> $GITHUB_ENV
-          elif [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" == refs/tags/v* ]]; then
-             echo "ENV=prod" >> $GITHUB_ENV
-             echo "TAG=${{ github.ref_name }}" >> $GITHUB_ENV
           fi
 
       - name: Build and Push Docker Image

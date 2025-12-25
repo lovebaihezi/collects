@@ -29,7 +29,7 @@ lint:
     cargo clippy
 
 # Deploys the service to Cloud Run
-# Environments: prod, internal, test, pr
+# Environments: prod, internal, nightly, test, pr
 # Usage: just services::gcloud-deploy prod 20251017-1
 gcloud-deploy env image_tag:
     #!/bin/bash
@@ -45,6 +45,7 @@ gcloud-deploy env image_tag:
     # Mapping:
     #   prod     -> collects-services          -> database-url
     #   internal -> collects-services-internal -> database-url-internal
+    #   nightly  -> collects-services-nightly  -> database-url-nightly
     #   test     -> collects-services-test     -> database-url-test
     #   pr       -> collects-services-pr       -> database-url-pr
     if [ "{{env}}" == "prod" ]; then

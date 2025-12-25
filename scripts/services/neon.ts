@@ -40,6 +40,13 @@ const ENV_CONFIGS: EnvConfig[] = [
     description: "Internal environment (admin role for migrations)",
   },
   {
+    env: "nightly",
+    branchName: "production",
+    secretName: "database-url-nightly",
+    useAdminRole: false,
+    description: "Nightly environment (production preview)",
+  },
+  {
     env: "test",
     branchName: "development",
     secretName: "database-url-test",

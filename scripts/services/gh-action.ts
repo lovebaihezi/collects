@@ -177,7 +177,7 @@ async function grantSecretAccessorToComputeServiceAccount(
 
 /**
  * Grants Secret Accessor role to the default compute service account for all database secrets
- * This includes: database-url, database-url-internal, database-url-test, database-url-pr, database-url-local
+ * This includes: database-url, database-url-internal, database-url-nightly, database-url-test, database-url-pr, database-url-local
  */
 export async function grantSecretAccessToAllDatabaseSecrets(
   ctx: SetupContext,
@@ -186,6 +186,7 @@ export async function grantSecretAccessToAllDatabaseSecrets(
   const databaseSecrets = [
     "database-url",
     "database-url-internal",
+    "database-url-nightly",
     "database-url-test",
     "database-url-pr",
     "database-url-local",

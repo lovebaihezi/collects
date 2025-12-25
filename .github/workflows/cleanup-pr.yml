@@ -4,9 +4,6 @@ on:
   pull_request:
     types: [closed]
 
-env:
-  CARGO_TERM_COLOR: always
-
 jobs:
   cleanup:
     name: Cleanup PR Resources
@@ -29,6 +26,7 @@ jobs:
         uses: google-github-actions/setup-gcloud@v2
 
       - name: Delete Docker Image
+        id: delete-image
         run: |
           set -x
           
@@ -44,14 +42,20 @@ jobs:
             --quiet \
             --delete-tags 2>/dev/null; then
             echo "Successfully deleted Docker image with tag: ${TAG}"
+            echo "image_deleted=true" >> $GITHUB_OUTPUT
           else
             echo "Docker image with tag ${TAG} not found or already deleted"
+            echo "image_deleted=false" >> $GITHUB_OUTPUT
           fi
 
       - name: Cleanup Summary
         run: |
           echo "## Cleanup Summary for PR #${{ github.event.pull_request.number }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- Docker image \`pr-${{ github.event.pull_request.number }}\` deleted" >> $GITHUB_STEP_SUMMARY
-          echo "- Cloud Run service \`collects-services-pr\` is shared and remains active" >> $GITHUB_STEP_SUMMARY
-          echo "- Cloudflare Worker \`pr\` environment is shared and remains active" >> $GITHUB_STEP_SUMMARY
+          if [[ "${{ steps.delete-image.outputs.image_deleted }}" == "true" ]]; then
+            echo "- ✅ Docker image \`pr-${{ github.event.pull_request.number }}\` deleted" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- ℹ️ Docker image \`pr-${{ github.event.pull_request.number }}\` not found or already deleted" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "- ℹ️ Cloud Run service \`collects-services-pr\` is shared and remains active" >> $GITHUB_STEP_SUMMARY
+          echo "- ℹ️ Cloudflare Worker \`pr\` environment is shared and remains active" >> $GITHUB_STEP_SUMMARY

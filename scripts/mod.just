@@ -3,7 +3,7 @@ install:
     bun i
 
 [working-directory: 'services']
-fmt: install
+fmt:
     bun prettier --write *.ts package.json tsconfig.json .oxlintrc.json
 
 [working-directory: 'services']

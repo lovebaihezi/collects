@@ -33,11 +33,13 @@ web-release: install
 wk-dev: web-build
     pnpm wrangler dev
 
-wk-build: install web-release
-    pnpm wrangler build
+wk-build env="": install web-release
+    @echo "build for env: {{env}}"
+    pnpm wrangler build {{ if env != "" { "--config wrangler." + env + ".toml" } else { "" } }}
 
-wk-deploy env="": install wk-build
-    pnpm wrangler deploy {{ if env != "" { "--env " + env } else { "" } }}
+wk-deploy env="": (wk-build env)
+    @echo {{env}}
+    pnpm wrangler deploy {{ if env != "" { "--config wrangler." + env + ".toml" } else { "" } }}
 
 wk-type: install
     pnpm wrangler types

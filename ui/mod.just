@@ -19,16 +19,32 @@ install:
     cargo install trunk
     pnpm i
 
-web-build env="": install
-    {{ if env == "pr" { "trunk build --features env_pr" } else if env == "test" { "trunk build --features env_test" } else if env == "internal" { "trunk build --features env_internal" } else if env == "nightly" { "trunk build --features env_nightly" } else { "trunk build" } }}
+# Helper recipe to build with trunk, optionally passing environment-specific features
+_trunk-build release_flag env="": install
+    #!/usr/bin/env bash
+    set -euo pipefail
+    TRUNK_CMD="trunk build"
+    if [[ "{{release_flag}}" == "release" ]]; then
+        TRUNK_CMD="$TRUNK_CMD --release"
+    fi
+    if [[ "{{env}}" == "pr" ]]; then
+        TRUNK_CMD="$TRUNK_CMD --features env_pr"
+    elif [[ "{{env}}" == "test" ]]; then
+        TRUNK_CMD="$TRUNK_CMD --features env_test"
+    elif [[ "{{env}}" == "internal" ]]; then
+        TRUNK_CMD="$TRUNK_CMD --features env_internal"
+    elif [[ "{{env}}" == "nightly" ]]; then
+        TRUNK_CMD="$TRUNK_CMD --features env_nightly"
+    fi
+    $TRUNK_CMD
     du -h dist/*
+
+web-build env="": (_trunk-build "" env)
 
 web-fmt: install
     pnpm prettier --write src/worker.ts index.html
 
-web-release env="": install
-    {{ if env == "pr" { "trunk build --release --features env_pr" } else if env == "test" { "trunk build --release --features env_test" } else if env == "internal" { "trunk build --release --features env_internal" } else if env == "nightly" { "trunk build --release --features env_nightly" } else { "trunk build --release" } }}
-    du -h dist/*
+web-release env="": (_trunk-build "release" env)
 
 wk-dev: (web-build)
     pnpm wrangler dev

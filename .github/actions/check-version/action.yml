@@ -1,0 +1,45 @@
+name: 'Check Version Change'
+description: 'Detects if the version in a Cargo.toml file has changed'
+inputs:
+  cargo-toml-path:
+    description: 'Path to the Cargo.toml file (e.g., ui/Cargo.toml or services/Cargo.toml)'
+    required: true
+outputs:
+  version_changed:
+    description: 'Whether the version has changed (true/false)'
+    value: ${{ steps.check.outputs.version_changed }}
+  current_version:
+    description: 'The current version from Cargo.toml'
+    value: ${{ steps.check.outputs.current_version }}
+  previous_version:
+    description: 'The previous version from Cargo.toml'
+    value: ${{ steps.check.outputs.previous_version }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Check version change
+      id: check
+      shell: bash
+      run: |
+        CARGO_TOML_PATH="${{ inputs.cargo-toml-path }}"
+        
+        if [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" == "refs/heads/main" ]]; then
+          CURRENT_VERSION=$(grep '^version = ' "$CARGO_TOML_PATH" | head -1 | sed 's/version = [\"'\'']\([^\"'\'']*\)[\"'\'']/\1/')
+          PREVIOUS_VERSION=$(git show HEAD^:"$CARGO_TOML_PATH" 2>/dev/null | grep '^version = ' | head -1 | sed 's/version = [\"'\'']\([^\"'\'']*\)[\"'\'']/\1/' || echo "")
+          
+          echo "Current version: $CURRENT_VERSION"
+          echo "Previous version: $PREVIOUS_VERSION"
+          echo "current_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+          echo "previous_version=$PREVIOUS_VERSION" >> $GITHUB_OUTPUT
+          
+          if [[ "$CURRENT_VERSION" != "$PREVIOUS_VERSION" && -n "$PREVIOUS_VERSION" ]]; then
+            echo "version_changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "version_changed=false" >> $GITHUB_OUTPUT
+          fi
+        else
+          echo "version_changed=false" >> $GITHUB_OUTPUT
+          echo "current_version=" >> $GITHUB_OUTPUT
+          echo "previous_version=" >> $GITHUB_OUTPUT
+        fi

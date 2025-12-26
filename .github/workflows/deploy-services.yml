@@ -17,31 +17,18 @@ jobs:
     permissions:
       contents: read
     outputs:
-      version_changed: ${{ steps.version_check.outputs.version_changed }}
-      current_version: ${{ steps.version_check.outputs.current_version }}
+      version_changed: ${{ steps.check.outputs.version_changed }}
+      current_version: ${{ steps.check.outputs.current_version }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 2
 
       - name: Check if Services version changed
-        id: version_check
-        run: |
-          if [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" == "refs/heads/main" ]]; then
-            CURRENT_VERSION=$(grep '^version = ' services/Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
-            PREVIOUS_VERSION=$(git show HEAD^:services/Cargo.toml 2>/dev/null | grep '^version = ' | head -1 | sed 's/version = "\(.*\)"/\1/' || echo "")
-            echo "Current version: $CURRENT_VERSION"
-            echo "Previous version: $PREVIOUS_VERSION"
-            echo "current_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
-            if [[ "$CURRENT_VERSION" != "$PREVIOUS_VERSION" && -n "$PREVIOUS_VERSION" ]]; then
-              echo "version_changed=true" >> $GITHUB_OUTPUT
-            else
-              echo "version_changed=false" >> $GITHUB_OUTPUT
-            fi
-          else
-            echo "version_changed=false" >> $GITHUB_OUTPUT
-            echo "current_version=" >> $GITHUB_OUTPUT
-          fi
+        id: check
+        uses: ./.github/actions/check-version
+        with:
+          cargo-toml-path: services/Cargo.toml
 
   check-migrations:
     name: Check Migration Changes

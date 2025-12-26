@@ -1,5 +1,5 @@
 use collects_business::version_info;
-use egui::{Color32, Response, Ui};
+use egui::{Color32, Response, RichText, Ui};
 
 /// Displays the current environment and version/info in the UI.
 ///
@@ -13,17 +13,42 @@ pub fn env_version(ui: &mut Ui) -> Response {
     let display_text = version_info::format_env_version();
     let (env_name, _) = version_info::env_version_info();
 
-    // Color based on environment
-    let color = match env_name {
-        "stable" => Color32::GREEN,
-        "nightly" => Color32::from_rgb(255, 165, 0), // Orange
-        "pr" => Color32::LIGHT_BLUE,
-        "internal" => Color32::YELLOW,
-        "main" => Color32::from_rgb(200, 200, 200), // Light gray
-        _ => Color32::WHITE,
+    // Background color and text color based on environment
+    let (bg_color, text_color) = match env_name {
+        "stable" => (
+            Color32::from_rgb(34, 139, 34), // Forest green background
+            Color32::WHITE,                 // White text
+        ),
+        "nightly" => (
+            Color32::from_rgb(255, 140, 0), // Dark orange background
+            Color32::WHITE,                 // White text
+        ),
+        "pr" => (
+            Color32::from_rgb(13, 110, 253), // Blue background
+            Color32::WHITE,                  // White text
+        ),
+        "internal" => (
+            Color32::from_rgb(255, 193, 7), // Amber background
+            Color32::BLACK,                 // Black text for contrast
+        ),
+        "main" => (
+            Color32::from_rgb(108, 117, 125), // Gray background
+            Color32::WHITE,                   // White text
+        ),
+        _ => (
+            Color32::from_rgb(108, 117, 125), // Gray background
+            Color32::WHITE,                   // White text
+        ),
     };
 
-    ui.colored_label(color, display_text)
+    egui::Frame::NONE
+        .fill(bg_color)
+        .inner_margin(egui::Margin::symmetric(8, 4))
+        .corner_radius(4.0)
+        .show(ui, |ui| {
+            ui.label(RichText::new(display_text).color(text_color))
+        })
+        .inner
 }
 
 #[cfg(test)]

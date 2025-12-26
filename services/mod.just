@@ -159,6 +159,21 @@ migrate-info env: install-sqlx
     export DATABASE_URL
     sqlx migrate info
 
+reset env: install-sqlx
+    #!/bin/bash
+    set -eux
+
+    if [ "{{env}}" == "prod" ] || [ "{{env}}" == "nightly" ]; then
+        DATABASE_SECRET="database-url"
+    else
+        DATABASE_SECRET="database-url-{{env}}"
+    fi
+
+    echo "Resetting database for {{env}} environment..."
+    DATABASE_URL=$(gcloud secrets versions access latest --secret=${DATABASE_SECRET})
+    export DATABASE_URL
+    sqlx database reset
+
 # Create sqlx offline query cache for builds
 # This generates .sqlx directory with query metadata
 # Usage: just services::prepare local

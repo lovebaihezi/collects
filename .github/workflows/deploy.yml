@@ -84,6 +84,7 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
 
       - name: Deploy to Internal Environment
         if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.check-version.outputs.version_changed != 'true'

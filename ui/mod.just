@@ -19,21 +19,21 @@ install:
     cargo install trunk
     pnpm i
 
-web-build: install
-    trunk build
+web-build env="": install
+    trunk build {{ if env == "pr" { "--features env_pr" } else if env == "test" { "--features env_test" } else if env == "internal" { "--features env_internal" } else if env == "nightly" { "--features env_nightly" } else { "" } }}
     du -h dist/*
 
 web-fmt: install
     pnpm prettier --write src/worker.ts index.html
 
-web-release: install
-    trunk build --release
+web-release env="": install
+    trunk build --release {{ if env == "pr" { "--features env_pr" } else if env == "test" { "--features env_test" } else if env == "internal" { "--features env_internal" } else if env == "nightly" { "--features env_nightly" } else { "" } }}
     du -h dist/*
 
-wk-dev: web-build
+wk-dev: (web-build)
     pnpm wrangler dev
 
-wk-build env="": install web-release
+wk-build env="": install (web-release env)
     @echo "build for env: {{env}}"
     pnpm wrangler build {{ if env != "" { "--config wrangler." + env + ".toml" } else { "" } }}
 

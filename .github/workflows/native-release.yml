@@ -27,8 +27,8 @@ jobs:
         id: version_check
         run: |
           if [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" == "refs/heads/main" ]]; then
-            CURRENT_VERSION=$(grep '^version = ' ui/Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
-            PREVIOUS_VERSION=$(git show HEAD^:ui/Cargo.toml 2>/dev/null | grep '^version = ' | head -1 | sed 's/version = "\(.*\)"/\1/' || echo "")
+            CURRENT_VERSION=$(grep '^version = ' ui/Cargo.toml | head -1 | sed 's/version = [\"'\'']\([^\"'\'']*\)[\"'\'']/\1/')
+            PREVIOUS_VERSION=$(git show HEAD^:ui/Cargo.toml 2>/dev/null | grep '^version = ' | head -1 | sed 's/version = [\"'\'']\([^\"'\'']*\)[\"'\'']/\1/' || echo "")
             echo "Current version: $CURRENT_VERSION"
             echo "Previous version: $PREVIOUS_VERSION"
             echo "current_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT

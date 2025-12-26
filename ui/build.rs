@@ -10,10 +10,21 @@ fn main() {
         let ico_path = "assets/icon.ico";
         
         // Only convert if ico doesn't exist or png is newer
-        if !Path::new(ico_path).exists() 
-            || std::fs::metadata(png_path).unwrap().modified().unwrap() 
-                > std::fs::metadata(ico_path).unwrap().modified().unwrap() {
-            
+        let should_convert = if !Path::new(ico_path).exists() {
+            true
+        } else {
+            match (std::fs::metadata(png_path), std::fs::metadata(ico_path)) {
+                (Ok(png_meta), Ok(ico_meta)) => {
+                    match (png_meta.modified(), ico_meta.modified()) {
+                        (Ok(png_time), Ok(ico_time)) => png_time > ico_time,
+                        _ => true, // If we can't determine modification time, regenerate
+                    }
+                }
+                _ => true, // If metadata is unavailable, regenerate
+            }
+        };
+        
+        if should_convert {
             println!("cargo:rerun-if-changed={}", png_path);
             
             // Load the PNG image
@@ -24,13 +35,12 @@ fn main() {
             let ico_file = File::create(ico_path).expect("Failed to create ICO file");
             let mut ico_writer = BufWriter::new(ico_file);
             
-            let icon_dir = ico::IconDir::new(ico::ResourceType::Icon);
+            let mut icon_dir = ico::IconDir::new(ico::ResourceType::Icon);
             let icon_image = ico::IconImage::from_rgba_data(
                 img.width(),
                 img.height(),
                 img.into_raw(),
             );
-            let mut icon_dir = icon_dir;
             icon_dir.add_entry(ico::IconDirEntry::encode(&icon_image).expect("Failed to encode icon"));
             icon_dir.write(&mut ico_writer).expect("Failed to write ICO file");
         }

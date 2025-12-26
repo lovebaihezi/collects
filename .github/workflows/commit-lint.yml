@@ -1,0 +1,71 @@
+name: Commit Lint
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+
+permissions:
+  contents: read
+
+jobs:
+  commitlint:
+    name: Validate Commit Messages
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate PR Commits
+        run: |
+          # Get the base and head SHAs
+          BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+
+          echo "Validating commits from $BASE_SHA to $HEAD_SHA"
+
+          FAILED=0
+
+          # Get all commit messages in the PR using process substitution to avoid subshell
+          while read -r COMMIT; do
+            SUBJECT=$(git log --format=%s -n 1 "$COMMIT")
+
+            # Use the shared validation script
+            if echo "$SUBJECT" | bash scripts/check-commit-msg.sh --stdin > /dev/null 2>&1; then
+              echo "✓ Valid: $SUBJECT"
+            else
+              echo "✗ Invalid: $SUBJECT"
+              FAILED=1
+            fi
+          done < <(git rev-list "$BASE_SHA".."$HEAD_SHA")
+
+          if [ $FAILED -eq 1 ]; then
+            echo ""
+            echo "=================================================="
+            echo "ERROR: Some commits do not follow conventional commit format!"
+            echo ""
+            echo "Expected format: <type>[optional scope]: <description>"
+            echo ""
+            echo "Valid types:"
+            echo "  feat:     A new feature"
+            echo "  fix:      A bug fix"
+            echo "  docs:     Documentation only changes"
+            echo "  style:    Changes that do not affect code meaning"
+            echo "  refactor: Code change that neither fixes a bug nor adds a feature"
+            echo "  perf:     A code change that improves performance"
+            echo "  test:     Adding missing tests or correcting existing tests"
+            echo "  build:    Changes affecting build system or external dependencies"
+            echo "  ci:       Changes to CI configuration files and scripts"
+            echo "  chore:    Other changes that don't modify src or test files"
+            echo "  revert:   Reverts a previous commit"
+            echo ""
+            echo "Examples:"
+            echo "  feat: add user authentication"
+            echo "  fix(ui): resolve button alignment issue"
+            echo "  docs: update README with installation instructions"
+            echo "=================================================="
+            exit 1
+          fi
+
+          echo ""
+          echo "All commits follow conventional commit format!"

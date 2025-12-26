@@ -10,10 +10,6 @@ fn main() {
         get_git_output(&["rev-parse", "--short", "HEAD"]).unwrap_or_else(|| "unknown".to_string());
     println!("cargo:rustc-env=BUILD_COMMIT={}", commit);
 
-    // Get package version from Cargo.toml
-    let version = env!("CARGO_PKG_VERSION");
-    println!("cargo:rustc-env=BUILD_VERSION={}", version);
-
     // Rerun if git HEAD changes
     println!("cargo:rerun-if-changed=../.git/HEAD");
 }

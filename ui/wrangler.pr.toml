@@ -16,4 +16,4 @@ binding = "KV"
 id = "fac40588d16f4fa8b7c8f36de6445649"
 
 [vars]
-API_BASE = "https://collects-api-pr-145756646168.us-east1.run.app"
+API_BASE = "https://collects-services-pr-145756646168.us-east1.run.app"

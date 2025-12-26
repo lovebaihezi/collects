@@ -41,7 +41,9 @@ egui_kittest = { version = "0.33", features = ["snapshot", "eframe"] }
 tokio = { workspace = true, features = ["full", "test-util"] }
 
 [build-dependencies]
-winresource = "0.1"
+ico = "0.3"
+image = "0.25"
+embed-resource = "2.4"
 
 [features]
 env_test = ["collects-business/env_test"]

@@ -6,18 +6,17 @@ use axum::{
     Router,
     extract::{Extension, Request, State},
     http::{HeaderName, HeaderValue, StatusCode},
-    middleware,
     response::IntoResponse,
     routing::{any, get},
 };
 use opentelemetry::{global, propagation::Extractor};
-use std::sync::Arc;
 use tower_http::trace::TraceLayer;
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 pub mod auth;
 pub mod config;
 pub mod database;
+pub mod internal;
 pub mod storage;
 pub mod telemetry;
 pub mod users;
@@ -49,7 +48,7 @@ where
     let state = AppState::new(sql_storage, user_storage);
 
     // Build the protected internal routes with Zero Trust middleware if configured
-    let internal_routes = create_internal_routes::<S, U>(&config);
+    let internal_routes = internal::create_internal_routes::<S, U>(&config);
 
     Router::new()
         .route("/is-health", get(health_check::<S, U>))
@@ -92,7 +91,7 @@ where
     S: SqlStorage + Clone + Send + Sync + 'static,
 {
     // Build the protected internal routes with Zero Trust middleware if configured
-    let internal_routes = create_internal_routes_legacy::<S>(&config);
+    let internal_routes = internal::create_internal_routes_legacy::<S>(&config);
 
     Router::new()
         .route("/is-health", get(health_check_legacy::<S>))
@@ -124,55 +123,6 @@ where
         )
         .layer(Extension(config))
         .with_state(storage)
-}
-
-/// Create internal routes with optional Zero Trust middleware
-fn create_internal_routes<S, U>(config: &Config) -> Router<AppState<S, U>>
-where
-    S: SqlStorage + Clone + Send + Sync + 'static,
-    U: UserStorage + Clone + Send + Sync + 'static,
-{
-    if let (Some(team_domain), Some(audience)) =
-        (config.cf_access_team_domain(), config.cf_access_aud())
-    {
-        let zero_trust_config = Arc::new(auth::ZeroTrustConfig::new(
-            team_domain.to_string(),
-            audience.to_string(),
-        ));
-
-        users::internal_routes::<S, U>().layer(middleware::from_fn(move |req, next| {
-            let config = Arc::clone(&zero_trust_config);
-            auth::zero_trust_middleware(config, req, next)
-        }))
-    } else {
-        // If Zero Trust is not configured, use routes without authentication
-        // This is useful for local development
-        users::internal_routes::<S, U>()
-    }
-}
-
-/// Create internal routes with optional Zero Trust middleware (legacy)
-fn create_internal_routes_legacy<S>(config: &Config) -> Router<S>
-where
-    S: SqlStorage + Clone + Send + Sync + 'static,
-{
-    if let (Some(team_domain), Some(audience)) =
-        (config.cf_access_team_domain(), config.cf_access_aud())
-    {
-        let zero_trust_config = Arc::new(auth::ZeroTrustConfig::new(
-            team_domain.to_string(),
-            audience.to_string(),
-        ));
-
-        users::internal_routes_legacy::<S>().layer(middleware::from_fn(move |req, next| {
-            let config = Arc::clone(&zero_trust_config);
-            auth::zero_trust_middleware(config, req, next)
-        }))
-    } else {
-        // If Zero Trust is not configured, use routes without authentication
-        // This is useful for local development
-        users::internal_routes_legacy::<S>()
-    }
 }
 
 async fn health_check<S, U>(

@@ -17,14 +17,14 @@ The application has two main components:
 
 **Services:**
 - Service Name: `collects-services`
-- URL: `https://collects-api-145756646168.us-east1.run.app`
+- URL: `https://collects-services-145756646168.us-east1.run.app`
 - Database Secret: `database-url`
 
 **Worker:**
 - Worker Name: `collects-app`
 - URL: `https://collects.lqxclqxc.com`
 - KV Namespace ID: `a4dafe7674c2440b81e4ec2e5889f1ba`
-- API Base: `https://collects-api-145756646168.us-east1.run.app`
+- API Base: `https://collects-services-145756646168.us-east1.run.app`
 
 ### Internal Environment
 
@@ -34,14 +34,14 @@ The application has two main components:
 
 **Services:**
 - Service Name: `collects-services-internal`
-- URL: `https://collects-api-internal-145756646168.us-east1.run.app`
+- URL: `https://collects-services-internal-145756646168.us-east1.run.app`
 - Database Secret: `database-url-internal`
 
 **Worker:**
 - Worker Name: `collects-app-internal`
 - URL: `https://collects-internal.lqxclqxc.com`
 - KV Namespace ID: `fac40588d16f4fa8b7c8f36de6445649`
-- API Base: `https://collects-api-internal-145756646168.us-east1.run.app`
+- API Base: `https://collects-services-internal-145756646168.us-east1.run.app`
 
 ### Test Environment
 
@@ -50,14 +50,14 @@ The application has two main components:
 
 **Services:**
 - Service Name: `collects-services-test`
-- URL: `https://collects-api-test-145756646168.us-east1.run.app`
+- URL: `https://collects-services-test-145756646168.us-east1.run.app`
 - Database Secret: `database-url-test`
 
 **Worker:**
 - Worker Name: `collects-app-test`
 - URL: `https://collects-test.lqxclqxc.com`
 - KV Namespace ID: `fac40588d16f4fa8b7c8f36de6445649`
-- API Base: `https://collects-api-test-145756646168.us-east1.run.app`
+- API Base: `https://collects-services-test-145756646168.us-east1.run.app`
 
 ### Nightly Environment
 
@@ -67,13 +67,14 @@ The application has two main components:
 
 **Services:**
 - Service Name: `collects-services-nightly`
-- URL: `https://collects-api-nightly-145756646168.us-east1.run.app`
+- URL: `https://collects-services-nightly-145756646168.us-east1.run.app`
 - Database Secret: `database-url` (shares production database)
 
 **Worker:**
 - Worker Name: `collects-app-nightly`
 - URL: `https://collects-nightly.lqxclqxc.com`
 - Configuration: `wrangler.nightly.toml`
+- API Base: `https://collects-services-nightly-145756646168.us-east1.run.app`
 
 ### PR Environment
 
@@ -83,12 +84,14 @@ The application has two main components:
 
 **Services:**
 - Service Name: `collects-services-pr`
-- URL: `https://collects-api-pr-145756646168.us-east1.run.app`
+- URL: `https://collects-services-pr-145756646168.us-east1.run.app`
 - Database Secret: `database-url-pr`
 
 **Worker:**
 - Worker Name: `collects-app-pr`
+- URL: `https://collects-pr.lqxclqxc.com`
 - Configuration: `wrangler.pr.toml`
+- API Base: `https://collects-services-pr-145756646168.us-east1.run.app`
 
 ## Deployment Workflows
 
@@ -117,10 +120,11 @@ The application has two main components:
 
 | Environment | Service URL | Worker URL |
 |-------------|-------------|------------|
-| Production | `https://collects-api-145756646168.us-east1.run.app` | `https://collects.lqxclqxc.com` |
-| Internal | `https://collects-api-internal-145756646168.us-east1.run.app` | `https://collects-internal.lqxclqxc.com` |
-| Test | `https://collects-api-test-145756646168.us-east1.run.app` | `https://collects-test.lqxclqxc.com` |
-| Nightly | `https://collects-api-nightly-145756646168.us-east1.run.app` | `https://collects-nightly.lqxclqxc.com` |
+| Production | `https://collects-services-145756646168.us-east1.run.app` | `https://collects.lqxclqxc.com` |
+| Internal | `https://collects-services-internal-145756646168.us-east1.run.app` | `https://collects-internal.lqxclqxc.com` |
+| Test | `https://collects-services-test-145756646168.us-east1.run.app` | `https://collects-test.lqxclqxc.com` |
+| Nightly | `https://collects-services-nightly-145756646168.us-east1.run.app` | `https://collects-nightly.lqxclqxc.com` |
+| PR | `https://collects-services-pr-145756646168.us-east1.run.app` | `https://collects-pr.lqxclqxc.com` |
 
 ## Database Configuration
 

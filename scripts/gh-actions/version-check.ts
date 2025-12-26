@@ -66,16 +66,9 @@ export function checkVersionChange(cargoTomlPath: string): VersionCheckResult {
 }
 
 /**
- * Main entry point when run as a script
+ * Runs version check and outputs results for GitHub Actions
  */
-if (import.meta.main) {
-  const cargoTomlPath = process.argv[2];
-
-  if (!cargoTomlPath) {
-    console.error("Usage: bun run version-check.ts <path-to-Cargo.toml>");
-    process.exit(1);
-  }
-
+export function runVersionCheck(cargoTomlPath: string): void {
   const result = checkVersionChange(cargoTomlPath);
 
   console.log(`Current version: ${result.currentVersion}`);

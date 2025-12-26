@@ -1,5 +1,7 @@
 use crate::config::Config;
 use crate::database::SqlStorage;
+use crate::users::routes::AppState;
+use crate::users::storage::UserStorage;
 use axum::{
     Router,
     extract::{Extension, Request, State},
@@ -35,17 +37,67 @@ impl<'a> Extractor for HeaderExtractor<'a> {
     }
 }
 
-pub async fn routes<S>(storage: S, config: Config) -> Router
+/// Creates routes with both SQL storage and User storage support.
+///
+/// This is the preferred method for creating routes as it supports
+/// full user storage functionality including persistence.
+pub async fn routes<S, U>(sql_storage: S, user_storage: U, config: Config) -> Router
+where
+    S: SqlStorage + Clone + Send + Sync + 'static,
+    U: UserStorage + Clone + Send + Sync + 'static,
+{
+    let state = AppState::new(sql_storage, user_storage);
+
+    // Build the protected internal routes with Zero Trust middleware if configured
+    let internal_routes = create_internal_routes::<S, U>(&config);
+
+    Router::new()
+        .route("/is-health", get(health_check::<S, U>))
+        .nest("/internal", internal_routes)
+        .nest("/auth", users::auth_routes::<S, U>())
+        .fallback(any(catch_all))
+        .layer(
+            TraceLayer::new_for_http().make_span_with(|request: &Request<_>| {
+                // Check if the request has a trace context header
+                let parent_context = global::get_text_map_propagator(|propagator| {
+                    propagator.extract(&HeaderExtractor(request.headers()))
+                });
+
+                // Create a span for this request
+                let span = tracing::info_span!(
+                    "http_request",
+                    http_request.method = ?request.method(),
+                    http_request.uri = ?request.uri(),
+                    http_request.version = ?request.version(),
+                    http_request.user_agent = ?request.headers().get(axum::http::header::USER_AGENT),
+                    otp_trace_id = tracing::field::Empty, // Placeholder for debugging
+                );
+
+                // Set the parent context for the span
+                span.set_parent(parent_context);
+
+                span
+            }),
+        )
+        .layer(Extension(config))
+        .with_state(state)
+}
+
+/// Creates routes with only SQL storage support (legacy).
+///
+/// This is maintained for backward compatibility. For full functionality,
+/// use `routes` with both SQL and User storage.
+pub async fn routes_legacy<S>(storage: S, config: Config) -> Router
 where
     S: SqlStorage + Clone + Send + Sync + 'static,
 {
     // Build the protected internal routes with Zero Trust middleware if configured
-    let internal_routes = create_internal_routes::<S>(&config);
+    let internal_routes = create_internal_routes_legacy::<S>(&config);
 
     Router::new()
-        .route("/is-health", get(health_check::<S>))
+        .route("/is-health", get(health_check_legacy::<S>))
         .nest("/internal", internal_routes)
-        .nest("/auth", users::auth_routes::<S>())
+        .nest("/auth", users::auth_routes_legacy::<S>())
         .fallback(any(catch_all))
         .layer(
             TraceLayer::new_for_http().make_span_with(|request: &Request<_>| {
@@ -75,7 +127,32 @@ where
 }
 
 /// Create internal routes with optional Zero Trust middleware
-fn create_internal_routes<S>(config: &Config) -> Router<S>
+fn create_internal_routes<S, U>(config: &Config) -> Router<AppState<S, U>>
+where
+    S: SqlStorage + Clone + Send + Sync + 'static,
+    U: UserStorage + Clone + Send + Sync + 'static,
+{
+    if let (Some(team_domain), Some(audience)) =
+        (config.cf_access_team_domain(), config.cf_access_aud())
+    {
+        let zero_trust_config = Arc::new(auth::ZeroTrustConfig::new(
+            team_domain.to_string(),
+            audience.to_string(),
+        ));
+
+        users::internal_routes::<S, U>().layer(middleware::from_fn(move |req, next| {
+            let config = Arc::clone(&zero_trust_config);
+            auth::zero_trust_middleware(config, req, next)
+        }))
+    } else {
+        // If Zero Trust is not configured, use routes without authentication
+        // This is useful for local development
+        users::internal_routes::<S, U>()
+    }
+}
+
+/// Create internal routes with optional Zero Trust middleware (legacy)
+fn create_internal_routes_legacy<S>(config: &Config) -> Router<S>
 where
     S: SqlStorage + Clone + Send + Sync + 'static,
 {
@@ -87,18 +164,47 @@ where
             audience.to_string(),
         ));
 
-        users::internal_routes::<S>().layer(middleware::from_fn(move |req, next| {
+        users::internal_routes_legacy::<S>().layer(middleware::from_fn(move |req, next| {
             let config = Arc::clone(&zero_trust_config);
             auth::zero_trust_middleware(config, req, next)
         }))
     } else {
         // If Zero Trust is not configured, use routes without authentication
         // This is useful for local development
-        users::internal_routes::<S>()
+        users::internal_routes_legacy::<S>()
     }
 }
 
-async fn health_check<S>(
+async fn health_check<S, U>(
+    State(state): State<AppState<S, U>>,
+    Extension(config): Extension<Config>,
+) -> impl IntoResponse
+where
+    S: SqlStorage,
+    U: UserStorage,
+{
+    let mut response = if state.sql_storage.is_connected().await {
+        (StatusCode::OK, "OK").into_response()
+    } else {
+        (StatusCode::BAD_GATEWAY, "502").into_response()
+    };
+
+    let env_value = config.environment().to_string();
+    response.headers_mut().insert(
+        HeaderName::from_static("x-service-env"),
+        HeaderValue::from_str(&env_value).expect("environment header is valid ASCII"),
+    );
+
+    let version_value = format!("{SERVICE_VERSION}+{BUILD_COMMIT}");
+    response.headers_mut().insert(
+        HeaderName::from_static("x-service-version"),
+        HeaderValue::from_str(&version_value).expect("version header is valid ASCII"),
+    );
+
+    response
+}
+
+async fn health_check_legacy<S>(
     State(storage): State<S>,
     Extension(config): Extension<Config>,
 ) -> impl IntoResponse
@@ -133,6 +239,7 @@ async fn catch_all() -> impl IntoResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::users::storage::MockUserStorage;
     use axum::{
         body::Body,
         http::{Request, StatusCode},
@@ -140,11 +247,11 @@ mod tests {
     use tower::ServiceExt;
 
     #[derive(Clone)]
-    struct MockStorage {
+    struct MockSqlStorage {
         is_connected: bool,
     }
 
-    impl SqlStorage for MockStorage {
+    impl SqlStorage for MockSqlStorage {
         async fn is_connected(&self) -> bool {
             self.is_connected
         }
@@ -152,9 +259,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_health_check_connected() {
-        let storage = MockStorage { is_connected: true };
+        let sql_storage = MockSqlStorage { is_connected: true };
+        let user_storage = MockUserStorage::new();
         let config = Config::new_for_test();
-        let app = routes(storage, config).await;
+        let app = routes(sql_storage, user_storage, config).await;
 
         let response = app
             .oneshot(
@@ -171,9 +279,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_health_check_includes_headers() {
-        let storage = MockStorage { is_connected: true };
+        let sql_storage = MockSqlStorage { is_connected: true };
+        let user_storage = MockUserStorage::new();
         let config = Config::new_for_test();
-        let app = routes(storage, config).await;
+        let app = routes(sql_storage, user_storage, config).await;
 
         let response = app
             .oneshot(
@@ -201,11 +310,12 @@ mod tests {
 
     #[tokio::test]
     async fn test_health_check_disconnected() {
-        let storage = MockStorage {
+        let sql_storage = MockSqlStorage {
             is_connected: false,
         };
+        let user_storage = MockUserStorage::new();
         let config = Config::new_for_test();
-        let app = routes(storage, config).await;
+        let app = routes(sql_storage, user_storage, config).await;
 
         let response = app
             .oneshot(
@@ -218,5 +328,24 @@ mod tests {
             .unwrap();
 
         assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
+    }
+
+    #[tokio::test]
+    async fn test_legacy_routes_health_check() {
+        let storage = MockSqlStorage { is_connected: true };
+        let config = Config::new_for_test();
+        let app = routes_legacy(storage, config).await;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/is-health")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
     }
 }

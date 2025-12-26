@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO users (username, otp_secret)\n            VALUES ($1, $2)\n            ON CONFLICT (username) DO NOTHING\n            RETURNING username\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "username",
+        "type_info": "Varchar"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Varchar",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "3f469a0345367eef77576ffab3753ab1ca3cbecc190fc50712f6b79aebd5dbaf"
+}

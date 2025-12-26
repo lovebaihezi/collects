@@ -324,16 +324,16 @@ impl UserStorage for PgUserStorage {
         }
 
         // Insert the user into the database
-        let result = sqlx::query(
+        let result = sqlx::query_scalar!(
             r#"
             INSERT INTO users (username, otp_secret)
             VALUES ($1, $2)
             ON CONFLICT (username) DO NOTHING
             RETURNING username
             "#,
+            username,
+            secret,
         )
-        .bind(username)
-        .bind(secret)
         .fetch_optional(&self.storage.pool)
         .await
         .map_err(|e| UserStorageError::StorageError(e.to_string()))?;
@@ -345,40 +345,40 @@ impl UserStorage for PgUserStorage {
     }
 
     async fn get_user_secret(&self, username: &str) -> Result<Option<String>, Self::Error> {
-        let result: Option<(String,)> = sqlx::query_as(
+        let result = sqlx::query_scalar!(
             r#"
             SELECT otp_secret FROM users WHERE username = $1 AND status = 'active'
             "#,
+            username,
         )
-        .bind(username)
         .fetch_optional(&self.storage.pool)
         .await
         .map_err(|e| UserStorageError::StorageError(e.to_string()))?;
 
-        Ok(result.map(|(secret,)| secret))
+        Ok(result)
     }
 
     async fn user_exists(&self, username: &str) -> Result<bool, Self::Error> {
-        let result: Option<(i64,)> = sqlx::query_as(
+        let result = sqlx::query_scalar!(
             r#"
-            SELECT 1 FROM users WHERE username = $1 AND status = 'active'
+            SELECT EXISTS(SELECT 1 FROM users WHERE username = $1 AND status = 'active') AS "exists!"
             "#,
+            username,
         )
-        .bind(username)
-        .fetch_optional(&self.storage.pool)
+        .fetch_one(&self.storage.pool)
         .await
         .map_err(|e| UserStorageError::StorageError(e.to_string()))?;
 
-        Ok(result.is_some())
+        Ok(result)
     }
 
     async fn delete_user(&self, username: &str) -> Result<bool, Self::Error> {
-        let result = sqlx::query(
+        let result = sqlx::query!(
             r#"
             DELETE FROM users WHERE username = $1
             "#,
+            username,
         )
-        .bind(username)
         .execute(&self.storage.pool)
         .await
         .map_err(|e| UserStorageError::StorageError(e.to_string()))?;

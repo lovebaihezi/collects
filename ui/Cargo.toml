@@ -40,6 +40,9 @@ wiremock = "0.6"
 egui_kittest = { version = "0.33", features = ["snapshot", "eframe"] }
 tokio = { workspace = true, features = ["full", "test-util"] }
 
+[build-dependencies]
+winresource = "0.1"
+
 [features]
 env_test = ["collects-business/env_test"]
 env_internal = ["collects-business/env_internal"]

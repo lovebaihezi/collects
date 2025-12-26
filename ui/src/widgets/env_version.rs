@@ -44,6 +44,7 @@ pub fn env_version(ui: &mut Ui) -> Response {
     egui::Frame::NONE
         .fill(bg_color)
         .inner_margin(egui::Margin::symmetric(8, 4))
+        .outer_margin(egui::Margin::symmetric(0, 4))
         .corner_radius(4.0)
         .show(ui, |ui| {
             ui.label(RichText::new(display_text).color(text_color))

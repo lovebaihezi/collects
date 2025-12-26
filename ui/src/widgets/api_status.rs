@@ -27,6 +27,7 @@ pub fn api_status(state_ctx: &StateCtx, ui: &mut Ui) -> Response {
     egui::Frame::NONE
         .fill(bg_color)
         .inner_margin(egui::Margin::symmetric(8, 4))
+        .outer_margin(egui::Margin::symmetric(0, 4))
         .corner_radius(4.0)
         .show(ui, |ui| ui.label(RichText::new(text).color(text_color)))
         .inner

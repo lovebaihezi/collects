@@ -928,7 +928,7 @@ dependencies = [
 
 [[package]]
 name = "collects-services"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -975,7 +975,7 @@ dependencies = [
 
 [[package]]
 name = "collects-ui"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "chrono",
  "collects-business",

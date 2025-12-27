@@ -300,10 +300,10 @@ fn render_create_user_modal(ctx: &egui::Context, state: &mut InternalUsersState)
                 // Secret for manual entry
                 ui.collapsing("Manual Entry", |ui| {
                     ui.label("Secret key:");
-                    ui.add(
-                        egui::TextEdit::singleline(&mut created.secret.clone())
-                            .desired_width(250.0)
-                            .interactive(false),
+                    ui.label(
+                        RichText::new(&created.secret)
+                            .monospace()
+                            .color(Color32::from_rgb(100, 200, 100)),
                     );
                 });
 
@@ -394,20 +394,15 @@ fn render_qr_code(ui: &mut Ui, otpauth_url: &str) {
 /// Simulates user creation for demonstration purposes.
 /// In production, this would make an API call to the internal endpoint.
 fn simulate_create_user(state: &mut InternalUsersState, username: &str) {
-    use std::time::{SystemTime, UNIX_EPOCH};
-
-    // Generate a random-ish secret based on username and time
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
-
-    // Simple secret generation (in production, server would generate this)
-    let seed = format!("{}{}", username, now);
-    let hash = simple_hash(&seed);
+    // Generate a cryptographically secure random secret
+    let mut random_bytes = [0u8; 20];
+    if getrandom::getrandom(&mut random_bytes).is_err() {
+        state.set_error("Failed to generate secure random bytes".to_string());
+        return;
+    }
 
     // Convert to base32
-    let secret = to_base32(&hash[..20]);
+    let secret = to_base32(&random_bytes);
 
     // Create otpauth URL
     let otpauth_url = format!(
@@ -420,17 +415,6 @@ fn simulate_create_user(state: &mut InternalUsersState, username: &str) {
         secret,
         otpauth_url,
     });
-}
-
-/// Simple hash function for demonstration.
-fn simple_hash(input: &str) -> Vec<u8> {
-    let mut result = vec![0u8; 32];
-    for (i, byte) in input.bytes().enumerate() {
-        result[i % 32] ^= byte;
-        result[(i + 1) % 32] = result[(i + 1) % 32].wrapping_add(byte);
-        result[(i + 2) % 32] = result[(i + 2) % 32].wrapping_mul(byte.wrapping_add(1));
-    }
-    result
 }
 
 /// Converts bytes to base32 encoding.

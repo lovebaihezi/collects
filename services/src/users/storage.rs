@@ -141,6 +141,13 @@ pub trait UserStorage: Clone + Send + Sync + 'static {
     /// Returns `true` if the user was deleted, `false` if the user didn't exist.
     fn delete_user(&self, username: &str)
     -> impl Future<Output = Result<bool, Self::Error>> + Send;
+
+    /// Lists all stored users.
+    ///
+    /// # Returns
+    ///
+    /// Returns a vector of all stored users with their usernames and secrets.
+    fn list_users(&self) -> impl Future<Output = Result<Vec<StoredUser>, Self::Error>> + Send;
 }
 
 /// In-memory mock implementation of `UserStorage` for testing.
@@ -257,6 +264,11 @@ impl UserStorage for MockUserStorage {
     async fn delete_user(&self, username: &str) -> Result<bool, Self::Error> {
         let mut users = self.users.write().expect("lock poisoned");
         Ok(users.remove(username).is_some())
+    }
+
+    async fn list_users(&self) -> Result<Vec<StoredUser>, Self::Error> {
+        let users = self.users.read().expect("lock poisoned");
+        Ok(users.values().cloned().collect())
     }
 }
 
@@ -384,6 +396,20 @@ impl UserStorage for PgUserStorage {
         .map_err(|e| UserStorageError::StorageError(e.to_string()))?;
 
         Ok(result.rows_affected() > 0)
+    }
+
+    async fn list_users(&self) -> Result<Vec<StoredUser>, Self::Error> {
+        // Using query_as with a tuple to avoid compile-time SQL verification requirements
+        let rows: Vec<(String, String)> =
+            sqlx::query_as("SELECT username, otp_secret FROM users WHERE status = 'active'")
+                .fetch_all(&self.storage.pool)
+                .await
+                .map_err(|e| UserStorageError::StorageError(e.to_string()))?;
+
+        Ok(rows
+            .into_iter()
+            .map(|(username, otp_secret)| StoredUser::new(username, otp_secret))
+            .collect())
     }
 }
 

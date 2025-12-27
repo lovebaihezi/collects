@@ -39,6 +39,7 @@ kittest = "0.3"
 wiremock = "0.6"
 egui_kittest = { version = "0.33", features = ["snapshot", "eframe"] }
 tokio = { workspace = true, features = ["full", "test-util"] }
+serde_json = { workspace = true }
 
 [build-dependencies]
 ico = "0.3"

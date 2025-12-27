@@ -73,7 +73,12 @@ impl Compute for ApiStatus {
                         };
                         updater.set(api_status);
                     } else {
-                        info!("BackEnd Return with status code: {:?}", response.status);
+                        warn!("BackEnd returned non-200 status code: {:?}", response.status);
+                        let api_status = ApiStatus {
+                            last_update_time: Some(now),
+                            last_error: Some(format!("HTTP {}", response.status)),
+                        };
+                        updater.set(api_status);
                     }
                 }
                 Err(err) => {

@@ -1,12 +1,13 @@
 #!/usr/bin/env bun
 import { cac } from "cac";
 import * as p from "@clack/prompts";
-import { initDbSecret } from "./neon.ts";
+import { initDbSecret } from "./services/neon.ts";
 import {
   buildSetupContext,
   setupGitHubActions,
   type BuildSetupOptions,
-} from "./gh-action.ts";
+} from "./services/gcloud.ts";
+import { runVersionCheck } from "./gh-actions/version-check.ts";
 
 const cli = cac("services");
 
@@ -43,12 +44,12 @@ cli
     const token = options.token
       ? options.token
       : await p.text({
-          message: "Enter your Neon API Token:",
-          placeholder: "neon_api_xxxxx",
-          validate: (value) => {
-            if (!value) return "Neon API Token is required";
-          },
-        });
+        message: "Enter your Neon API Token:",
+        placeholder: "neon_api_xxxxx",
+        validate: (value) => {
+          if (!value) return "Neon API Token is required";
+        },
+      });
 
     if (p.isCancel(token)) {
       p.cancel("Operation cancelled.");
@@ -59,12 +60,12 @@ cli
     const projectId = options.projectId
       ? options.projectId
       : await p.text({
-          message: "Enter your Neon Project ID:",
-          placeholder: "project-id-xxxx",
-          validate: (value) => {
-            if (!value) return "Neon Project ID is required";
-          },
-        });
+        message: "Enter your Neon Project ID:",
+        placeholder: "project-id-xxxx",
+        validate: (value) => {
+          if (!value) return "Neon Project ID is required";
+        },
+      });
 
     if (p.isCancel(projectId)) {
       p.cancel("Operation cancelled.");
@@ -74,11 +75,17 @@ cli
     await initDbSecret(token as string, projectId as string);
   });
 
+cli
+  .command("version-check <path>", "Check if version in Cargo.toml has changed")
+  .action((path: string) => {
+    runVersionCheck(path);
+  });
+
 cli.command("", "Show help").action(() => {
   const helpText = `
 # Services Helper Script
 
-This script helps manage Google Cloud setup for the Collects services.
+This script helps manage Google Cloud setup for the Collects services and GitHub Actions utilities.
 
 ## Usage
 
@@ -125,6 +132,21 @@ Initializes Neon Database branches and updates Google Cloud Secrets with connect
 **Example:**
 \`\`\`bash
 bun run main.ts init-db-secret --token <NEON_API_TOKEN> --project-id <NEON_PROJECT_ID>
+\`\`\`
+
+### \`version-check\`
+
+Checks if the version in a Cargo.toml file has changed (for GitHub Actions).
+
+**What it does:**
+1. Reads the current version from the specified Cargo.toml file.
+2. Compares it with the version from the previous commit.
+3. Outputs the result to console and GITHUB_OUTPUT if running in CI.
+
+**Example:**
+\`\`\`bash
+bun run main.ts version-check ui/Cargo.toml
+bun run main.ts version-check services/Cargo.toml
 \`\`\`
 
 ---

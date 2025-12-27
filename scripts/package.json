@@ -1,5 +1,8 @@
 {
   "license": "MIT",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
   "dependencies": {
     "@clack/prompts": "^0.11.0",
     "@neondatabase/api-client": "^2.6.0",

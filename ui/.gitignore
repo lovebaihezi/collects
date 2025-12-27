@@ -1,2 +1,8 @@
 /node_modules
 /target
+
+# Generated Windows resources
+windows-resources.rc
+assets/icon.ico
+
+.bun

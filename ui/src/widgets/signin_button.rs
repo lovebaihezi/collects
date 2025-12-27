@@ -31,6 +31,17 @@ impl LoginDialogState {
     }
 }
 
+/// Validates the login form data.
+///
+/// Returns true if:
+/// - Username is not empty
+/// - OTP code is exactly 6 digits
+fn is_form_valid(form_data: &LoginFormData) -> bool {
+    !form_data.username.is_empty()
+        && form_data.otp_code.len() == 6
+        && form_data.otp_code.chars().all(|c| c.is_ascii_digit())
+}
+
 /// Renders the sign-in button or user info based on authentication state.
 ///
 /// When logged out, shows a "Sign In" button.
@@ -172,14 +183,7 @@ pub fn login_dialog(
 
                 // Buttons
                 ui.horizontal(|ui| {
-                    let is_valid = !dialog_state.form_data.username.is_empty()
-                        && dialog_state.form_data.otp_code.len() == 6
-                        && dialog_state
-                            .form_data
-                            .otp_code
-                            .chars()
-                            .all(|c| c.is_ascii_digit());
-
+                    let is_valid = is_form_valid(&dialog_state.form_data);
                     let is_logging_in = auth_state.is_logging_in();
 
                     // Cancel button
@@ -214,15 +218,7 @@ pub fn login_dialog(
 
                 // Handle enter key to submit
                 if ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-                    let is_valid = !dialog_state.form_data.username.is_empty()
-                        && dialog_state.form_data.otp_code.len() == 6
-                        && dialog_state
-                            .form_data
-                            .otp_code
-                            .chars()
-                            .all(|c| c.is_ascii_digit());
-
-                    if is_valid && !auth_state.is_logging_in() {
+                    if is_form_valid(&dialog_state.form_data) && !auth_state.is_logging_in() {
                         auth_state.start_login();
                         result = Some(dialog_state.form_data.clone());
                     }
@@ -243,15 +239,40 @@ pub fn login_dialog(
     result
 }
 
+/// Result of a login attempt.
+#[derive(Debug, Clone)]
+pub enum LoginResult {
+    /// Login was successful.
+    Success(String),
+    /// Login failed with an error message.
+    Failed(String),
+}
+
+/// Channel for receiving login results from async operations.
+pub type LoginResultReceiver = flume::Receiver<LoginResult>;
+/// Channel for sending login results from async operations.
+pub type LoginResultSender = flume::Sender<LoginResult>;
+
+/// Creates a new login result channel.
+pub fn create_login_channel() -> (LoginResultSender, LoginResultReceiver) {
+    flume::unbounded()
+}
+
 /// Performs the login request to the backend.
 ///
-/// This function sends the login request and updates the auth state
-/// based on the response.
+/// This function sends the login request asynchronously. The result is sent
+/// through the provided channel sender, which should be polled by the UI
+/// to update the auth state.
+///
+/// # Arguments
+///
+/// * `state_ctx` - The state context for accessing configuration
+/// * `form_data` - The login form data containing username and OTP code
+/// * `result_sender` - Channel sender to communicate the login result
 pub fn perform_login(
     state_ctx: &StateCtx,
-    _auth_state: &mut AuthState,
-    _dialog_state: &mut LoginDialogState,
     form_data: &LoginFormData,
+    result_sender: LoginResultSender,
 ) {
     let config = state_ctx.state_mut::<BusinessConfig>();
     let api_url = config.api_url();
@@ -260,16 +281,15 @@ pub fn perform_login(
     let username = form_data.username.clone();
     let code = form_data.otp_code.clone();
 
-    // Create the request body
+    // Create the request body - use expect since serialization of simple JSON should never fail
     let body = serde_json::json!({
         "username": username,
         "code": code
     });
 
-    let request = ehttp::Request::post(
-        url,
-        serde_json::to_vec(&body).unwrap_or_default(),
-    );
+    let body_bytes = serde_json::to_vec(&body).expect("Failed to serialize login request body");
+
+    let request = ehttp::Request::post(url, body_bytes);
     let request = ehttp::Request {
         headers: ehttp::Headers::new(&[("Content-Type", "application/json")]),
         ..request
@@ -278,34 +298,81 @@ pub fn perform_login(
     // Clone values for the closure
     let username_for_success = username.clone();
 
-    // For now, we'll use a simplified approach that directly updates state
-    // In a real implementation, this would use the StateCtx compute system
+    // Send the request and communicate result via channel
     ehttp::fetch(request, move |response| {
-        match response {
+        let result = match response {
             Ok(resp) => {
                 if resp.status == 200 {
                     // Parse response to check if valid
-                    if let Ok(json) = resp.json::<serde_json::Value>() {
-                        if let Some(valid) = json.get("valid").and_then(serde_json::Value::as_bool)
-                        {
-                            if valid {
-                                log::info!("Login successful for user: {}", username_for_success);
-                                // Note: Due to ehttp callback limitations, we can't directly
-                                // update auth_state here. The UI should poll for results.
+                    match resp.json::<serde_json::Value>() {
+                        Ok(json) => {
+                            if let Some(valid) =
+                                json.get("valid").and_then(serde_json::Value::as_bool)
+                            {
+                                if valid {
+                                    log::info!(
+                                        "Login successful for user: {}",
+                                        username_for_success
+                                    );
+                                    LoginResult::Success(username_for_success)
+                                } else {
+                                    log::warn!("Login failed: Invalid OTP code");
+                                    LoginResult::Failed("Invalid username or OTP code".to_string())
+                                }
                             } else {
-                                log::warn!("Login failed: Invalid OTP code");
+                                LoginResult::Failed("Invalid server response".to_string())
                             }
+                        }
+                        Err(e) => {
+                            log::error!("Failed to parse login response: {}", e);
+                            LoginResult::Failed("Failed to parse server response".to_string())
                         }
                     }
                 } else {
                     log::warn!("Login request failed with status: {}", resp.status);
+                    LoginResult::Failed(format!("Login failed (status: {})", resp.status))
                 }
             }
             Err(err) => {
                 log::error!("Login request error: {}", err);
+                LoginResult::Failed(format!("Network error: {err}"))
             }
-        }
+        };
+
+        // Send result through channel - ignore errors if receiver dropped
+        let _ = result_sender.send(result);
     });
+}
+
+/// Polls for login results and updates the auth state accordingly.
+///
+/// Call this function in your UI update loop to check for completed login attempts.
+///
+/// # Returns
+///
+/// Returns `true` if the login was successful and the dialog should be closed.
+pub fn poll_login_result(
+    receiver: &LoginResultReceiver,
+    auth_state: &mut AuthState,
+    dialog_state: &mut LoginDialogState,
+) -> bool {
+    match receiver.try_recv() {
+        Ok(LoginResult::Success(username)) => {
+            auth_state.login_success(username);
+            dialog_state.close();
+            true
+        }
+        Ok(LoginResult::Failed(error)) => {
+            auth_state.login_failed(error);
+            false
+        }
+        Err(flume::TryRecvError::Empty) => false,
+        Err(flume::TryRecvError::Disconnected) => {
+            // Channel closed unexpectedly - treat as error
+            auth_state.login_failed("Login request was interrupted".to_string());
+            false
+        }
+    }
 }
 
 #[cfg(test)]
@@ -343,5 +410,57 @@ mod tests {
         state.open();
         assert!(state.form_data.username.is_empty());
         assert!(state.form_data.otp_code.is_empty());
+    }
+
+    #[test]
+    fn test_login_form_data_validation() {
+        // Valid form
+        let valid_form = LoginFormData {
+            username: "testuser".to_string(),
+            otp_code: "123456".to_string(),
+        };
+        assert!(is_form_valid(&valid_form));
+
+        // Empty username
+        let empty_username = LoginFormData {
+            username: String::new(),
+            otp_code: "123456".to_string(),
+        };
+        assert!(!is_form_valid(&empty_username));
+
+        // Empty OTP
+        let empty_otp = LoginFormData {
+            username: "testuser".to_string(),
+            otp_code: String::new(),
+        };
+        assert!(!is_form_valid(&empty_otp));
+
+        // Short OTP (5 digits)
+        let short_otp = LoginFormData {
+            username: "testuser".to_string(),
+            otp_code: "12345".to_string(),
+        };
+        assert!(!is_form_valid(&short_otp));
+
+        // Long OTP (7 digits)
+        let long_otp = LoginFormData {
+            username: "testuser".to_string(),
+            otp_code: "1234567".to_string(),
+        };
+        assert!(!is_form_valid(&long_otp));
+
+        // Non-numeric OTP
+        let alpha_otp = LoginFormData {
+            username: "testuser".to_string(),
+            otp_code: "abcdef".to_string(),
+        };
+        assert!(!is_form_valid(&alpha_otp));
+
+        // Mixed OTP
+        let mixed_otp = LoginFormData {
+            username: "testuser".to_string(),
+            otp_code: "123abc".to_string(),
+        };
+        assert!(!is_form_valid(&mixed_otp));
     }
 }

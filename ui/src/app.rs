@@ -18,6 +18,13 @@ impl eframe::App for CollectsApp {
         // Sync Compute for render
         self.state.ctx.sync_computes();
 
+        // Poll for login results
+        widgets::poll_login_result(
+            &self.state.login_result_receiver,
+            &mut self.state.auth_state,
+            &mut self.state.login_dialog_state,
+        );
+
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
             egui::MenuBar::new().ui(ui, |ui| {
                 widgets::api_status(&self.state.ctx, ui);
@@ -45,9 +52,8 @@ impl eframe::App for CollectsApp {
             // Handle login submission
             widgets::perform_login(
                 &self.state.ctx,
-                &mut self.state.auth_state,
-                &mut self.state.login_dialog_state,
                 &form_data,
+                self.state.login_result_sender.clone(),
             );
         }
 

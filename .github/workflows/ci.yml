@@ -72,3 +72,10 @@ jobs:
 
       - name: Run Build
         run: just ui::release
+
+      - name: Verify Services Build (sqlx offline mode)
+        env:
+          SQLX_OFFLINE: "true"
+        run: |
+          echo "Building services with SQLX_OFFLINE=true to verify offline cache..."
+          just services::build

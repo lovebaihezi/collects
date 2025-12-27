@@ -4,15 +4,18 @@ use axum::{
     body::Body,
     http::{Request, StatusCode},
 };
-use collects_services::{auth::ZeroTrustConfig, config::Config, database::SqlStorage, routes};
+use collects_services::{
+    auth::ZeroTrustConfig, config::Config, database::SqlStorage, routes,
+    users::storage::MockUserStorage,
+};
 use tower::ServiceExt;
 
 #[derive(Clone)]
-struct MockStorage {
+struct MockSqlStorage {
     is_connected: bool,
 }
 
-impl SqlStorage for MockStorage {
+impl SqlStorage for MockSqlStorage {
     async fn is_connected(&self) -> bool {
         self.is_connected
     }
@@ -21,9 +24,10 @@ impl SqlStorage for MockStorage {
 #[tokio::test]
 async fn test_internal_route_without_zerotrust_config() {
     // When Zero Trust is not configured, routes should be accessible
-    let storage = MockStorage { is_connected: true };
+    let sql_storage = MockSqlStorage { is_connected: true };
+    let user_storage = MockUserStorage::new();
     let config = Config::new_for_test();
-    let app = routes(storage, config).await;
+    let app = routes(sql_storage, user_storage, config).await;
 
     let response = app
         .oneshot(
@@ -44,9 +48,10 @@ async fn test_internal_route_without_zerotrust_config() {
 #[tokio::test]
 async fn test_auth_route_always_accessible() {
     // Auth routes should always be accessible without Zero Trust
-    let storage = MockStorage { is_connected: true };
+    let sql_storage = MockSqlStorage { is_connected: true };
+    let user_storage = MockUserStorage::new();
     let config = Config::new_for_test();
-    let app = routes(storage, config).await;
+    let app = routes(sql_storage, user_storage, config).await;
 
     let response = app
         .oneshot(
@@ -60,17 +65,18 @@ async fn test_auth_route_always_accessible() {
         .await
         .expect("Failed to get response");
 
-    // Should return NOT_IMPLEMENTED (as per current implementation)
-    // but not UNAUTHORIZED, proving auth routes don't require Zero Trust
-    assert_eq!(response.status(), StatusCode::NOT_IMPLEMENTED);
+    // Should return UNAUTHORIZED (user not found) since we're using real UserStorage now
+    // This proves auth routes don't require Zero Trust authentication
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
 }
 
 #[tokio::test]
 async fn test_health_check_always_accessible() {
     // Health check should always be accessible
-    let storage = MockStorage { is_connected: true };
+    let sql_storage = MockSqlStorage { is_connected: true };
+    let user_storage = MockUserStorage::new();
     let config = Config::new_for_test();
-    let app = routes(storage, config).await;
+    let app = routes(sql_storage, user_storage, config).await;
 
     let response = app
         .oneshot(

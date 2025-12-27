@@ -28,16 +28,17 @@
 //! ```
 
 use axum::{Json, Router, extract::State, http::StatusCode, response::IntoResponse, routing::post};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use super::otp::{
     CreateUserRequest, CreateUserResponse, OtpError, VerifyOtpRequest, VerifyOtpResponse,
-    generate_otp_secret,
+    generate_otp_secret, verify_otp,
 };
+use super::storage::{UserStorage, UserStorageError};
 use crate::database::SqlStorage;
 
 /// Error response for API endpoints.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ErrorResponse {
     pub error: String,
     pub message: String,
@@ -63,26 +64,100 @@ impl From<OtpError> for (StatusCode, Json<ErrorResponse>) {
     }
 }
 
+impl From<UserStorageError> for (StatusCode, Json<ErrorResponse>) {
+    fn from(err: UserStorageError) -> Self {
+        let (status, error_type) = match &err {
+            UserStorageError::UserAlreadyExists(_) => (StatusCode::CONFLICT, "user_already_exists"),
+            UserStorageError::UserNotFound(_) => (StatusCode::NOT_FOUND, "user_not_found"),
+            UserStorageError::InvalidInput(_) => (StatusCode::BAD_REQUEST, "invalid_input"),
+            UserStorageError::StorageError(_) => {
+                (StatusCode::INTERNAL_SERVER_ERROR, "storage_error")
+            }
+        };
+
+        (
+            status,
+            Json(ErrorResponse {
+                error: error_type.to_string(),
+                message: err.to_string(),
+            }),
+        )
+    }
+}
+
+/// Combined application state for routes that need both SQL and User storage.
+#[derive(Clone)]
+pub struct AppState<S, U> {
+    pub sql_storage: S,
+    pub user_storage: U,
+}
+
+impl<S, U> AppState<S, U> {
+    /// Creates a new `AppState` with the given storage implementations.
+    pub fn new(sql_storage: S, user_storage: U) -> Self {
+        Self {
+            sql_storage,
+            user_storage,
+        }
+    }
+}
+
 /// Creates the router for user-related internal endpoints.
 ///
 /// These endpoints are intended to be used only in internal environments
 /// protected by Cloudflare Zero Trust or similar access control.
-pub fn internal_routes<S>() -> Router<S>
+///
+/// # Type Parameters
+///
+/// * `S` - SQL storage implementation
+/// * `U` - User storage implementation for storing user secrets
+pub fn internal_routes<S, U>() -> Router<AppState<S, U>>
+where
+    S: SqlStorage + Clone + Send + Sync + 'static,
+    U: UserStorage + Clone + Send + Sync + 'static,
+{
+    Router::new().route("/users", post(create_user::<S, U>))
+}
+
+/// Creates the router for user-related internal endpoints with legacy SqlStorage-only state.
+///
+/// This is provided for backward compatibility with existing code that doesn't
+/// use the new UserStorage trait yet.
+pub fn internal_routes_legacy<S>() -> Router<S>
 where
     S: SqlStorage + Clone + Send + Sync + 'static,
 {
-    Router::new().route("/users", post(create_user::<S>))
+    Router::new().route("/users", post(create_user_legacy::<S>))
 }
 
 /// Creates the router for authentication endpoints.
-pub fn auth_routes<S>() -> Router<S>
+///
+/// # Type Parameters
+///
+/// * `S` - SQL storage implementation
+/// * `U` - User storage implementation for retrieving user secrets
+pub fn auth_routes<S, U>() -> Router<AppState<S, U>>
+where
+    S: SqlStorage + Clone + Send + Sync + 'static,
+    U: UserStorage + Clone + Send + Sync + 'static,
+{
+    Router::new().route("/verify-otp", post(verify_otp_handler::<S, U>))
+}
+
+/// Creates the router for authentication endpoints with legacy SqlStorage-only state.
+///
+/// This is provided for backward compatibility.
+pub fn auth_routes_legacy<S>() -> Router<S>
 where
     S: SqlStorage + Clone + Send + Sync + 'static,
 {
-    Router::new().route("/verify-otp", post(verify_otp::<S>))
+    Router::new().route("/verify-otp", post(verify_otp_legacy::<S>))
 }
 
 /// Handler for creating a new user with OTP authentication.
+///
+/// This handler uses the `UserStorage` trait to persist user data,
+/// enabling proper testing and different storage backends.
 ///
 /// # Request
 ///
@@ -107,26 +182,89 @@ where
 /// The `otpauth_url` can be used to generate a QR code for the user to scan
 /// with Google Authenticator or similar apps.
 #[tracing::instrument(skip_all, fields(username = %payload.username))]
-async fn create_user<S>(
+async fn create_user<S, U>(
+    State(state): State<AppState<S, U>>,
+    Json(payload): Json<CreateUserRequest>,
+) -> impl IntoResponse
+where
+    S: SqlStorage,
+    U: UserStorage,
+{
+    tracing::info!("Creating user with OTP setup");
+
+    // First, check if user already exists
+    match state.user_storage.user_exists(&payload.username).await {
+        Ok(true) => {
+            tracing::warn!("User already exists: {}", payload.username);
+            let (status, json): (StatusCode, Json<ErrorResponse>) =
+                UserStorageError::UserAlreadyExists(payload.username).into();
+            return (status, json).into_response();
+        }
+        Ok(false) => {}
+        Err(e) => {
+            tracing::error!("Failed to check user existence: {}", e);
+            let (status, json): (StatusCode, Json<ErrorResponse>) =
+                UserStorageError::StorageError(e.to_string()).into();
+            return (status, json).into_response();
+        }
+    }
+
+    // Generate OTP secret
+    let (secret, otpauth_url) = match generate_otp_secret(&payload.username) {
+        Ok(result) => result,
+        Err(err) => {
+            tracing::warn!("Failed to generate OTP secret: {}", err);
+            let (status, json): (StatusCode, Json<ErrorResponse>) = err.into();
+            return (status, json).into_response();
+        }
+    };
+
+    // Store user in storage
+    match state
+        .user_storage
+        .create_user(&payload.username, &secret)
+        .await
+    {
+        Ok(_stored_user) => {
+            tracing::info!("Successfully created user and stored OTP secret");
+
+            (
+                StatusCode::CREATED,
+                Json(CreateUserResponse {
+                    username: payload.username,
+                    secret,
+                    otpauth_url,
+                }),
+            )
+                .into_response()
+        }
+        Err(e) => {
+            tracing::error!("Failed to store user: {}", e);
+            let (status, json): (StatusCode, Json<ErrorResponse>) =
+                UserStorageError::StorageError(e.to_string()).into();
+            (status, json).into_response()
+        }
+    }
+}
+
+/// Legacy handler for creating a new user without UserStorage.
+///
+/// This is maintained for backward compatibility.
+#[tracing::instrument(skip_all, fields(username = %payload.username))]
+async fn create_user_legacy<S>(
     State(_storage): State<S>,
     Json(payload): Json<CreateUserRequest>,
 ) -> impl IntoResponse
 where
     S: SqlStorage,
 {
-    tracing::info!("Creating user with OTP setup");
+    tracing::info!("Creating user with OTP setup (legacy mode)");
 
     match generate_otp_secret(&payload.username) {
         Ok((secret, otpauth_url)) => {
-            // In a real implementation, we would:
-            // 1. Check if the username already exists
-            // 2. Store the username and secret in the database
-            // 3. Return the response
-
-            // For now, we just return the generated secret
-            // TODO: Implement database storage for user secrets
-
-            tracing::info!("Successfully generated OTP secret for user");
+            // In legacy mode, we just return the generated secret
+            // without storing it in the database
+            tracing::warn!("User created in legacy mode - secret not persisted to database");
 
             (
                 StatusCode::CREATED,
@@ -148,6 +286,9 @@ where
 
 /// Handler for verifying an OTP code.
 ///
+/// This handler uses the `UserStorage` trait to retrieve the user's secret,
+/// enabling proper testing and different storage backends.
+///
 /// # Request
 ///
 /// POST /auth/verify-otp
@@ -167,23 +308,15 @@ where
 /// }
 /// ```
 #[tracing::instrument(skip_all, fields(username = %payload.username))]
-async fn verify_otp<S>(
-    State(_storage): State<S>,
+async fn verify_otp_handler<S, U>(
+    State(state): State<AppState<S, U>>,
     Json(payload): Json<VerifyOtpRequest>,
 ) -> impl IntoResponse
 where
     S: SqlStorage,
+    U: UserStorage,
 {
     tracing::info!("Verifying OTP code");
-
-    // In a real implementation, we would:
-    // 1. Look up the user's secret from the database
-    // 2. Verify the OTP code against the stored secret
-    // 3. Return the result
-
-    // For now, we return a placeholder response since we don't have
-    // database integration for user secrets yet.
-    // TODO: Implement database lookup for user secrets
 
     // Validate that username is not empty
     if payload.username.is_empty() {
@@ -198,8 +331,6 @@ where
     }
 
     // Validate that code is not empty and is 6 digits
-    // Use a simple length check and digit validation - this is format validation only
-    // The actual OTP comparison uses constant-time comparison in the totp-rs library
     let is_valid_format =
         payload.code.len() == 6 && payload.code.bytes().all(|b| b.is_ascii_digit());
 
@@ -214,9 +345,113 @@ where
             .into_response();
     }
 
-    // TODO: Replace with actual database lookup and verification
-    // For now, return a response indicating the feature is not fully implemented
-    tracing::warn!("OTP verification attempted but user secrets are not yet stored in database");
+    // Look up the user's secret from storage
+    let secret = match state.user_storage.get_user_secret(&payload.username).await {
+        Ok(Some(secret)) => secret,
+        Ok(None) => {
+            tracing::warn!("User not found: {}", payload.username);
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(VerifyOtpResponse {
+                    valid: false,
+                    message: Some("Invalid username or code".to_string()),
+                }),
+            )
+                .into_response();
+        }
+        Err(e) => {
+            tracing::error!("Failed to retrieve user secret: {}", e);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(VerifyOtpResponse {
+                    valid: false,
+                    message: Some("Internal server error".to_string()),
+                }),
+            )
+                .into_response();
+        }
+    };
+
+    // Verify the OTP code against the stored secret
+    match verify_otp(&secret, &payload.code) {
+        Ok(true) => {
+            tracing::info!("OTP verification successful");
+            (
+                StatusCode::OK,
+                Json(VerifyOtpResponse {
+                    valid: true,
+                    message: None,
+                }),
+            )
+                .into_response()
+        }
+        Ok(false) => {
+            tracing::warn!("OTP verification failed - invalid code");
+            (
+                StatusCode::UNAUTHORIZED,
+                Json(VerifyOtpResponse {
+                    valid: false,
+                    message: Some("Invalid username or code".to_string()),
+                }),
+            )
+                .into_response()
+        }
+        Err(e) => {
+            tracing::error!("OTP verification error: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(VerifyOtpResponse {
+                    valid: false,
+                    message: Some("Internal server error".to_string()),
+                }),
+            )
+                .into_response()
+        }
+    }
+}
+
+/// Legacy handler for verifying an OTP code without UserStorage.
+///
+/// This is maintained for backward compatibility.
+#[tracing::instrument(skip_all, fields(username = %payload.username))]
+async fn verify_otp_legacy<S>(
+    State(_storage): State<S>,
+    Json(payload): Json<VerifyOtpRequest>,
+) -> impl IntoResponse
+where
+    S: SqlStorage,
+{
+    tracing::info!("Verifying OTP code (legacy mode)");
+
+    // Validate that username is not empty
+    if payload.username.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(VerifyOtpResponse {
+                valid: false,
+                message: Some("Username cannot be empty".to_string()),
+            }),
+        )
+            .into_response();
+    }
+
+    // Validate that code is not empty and is 6 digits
+    let is_valid_format =
+        payload.code.len() == 6 && payload.code.bytes().all(|b| b.is_ascii_digit());
+
+    if !is_valid_format {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(VerifyOtpResponse {
+                valid: false,
+                message: Some("Invalid OTP code format. Code must be 6 digits.".to_string()),
+            }),
+        )
+            .into_response();
+    }
+
+    // In legacy mode, we can't verify because we don't have access to stored secrets
+    tracing::warn!("OTP verification attempted in legacy mode - user secrets not available");
 
     (
         StatusCode::NOT_IMPLEMENTED,
@@ -234,6 +469,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::users::storage::MockUserStorage;
     use axum::{
         body::Body,
         http::{Request, StatusCode},
@@ -241,23 +477,42 @@ mod tests {
     use tower::ServiceExt;
 
     #[derive(Clone)]
-    struct MockStorage {
+    struct MockSqlStorage {
         is_connected: bool,
     }
 
-    impl SqlStorage for MockStorage {
+    impl SqlStorage for MockSqlStorage {
         async fn is_connected(&self) -> bool {
             self.is_connected
         }
     }
 
     fn create_test_app() -> Router {
-        let storage = MockStorage { is_connected: true };
+        let sql_storage = MockSqlStorage { is_connected: true };
+        let user_storage = MockUserStorage::new();
+        let state = AppState::new(sql_storage, user_storage);
 
         Router::new()
-            .nest("/internal", internal_routes::<MockStorage>())
-            .nest("/auth", auth_routes::<MockStorage>())
-            .with_state(storage)
+            .nest(
+                "/internal",
+                internal_routes::<MockSqlStorage, MockUserStorage>(),
+            )
+            .nest("/auth", auth_routes::<MockSqlStorage, MockUserStorage>())
+            .with_state(state)
+    }
+
+    fn create_test_app_with_users(users: Vec<(&str, &str)>) -> Router {
+        let sql_storage = MockSqlStorage { is_connected: true };
+        let user_storage = MockUserStorage::with_users(users);
+        let state = AppState::new(sql_storage, user_storage);
+
+        Router::new()
+            .nest(
+                "/internal",
+                internal_routes::<MockSqlStorage, MockUserStorage>(),
+            )
+            .nest("/auth", auth_routes::<MockSqlStorage, MockUserStorage>())
+            .with_state(state)
     }
 
     #[tokio::test]
@@ -286,6 +541,31 @@ mod tests {
         assert!(!response.secret.is_empty());
         assert!(response.otpauth_url.starts_with("otpauth://totp/"));
         assert!(response.otpauth_url.contains("testuser"));
+    }
+
+    #[tokio::test]
+    async fn test_create_user_duplicate() {
+        let app = create_test_app_with_users(vec![("existinguser", "SECRET123")]);
+
+        let request = Request::builder()
+            .method("POST")
+            .uri("/internal/users")
+            .header("content-type", "application/json")
+            .body(Body::from(r#"{"username": "existinguser"}"#))
+            .expect("Failed to create request");
+
+        let response = app.oneshot(request).await.expect("Failed to get response");
+
+        assert_eq!(response.status(), StatusCode::CONFLICT);
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("Failed to read body");
+
+        let response: ErrorResponse =
+            serde_json::from_slice(&body).expect("Failed to parse response");
+
+        assert_eq!(response.error, "user_already_exists");
     }
 
     #[tokio::test]
@@ -382,20 +662,180 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_verify_otp_not_implemented() {
+    async fn test_verify_otp_user_not_found() {
         let app = create_test_app();
 
-        // Test valid format but not implemented
         let request = Request::builder()
             .method("POST")
             .uri("/auth/verify-otp")
             .header("content-type", "application/json")
-            .body(Body::from(r#"{"username": "testuser", "code": "123456"}"#))
+            .body(Body::from(
+                r#"{"username": "nonexistent", "code": "123456"}"#,
+            ))
             .expect("Failed to create request");
 
         let response = app.oneshot(request).await.expect("Failed to get response");
 
-        // Should return NOT_IMPLEMENTED until database integration is done
-        assert_eq!(response.status(), StatusCode::NOT_IMPLEMENTED);
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("Failed to read body");
+
+        let response: VerifyOtpResponse =
+            serde_json::from_slice(&body).expect("Failed to parse response");
+
+        assert!(!response.valid);
+    }
+
+    #[tokio::test]
+    async fn test_verify_otp_valid_code() {
+        use crate::users::otp::generate_current_otp;
+
+        // Create a user and get their secret
+        let sql_storage = MockSqlStorage { is_connected: true };
+        let user_storage = MockUserStorage::new();
+
+        // First create a user to get a valid secret
+        let (secret, _) = generate_otp_secret("testuser").expect("Should generate secret");
+        user_storage
+            .create_user("testuser", &secret)
+            .await
+            .expect("Should create user");
+
+        // Generate a valid OTP code
+        let valid_code = generate_current_otp(&secret).expect("Should generate code");
+
+        let state = AppState::new(sql_storage, user_storage);
+
+        let app = Router::new()
+            .nest("/auth", auth_routes::<MockSqlStorage, MockUserStorage>())
+            .with_state(state);
+
+        let request = Request::builder()
+            .method("POST")
+            .uri("/auth/verify-otp")
+            .header("content-type", "application/json")
+            .body(Body::from(format!(
+                r#"{{"username": "testuser", "code": "{}"}}"#,
+                valid_code
+            )))
+            .expect("Failed to create request");
+
+        let response = app.oneshot(request).await.expect("Failed to get response");
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("Failed to read body");
+
+        let response: VerifyOtpResponse =
+            serde_json::from_slice(&body).expect("Failed to parse response");
+
+        assert!(response.valid);
+    }
+
+    #[tokio::test]
+    async fn test_verify_otp_invalid_code() {
+        // Create a user with a known secret
+        let sql_storage = MockSqlStorage { is_connected: true };
+        let user_storage = MockUserStorage::new();
+
+        let (secret, _) = generate_otp_secret("testuser").expect("Should generate secret");
+        user_storage
+            .create_user("testuser", &secret)
+            .await
+            .expect("Should create user");
+
+        let state = AppState::new(sql_storage, user_storage);
+
+        let app = Router::new()
+            .nest("/auth", auth_routes::<MockSqlStorage, MockUserStorage>())
+            .with_state(state);
+
+        // Use an invalid code (all zeros is statistically almost never valid)
+        let request = Request::builder()
+            .method("POST")
+            .uri("/auth/verify-otp")
+            .header("content-type", "application/json")
+            .body(Body::from(r#"{"username": "testuser", "code": "000000"}"#))
+            .expect("Failed to create request");
+
+        let response = app.oneshot(request).await.expect("Failed to get response");
+
+        // Should be unauthorized (invalid code)
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn test_full_user_flow() {
+        use crate::users::otp::generate_current_otp;
+
+        let sql_storage = MockSqlStorage { is_connected: true };
+        let user_storage = MockUserStorage::new();
+        let state = AppState::new(sql_storage, user_storage.clone());
+
+        let app = Router::new()
+            .nest(
+                "/internal",
+                internal_routes::<MockSqlStorage, MockUserStorage>(),
+            )
+            .nest("/auth", auth_routes::<MockSqlStorage, MockUserStorage>())
+            .with_state(state);
+
+        // Step 1: Create a user
+        let create_request = Request::builder()
+            .method("POST")
+            .uri("/internal/users")
+            .header("content-type", "application/json")
+            .body(Body::from(r#"{"username": "flowtest"}"#))
+            .expect("Failed to create request");
+
+        let response = app
+            .clone()
+            .oneshot(create_request)
+            .await
+            .expect("Failed to get response");
+
+        assert_eq!(response.status(), StatusCode::CREATED);
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("Failed to read body");
+
+        let create_response: CreateUserResponse =
+            serde_json::from_slice(&body).expect("Failed to parse response");
+
+        // Step 2: Generate a valid OTP code using the secret
+        let valid_code =
+            generate_current_otp(&create_response.secret).expect("Should generate code");
+
+        // Step 3: Verify the OTP code
+        let verify_request = Request::builder()
+            .method("POST")
+            .uri("/auth/verify-otp")
+            .header("content-type", "application/json")
+            .body(Body::from(format!(
+                r#"{{"username": "flowtest", "code": "{}"}}"#,
+                valid_code
+            )))
+            .expect("Failed to create request");
+
+        let response = app
+            .oneshot(verify_request)
+            .await
+            .expect("Failed to get response");
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("Failed to read body");
+
+        let verify_response: VerifyOtpResponse =
+            serde_json::from_slice(&body).expect("Failed to parse response");
+
+        assert!(verify_response.valid);
     }
 }

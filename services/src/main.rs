@@ -2,6 +2,7 @@ use collects_services::{
     config::Config,
     database::{self, PgStorage},
     routes, telemetry,
+    users::PgUserStorage,
 };
 use std::net::{IpAddr, SocketAddr};
 use tracing::info;
@@ -47,10 +48,13 @@ async fn main() -> anyhow::Result<()> {
 
     // Initialize database connection pool
     let pool = database::create_pool(&config).await?;
-    let storage = PgStorage::new(pool);
+    let sql_storage = PgStorage::new(pool);
 
-    // Build the application router
-    let route = routes(storage, config.clone()).await;
+    // Create user storage backed by PostgreSQL
+    let user_storage = PgUserStorage::new(sql_storage.clone());
+
+    // Build the application router with both SQL and User storage
+    let route = routes(sql_storage, user_storage, config.clone()).await;
 
     info!("Starting server on {}", addr);
     axum::serve(listener, route).await?;

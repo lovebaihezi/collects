@@ -30,6 +30,8 @@ impl Default for BusinessConfig {
                 "".to_string()
             } else if cfg!(feature = "env_test") {
                 "https://collects-test.lqxclqxc.com".to_string()
+            } else if cfg!(feature = "env_test_internal") {
+                "https://collects-test-internal.lqxclqxc.com".to_string()
             } else if cfg!(feature = "env_pr") {
                 "https://collects-pr.lqxclqxc.com".to_string()
             } else if cfg!(feature = "env_internal") {

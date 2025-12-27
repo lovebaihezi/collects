@@ -70,6 +70,12 @@ The application has two main components:
 - URL: `https://collects-services-test-internal-145756646168.us-east1.run.app`
 - Database Secret: `database-url-test-internal`
 
+**Worker:**
+- Worker Name: `collects-app-test-internal`
+- URL: `https://collects-test-internal.lqxclqxc.com`
+- KV Namespace ID: `fac40588d16f4fa8b7c8f36de6445649`
+- API Base: `https://collects-services-test-internal-145756646168.us-east1.run.app`
+
 ### Nightly Environment
 
 **When deployed:**
@@ -134,7 +140,7 @@ The application has two main components:
 | Production | `https://collects-services-145756646168.us-east1.run.app` | `https://collects.lqxclqxc.com` |
 | Internal | `https://collects-services-internal-145756646168.us-east1.run.app` | `https://collects-internal.lqxclqxc.com` |
 | Test | `https://collects-services-test-145756646168.us-east1.run.app` | `https://collects-test.lqxclqxc.com` |
-| Test-Internal | `https://collects-services-test-internal-145756646168.us-east1.run.app` | N/A |
+| Test-Internal | `https://collects-services-test-internal-145756646168.us-east1.run.app` | `https://collects-test-internal.lqxclqxc.com` |
 | Nightly | `https://collects-services-nightly-145756646168.us-east1.run.app` | `https://collects-nightly.lqxclqxc.com` |
 | PR | `https://collects-services-pr-145756646168.us-east1.run.app` | `https://collects-pr.lqxclqxc.com` |
 

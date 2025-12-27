@@ -20,14 +20,14 @@ install:
     pnpm i
 
 web-build env="": install
-    trunk build {{ if env == "pr" { "--features env_pr" } else if env == "test" { "--features env_test" } else if env == "internal" { "--features env_internal" } else if env == "nightly" { "--features env_nightly" } else { "" } }}
+    trunk build {{ if env == "pr" { "--features env_pr" } else if env == "test" { "--features env_test" } else if env == "test-internal" { "--features env_test_internal" } else if env == "internal" { "--features env_internal" } else if env == "nightly" { "--features env_nightly" } else { "" } }}
     du -h dist/*
 
 web-fmt: install
     pnpm prettier --write src/worker.ts index.html
 
 web-release env="": install
-    trunk build --release {{ if env == "pr" { "--features env_pr" } else if env == "test" { "--features env_test" } else if env == "internal" { "--features env_internal" } else if env == "nightly" { "--features env_nightly" } else { "" } }}
+    trunk build --release {{ if env == "pr" { "--features env_pr" } else if env == "test" { "--features env_test" } else if env == "test-internal" { "--features env_test_internal" } else if env == "internal" { "--features env_internal" } else if env == "nightly" { "--features env_nightly" } else { "" } }}
     du -h dist/*
 
 wk-dev: (web-build)

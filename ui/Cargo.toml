@@ -47,6 +47,7 @@ embed-resource = "2.4"
 
 [features]
 env_test = ["collects-business/env_test"]
+env_test_internal = ["collects-business/env_test_internal"]
 env_internal = ["collects-business/env_internal"]
 env_nightly = ["collects-business/env_nightly"]
 env_pr = ["collects-business/env_pr"]

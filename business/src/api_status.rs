@@ -9,7 +9,7 @@ use ustr::Ustr;
 #[derive(Default, Debug)]
 pub struct ApiStatus {
     last_update_time: Option<DateTime<Utc>>,
-    // if exists error, means api available
+    // if exists error, means api unavailable
     last_error: Option<String>,
     // HTTP status code for non-200 responses
     status_code: Option<u16>,

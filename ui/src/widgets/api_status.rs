@@ -114,10 +114,6 @@ mod api_state_widget_test {
         harness.step();
         harness.state_mut().ctx.run_computed();
 
-        if let Some(n) = harness.query_by_label_contains("API Health") {
-            eprintln!("NODE: {:?}", n);
-        }
-
         assert!(
             harness.query_by_label("API Health: 404").is_some(),
             "'API Health: 404' should exists in UI"
@@ -153,10 +149,6 @@ mod api_state_widget_test {
         harness.state_mut().ctx.sync_computes();
         harness.step();
         harness.state_mut().ctx.run_computed();
-
-        if let Some(n) = harness.query_by_label_contains("API Health") {
-            eprintln!("NODE: {:?}", n);
-        }
 
         assert!(
             harness.query_by_label("API Health: 500").is_some(),

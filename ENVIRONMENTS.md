@@ -30,7 +30,7 @@ The application has two main components:
 
 **When deployed:**
 - When code is pushed to `main` branch AND the version number HAS changed (alongside production deployment)
-- This is the internal environment with admin database access for production data
+- This environment uses the production database branch with admin role for migrations and internal operations
 
 **Services:**
 - Service Name: `collects-services-internal`

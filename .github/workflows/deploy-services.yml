@@ -139,8 +139,9 @@ jobs:
       - name: Run Migrations for Internal Environment
         if: needs.determine-environment.outputs.deploy_internal == 'true'
         run: |
-          # For prod deploy, use internal (production branch)
-          # For test deploy, use test-internal (development branch)
+          # Determine internal environment based on primary environment:
+          # - prod deploy -> internal environment (production branch)
+          # - test deploy -> test-internal environment (development branch)
           if [[ "${{ needs.determine-environment.outputs.env }}" == "prod" ]]; then
             INTERNAL_ENV="internal"
           else
@@ -213,8 +214,9 @@ jobs:
       - name: Deploy to Internal Environment
         if: needs.determine-environment.outputs.deploy_internal == 'true'
         run: |
-          # For prod deploy, use internal (production branch)
-          # For test deploy, use test-internal (development branch)
+          # Determine internal environment based on primary environment:
+          # - prod deploy -> internal environment (production branch)
+          # - test deploy -> test-internal environment (development branch)
           if [[ "${{ needs.determine-environment.outputs.env }}" == "prod" ]]; then
             INTERNAL_ENV="internal"
           else

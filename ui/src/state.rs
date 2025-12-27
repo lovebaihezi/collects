@@ -1,4 +1,6 @@
 use collects_business::{ApiStatus, BusinessConfig};
+#[cfg(any(feature = "env_internal", feature = "env_test_internal"))]
+use collects_business::{InternalApiStatus, InternalUsers};
 use collects_states::{StateCtx, Time};
 use serde::{Deserialize, Serialize};
 
@@ -17,6 +19,13 @@ impl Default for State {
         ctx.add_state(BusinessConfig::default());
         ctx.record_compute(ApiStatus::default());
 
+        // Register internal states for internal builds
+        #[cfg(any(feature = "env_internal", feature = "env_test_internal"))]
+        {
+            ctx.record_compute(InternalApiStatus::default());
+            ctx.record_compute(InternalUsers::default());
+        }
+
         Self { ctx }
     }
 }
@@ -28,6 +37,13 @@ impl State {
         ctx.add_state(Time::default());
         ctx.add_state(BusinessConfig::new(base_url));
         ctx.record_compute(ApiStatus::default());
+
+        // Register internal states for internal builds
+        #[cfg(any(feature = "env_internal", feature = "env_test_internal"))]
+        {
+            ctx.record_compute(InternalApiStatus::default());
+            ctx.record_compute(InternalUsers::default());
+        }
 
         Self { ctx }
     }

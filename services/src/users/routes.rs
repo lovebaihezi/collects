@@ -27,12 +27,12 @@
 //! }
 //! ```
 
-use axum::{Json, Router, extract::State, http::StatusCode, response::IntoResponse, routing::post};
+use axum::{Json, Router, extract::State, http::StatusCode, response::IntoResponse, routing::{get, post}};
 use serde::{Deserialize, Serialize};
 
 use super::otp::{
     CreateUserRequest, CreateUserResponse, OtpError, VerifyOtpRequest, VerifyOtpResponse,
-    generate_otp_secret, verify_otp,
+    generate_current_otp, generate_otp_secret, verify_otp,
 };
 use super::storage::{UserStorage, UserStorageError};
 use crate::database::SqlStorage;
@@ -102,6 +102,22 @@ impl<S, U> AppState<S, U> {
     }
 }
 
+/// Response for a single user in the list.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UserWithOtp {
+    /// The username of the user.
+    pub username: String,
+    /// The current OTP code (generated from the user's secret).
+    pub current_otp: String,
+}
+
+/// Response containing the list of all users.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ListUsersResponse {
+    /// List of users with their current OTP codes.
+    pub users: Vec<UserWithOtp>,
+}
+
 /// Creates the router for user-related internal endpoints.
 ///
 /// These endpoints are intended to be used only in internal environments
@@ -116,7 +132,8 @@ where
     S: SqlStorage + Clone + Send + Sync + 'static,
     U: UserStorage + Clone + Send + Sync + 'static,
 {
-    Router::new().route("/users", post(create_user::<S, U>))
+    Router::new()
+        .route("/users", get(list_users::<S, U>).post(create_user::<S, U>))
 }
 
 /// Creates the router for user-related internal endpoints with legacy SqlStorage-only state.
@@ -152,6 +169,65 @@ where
     S: SqlStorage + Clone + Send + Sync + 'static,
 {
     Router::new().route("/verify-otp", post(verify_otp_legacy::<S>))
+}
+
+/// Handler for listing all users with their current OTP codes.
+///
+/// This endpoint is intended for internal use only in environments
+/// protected by Cloudflare Zero Trust.
+///
+/// # Request
+///
+/// GET /internal/users
+///
+/// # Response
+///
+/// ```json
+/// {
+///     "users": [
+///         {
+///             "username": "alice",
+///             "current_otp": "123456"
+///         },
+///         {
+///             "username": "bob",
+///             "current_otp": "654321"
+///         }
+///     ]
+/// }
+/// ```
+#[tracing::instrument(skip_all)]
+async fn list_users<S, U>(State(state): State<AppState<S, U>>) -> impl IntoResponse
+where
+    S: SqlStorage,
+    U: UserStorage,
+{
+    tracing::info!("Listing all users with OTP codes");
+
+    match state.user_storage.list_users().await {
+        Ok(users) => {
+            let users_with_otp: Vec<UserWithOtp> = users
+                .into_iter()
+                .map(|user| {
+                    let current_otp = generate_current_otp(&user.secret)
+                        .unwrap_or_else(|_| "------".to_string());
+                    UserWithOtp {
+                        username: user.username,
+                        current_otp,
+                    }
+                })
+                .collect();
+
+            tracing::info!("Listed {} users", users_with_otp.len());
+            (StatusCode::OK, Json(ListUsersResponse { users: users_with_otp })).into_response()
+        }
+        Err(e) => {
+            tracing::error!("Failed to list users: {}", e);
+            let (status, json): (StatusCode, Json<ErrorResponse>) =
+                UserStorageError::StorageError(e.to_string()).into();
+            (status, json).into_response()
+        }
+    }
 }
 
 /// Handler for creating a new user with OTP authentication.
@@ -541,6 +617,73 @@ mod tests {
         assert!(!response.secret.is_empty());
         assert!(response.otpauth_url.starts_with("otpauth://totp/"));
         assert!(response.otpauth_url.contains("testuser"));
+    }
+
+    #[tokio::test]
+    async fn test_list_users_empty() {
+        let app = create_test_app();
+
+        let request = Request::builder()
+            .method("GET")
+            .uri("/internal/users")
+            .body(Body::empty())
+            .expect("Failed to create request");
+
+        let response = app.oneshot(request).await.expect("Failed to get response");
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("Failed to read body");
+
+        let response: ListUsersResponse =
+            serde_json::from_slice(&body).expect("Failed to parse response");
+
+        assert!(response.users.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_list_users_with_valid_secrets() {
+        // First create a user to get a valid secret
+        let (secret, _) = generate_otp_secret("testuser").expect("Should generate secret");
+
+        let sql_storage = MockSqlStorage { is_connected: true };
+        let user_storage = MockUserStorage::with_users(vec![("testuser", secret.as_str())]);
+        let state = AppState::new(sql_storage, user_storage);
+
+        let app = Router::new()
+            .nest(
+                "/internal",
+                internal_routes::<MockSqlStorage, MockUserStorage>(),
+            )
+            .with_state(state);
+
+        let request = Request::builder()
+            .method("GET")
+            .uri("/internal/users")
+            .body(Body::empty())
+            .expect("Failed to create request");
+
+        let response = app.oneshot(request).await.expect("Failed to get response");
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("Failed to read body");
+
+        let response: ListUsersResponse =
+            serde_json::from_slice(&body).expect("Failed to parse response");
+
+        assert_eq!(response.users.len(), 1);
+        assert_eq!(response.users[0].username, "testuser");
+        // OTP should be 6 digits
+        assert_eq!(response.users[0].current_otp.len(), 6);
+        assert!(response.users[0]
+            .current_otp
+            .chars()
+            .all(|c| c.is_ascii_digit()));
     }
 
     #[tokio::test]

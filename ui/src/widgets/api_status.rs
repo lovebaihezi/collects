@@ -63,11 +63,15 @@ mod api_state_widget_test {
 
         // The Mock Server Needs to wait a bit before it can return 200
         // TODO: finds best practice to wait for mock server
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        // With internal features, there are more computes to wait for
+        tokio::time::sleep(Duration::from_millis(200)).await;
 
         harness.state_mut().ctx.sync_computes();
         harness.step();
-        harness.state_mut().ctx.run_computed();
+
+        // Wait for any remaining computes
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        harness.state_mut().ctx.sync_computes();
 
         if let Some(n) = harness.query_by_label_contains("API Status") {
             eprintln!("NODE: {:?}", n);

@@ -57,6 +57,16 @@ pub mod test_utils {
             .mount(&mock_server)
             .await;
 
+        // Add mock for internal API endpoint when internal features are enabled
+        #[cfg(any(feature = "env_internal", feature = "env_test_internal"))]
+        Mock::given(method("GET"))
+            .and(path("/api/internal/users"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "users": []
+            })))
+            .mount(&mock_server)
+            .await;
+
         let base_url = mock_server.uri();
 
         let state = State::test(base_url);

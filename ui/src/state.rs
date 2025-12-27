@@ -1,12 +1,23 @@
-use collects_business::{ApiStatus, BusinessConfig};
+use collects_business::{ApiStatus, AuthState, BusinessConfig};
 use collects_states::{StateCtx, Time};
-use serde::{Deserialize, Serialize};
 
-#[derive(Deserialize, Serialize)]
+use crate::widgets::{LoginDialogState, LoginResultReceiver, LoginResultSender, create_login_channel};
+
+/// The main application state.
+///
+/// Note: We manually implement Default because the login result channels
+/// don't implement Default.
 pub struct State {
-    // We needs to store the presisent state
-    #[serde(skip)]
+    /// The state context for business logic.
     pub ctx: StateCtx,
+    /// The current authentication state.
+    pub auth_state: AuthState,
+    /// The login dialog state.
+    pub login_dialog_state: LoginDialogState,
+    /// Sender for login result communication.
+    pub login_result_sender: LoginResultSender,
+    /// Receiver for login result communication.
+    pub login_result_receiver: LoginResultReceiver,
 }
 
 impl Default for State {
@@ -17,7 +28,15 @@ impl Default for State {
         ctx.add_state(BusinessConfig::default());
         ctx.record_compute(ApiStatus::default());
 
-        Self { ctx }
+        let (login_result_sender, login_result_receiver) = create_login_channel();
+
+        Self {
+            ctx,
+            auth_state: AuthState::default(),
+            login_dialog_state: LoginDialogState::default(),
+            login_result_sender,
+            login_result_receiver,
+        }
     }
 }
 
@@ -29,6 +48,14 @@ impl State {
         ctx.add_state(BusinessConfig::new(base_url));
         ctx.record_compute(ApiStatus::default());
 
-        Self { ctx }
+        let (login_result_sender, login_result_receiver) = create_login_channel();
+
+        Self {
+            ctx,
+            auth_state: AuthState::default(),
+            login_dialog_state: LoginDialogState::default(),
+            login_result_sender,
+            login_result_receiver,
+        }
     }
 }

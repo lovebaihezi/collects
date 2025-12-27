@@ -1,4 +1,5 @@
 use crate::{state::State, widgets};
+use collects_business::is_internal_build;
 
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
 pub struct CollectsApp {
@@ -29,6 +30,12 @@ impl eframe::App for CollectsApp {
             // The central panel the region left after adding TopPanel's and SidePanel's
             ui.heading("Collects App");
             powered_by_egui_and_eframe(ui);
+
+            // Show internal users panel for test/internal builds
+            if is_internal_build() {
+                ui.add_space(16.0);
+                widgets::internal_users_panel(ui, &mut self.state.internal_users);
+            }
         });
 
         // Run background jobs

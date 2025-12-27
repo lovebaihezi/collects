@@ -29,8 +29,8 @@ The application has two main components:
 ### Internal Environment
 
 **When deployed:**
-- When code is pushed to `main` branch AND the version number has NOT changed
-- This is the continuous integration environment for testing changes before a production release
+- When code is pushed to `main` branch AND the version number HAS changed (alongside production deployment)
+- This environment uses the production database branch with admin role for migrations and internal operations
 
 **Services:**
 - Service Name: `collects-services-internal`
@@ -46,7 +46,7 @@ The application has two main components:
 ### Test Environment
 
 **When deployed:**
-- When code is pushed to `main` branch AND the version number has NOT changed (alongside internal deployment)
+- When code is pushed to `main` branch AND the version number has NOT changed (alongside test-internal deployment)
 
 **Services:**
 - Service Name: `collects-services-test`
@@ -58,6 +58,17 @@ The application has two main components:
 - URL: `https://collects-test.lqxclqxc.com`
 - KV Namespace ID: `fac40588d16f4fa8b7c8f36de6445649`
 - API Base: `https://collects-services-test-145756646168.us-east1.run.app`
+
+### Test-Internal Environment
+
+**When deployed:**
+- When code is pushed to `main` branch AND the version number has NOT changed (alongside test deployment)
+- This is the internal environment with admin database access for testing/development data
+
+**Services:**
+- Service Name: `collects-services-test-internal`
+- URL: `https://collects-services-test-internal-145756646168.us-east1.run.app`
+- Database Secret: `database-url-test-internal`
 
 ### Nightly Environment
 
@@ -100,8 +111,8 @@ The application has two main components:
 1. **Version Check**: Compares current version with previous commit
 2. **Environment Selection**:
    - `pull_request` → `pr`
-   - Version changed → `prod` (with version tag)
-   - `push` to main without version change → `test` (then also deploys to `internal`)
+   - Version changed → `prod` (then also deploys to `internal`)
+   - `push` to main without version change → `test` (then also deploys to `test-internal`)
    - `schedule` → `nightly`
 3. **Build & Push**: Builds Docker image and pushes to Artifact Registry
 4. **Deploy**: Deploys to Google Cloud Run
@@ -123,6 +134,7 @@ The application has two main components:
 | Production | `https://collects-services-145756646168.us-east1.run.app` | `https://collects.lqxclqxc.com` |
 | Internal | `https://collects-services-internal-145756646168.us-east1.run.app` | `https://collects-internal.lqxclqxc.com` |
 | Test | `https://collects-services-test-145756646168.us-east1.run.app` | `https://collects-test.lqxclqxc.com` |
+| Test-Internal | `https://collects-services-test-internal-145756646168.us-east1.run.app` | N/A |
 | Nightly | `https://collects-services-nightly-145756646168.us-east1.run.app` | `https://collects-nightly.lqxclqxc.com` |
 | PR | `https://collects-services-pr-145756646168.us-east1.run.app` | `https://collects-pr.lqxclqxc.com` |
 
@@ -130,8 +142,9 @@ The application has two main components:
 
 Each environment (except nightly) uses a separate database:
 - `database-url` - Production (also used by nightly)
-- `database-url-internal` - Internal
-- `database-url-test` - Test
+- `database-url-internal` - Internal (production branch, admin role)
+- `database-url-test` - Test (development branch)
+- `database-url-test-internal` - Test-Internal (development branch, admin role)
 - `database-url-pr` - PR
 - `database-url-local` - Local development
 

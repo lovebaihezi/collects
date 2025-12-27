@@ -124,8 +124,9 @@ Initializes Neon Database branches and updates Google Cloud Secrets with connect
 3. Resets passwords for all roles to generate fresh credentials.
 4. Creates/updates Google Cloud secrets for all environments:
    - \`database-url\` (prod, restricted role)
-   - \`database-url-internal\` (internal, admin role on production)
+   - \`database-url-internal\` (internal, admin role on production, deploys with prod)
    - \`database-url-test\` (test, admin role on development)
+   - \`database-url-test-internal\` (test-internal, admin role on development, deploys with main)
    - \`database-url-pr\` (pr, admin role on development)
    - \`database-url-local\` (local dev, admin role on development)
 

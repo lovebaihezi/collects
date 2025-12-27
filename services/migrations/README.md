@@ -49,11 +49,12 @@ just services::prepare-check local
 
 ## Environment Mapping
 
-| Environment | Database Secret        | Branch      |
-|-------------|------------------------|-------------|
-| prod        | database-url           | production  |
-| nightly     | database-url           | production  |
-| internal    | database-url-internal  | production  |
-| test        | database-url-test      | development |
-| pr          | database-url-pr        | development |
-| local       | database-url-local     | development |
+| Environment   | Database Secret              | Branch      |
+|---------------|------------------------------|-------------|
+| prod          | database-url                 | production  |
+| nightly       | database-url                 | production  |
+| internal      | database-url-internal        | production  |
+| test          | database-url-test            | development |
+| test-internal | database-url-test-internal   | development |
+| pr            | database-url-pr              | development |
+| local         | database-url-local           | development |

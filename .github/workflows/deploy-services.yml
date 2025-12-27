@@ -85,10 +85,12 @@ jobs:
             echo "tag=pr-${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
             echo "deploy_internal=false" >> $GITHUB_OUTPUT
           elif [[ "${{ needs.check-version.outputs.version_changed }}" == "true" ]]; then
+            # Production deploy: prod + internal
             echo "env=prod" >> $GITHUB_OUTPUT
             echo "tag=v${{ needs.check-version.outputs.current_version }}" >> $GITHUB_OUTPUT
-            echo "deploy_internal=false" >> $GITHUB_OUTPUT
+            echo "deploy_internal=true" >> $GITHUB_OUTPUT
           elif [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" == "refs/heads/main" ]]; then
+            # Main deploy without version change: test + test-internal
             echo "env=test" >> $GITHUB_OUTPUT
             echo "tag=main-${{ github.sha }}" >> $GITHUB_OUTPUT
             echo "deploy_internal=true" >> $GITHUB_OUTPUT
@@ -137,8 +139,16 @@ jobs:
       - name: Run Migrations for Internal Environment
         if: needs.determine-environment.outputs.deploy_internal == 'true'
         run: |
-          echo "Running migrations for internal environment..."
-          just services::migrate internal
+          # Determine internal environment based on primary environment:
+          # - prod deploy -> internal environment (production branch)
+          # - test deploy -> test-internal environment (development branch)
+          if [[ "${{ needs.determine-environment.outputs.env }}" == "prod" ]]; then
+            INTERNAL_ENV="internal"
+          else
+            INTERNAL_ENV="test-internal"
+          fi
+          echo "Running migrations for ${INTERNAL_ENV} environment..."
+          just services::migrate ${INTERNAL_ENV}
 
   build-and-deploy:
     name: Build and Deploy
@@ -204,4 +214,12 @@ jobs:
       - name: Deploy to Internal Environment
         if: needs.determine-environment.outputs.deploy_internal == 'true'
         run: |
-          just services::gcloud-deploy internal ${{ needs.determine-environment.outputs.tag }}
+          # Determine internal environment based on primary environment:
+          # - prod deploy -> internal environment (production branch)
+          # - test deploy -> test-internal environment (development branch)
+          if [[ "${{ needs.determine-environment.outputs.env }}" == "prod" ]]; then
+            INTERNAL_ENV="internal"
+          else
+            INTERNAL_ENV="test-internal"
+          fi
+          just services::gcloud-deploy ${INTERNAL_ENV} ${{ needs.determine-environment.outputs.tag }}

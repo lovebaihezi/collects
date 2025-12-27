@@ -37,7 +37,7 @@ const ENV_CONFIGS: EnvConfig[] = [
     branchName: "production",
     secretName: "database-url-internal",
     useAdminRole: true,
-    description: "Internal environment (admin role for migrations)",
+    description: "Internal environment (admin role for migrations, deploys with prod)",
   },
   {
     env: "test",
@@ -45,6 +45,13 @@ const ENV_CONFIGS: EnvConfig[] = [
     secretName: "database-url-test",
     useAdminRole: true,
     description: "Test environment",
+  },
+  {
+    env: "test-internal",
+    branchName: "development",
+    secretName: "database-url-test-internal",
+    useAdminRole: true,
+    description: "Test-internal environment (admin role, deploys with main)",
   },
   {
     env: "pr",

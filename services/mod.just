@@ -15,7 +15,7 @@ default:
     @echo "   $ just scripts::init-db <NEON_API_TOKEN> <NEON_PROJECT_ID>"
     @echo ""
     @echo "   This will:"
-    @echo "   - Create database URLs for all environments (prod, internal, test, pr, local)"
+    @echo "   - Create database URLs for all environments (prod, internal, test, test-internal, pr, local)"
     @echo "   - Store them as secrets in Google Cloud Secret Manager"
     @echo ""
     @echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -89,7 +89,7 @@ default:
     @echo "   Deployment:"
     @echo "   $ just services::gcloud-deploy <env> <tag>   Deploy to Cloud Run"
     @echo ""
-    @echo "   Environments: prod, internal, nightly, test, pr, local"
+    @echo "   Environments: prod, internal, nightly, test, test-internal, pr, local"
     @echo ""
     @echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     @echo ""
@@ -117,7 +117,7 @@ add-migrate *args: install-sqlx
     sqlx migrate add {{args}}
 
 # Run sqlx migrations for a specific environment
-# Environments: prod, internal, nightly, test, pr, local
+# Environments: prod, internal, nightly, test, test-internal, pr, local
 # Usage: just services::migrate local
 migrate env: install-sqlx
     #!/bin/bash
@@ -125,12 +125,13 @@ migrate env: install-sqlx
 
     # Determine database secret based on environment
     # Mapping:
-    #   prod     -> database-url
-    #   nightly  -> database-url (uses prod database)
-    #   internal -> database-url-internal
-    #   test     -> database-url-test
-    #   pr       -> database-url-pr
-    #   local    -> database-url-local
+    #   prod          -> database-url
+    #   nightly       -> database-url (uses prod database)
+    #   internal      -> database-url-internal
+    #   test          -> database-url-test
+    #   test-internal -> database-url-test-internal
+    #   pr            -> database-url-pr
+    #   local         -> database-url-local
     if [ "{{env}}" == "prod" ] || [ "{{env}}" == "nightly" ]; then
         DATABASE_SECRET="database-url"
     else
@@ -226,7 +227,7 @@ lint:
     cargo clippy
 
 # Deploys the service to Cloud Run
-# Environments: prod, internal, nightly, test, pr
+# Environments: prod, internal, nightly, test, test-internal, pr
 # Usage: just services::gcloud-deploy prod 20251017-1
 gcloud-deploy env image_tag:
     #!/bin/bash
@@ -240,11 +241,12 @@ gcloud-deploy env image_tag:
 
     # Determine service name and secret suffix based on environment
     # Mapping:
-    #   prod     -> collects-services          -> database-url
-    #   nightly  -> collects-services-nightly  -> database-url (uses prod database)
-    #   internal -> collects-services-internal -> database-url-internal
-    #   test     -> collects-services-test     -> database-url-test
-    #   pr       -> collects-services-pr       -> database-url-pr
+    #   prod          -> collects-services               -> database-url
+    #   nightly       -> collects-services-nightly       -> database-url (uses prod database)
+    #   internal      -> collects-services-internal      -> database-url-internal
+    #   test          -> collects-services-test          -> database-url-test
+    #   test-internal -> collects-services-test-internal -> database-url-test-internal
+    #   pr            -> collects-services-pr            -> database-url-pr
     if [ "{{env}}" == "prod" ]; then
         SERVICE_NAME="collects-services"
         DATABASE_SECRET="database-url"

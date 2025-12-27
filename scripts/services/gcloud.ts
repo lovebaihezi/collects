@@ -187,6 +187,7 @@ export async function grantSecretAccessToAllDatabaseSecrets(
     "database-url",
     "database-url-internal",
     "database-url-test",
+    "database-url-test-internal",
     "database-url-pr",
     "database-url-local",
   ];

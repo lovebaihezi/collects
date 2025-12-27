@@ -37,6 +37,8 @@ pub fn env_version_info() -> (&'static str, &'static str) {
         ("nightly", build_date())
     } else if cfg!(feature = "env_internal") {
         ("internal", build_commit())
+    } else if cfg!(feature = "env_test_internal") {
+        ("test-internal", build_commit())
     } else if cfg!(feature = "env_test") {
         ("main", build_commit())
     } else {

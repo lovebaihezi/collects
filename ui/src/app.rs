@@ -22,12 +22,53 @@ impl eframe::App for CollectsApp {
             egui::MenuBar::new().ui(ui, |ui| {
                 widgets::api_status(&self.state.ctx, ui);
                 widgets::env_version(ui);
+
+                // Add flexible space to push sign-in button to the right
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    widgets::signin_button(
+                        &self.state.ctx,
+                        &self.state.auth_state,
+                        &mut self.state.login_dialog_state,
+                        ui,
+                    );
+                });
             });
         });
+
+        // Show login dialog if open
+        if let Some(form_data) = widgets::login_dialog(
+            ctx,
+            &self.state.ctx,
+            &mut self.state.auth_state,
+            &mut self.state.login_dialog_state,
+        ) {
+            // Handle login submission
+            widgets::perform_login(
+                &self.state.ctx,
+                &mut self.state.auth_state,
+                &mut self.state.login_dialog_state,
+                &form_data,
+            );
+        }
 
         egui::CentralPanel::default().show(ctx, |ui| {
             // The central panel the region left after adding TopPanel's and SidePanel's
             ui.heading("Collects App");
+
+            // Show different content based on login status
+            if self.state.auth_state.is_logged_in() {
+                if let Some(ref username) = self.state.auth_state.username {
+                    ui.label(format!("Welcome, {}!", username));
+                }
+                ui.add_space(10.0);
+                if ui.button("Sign Out").clicked() {
+                    self.state.auth_state.logout();
+                }
+            } else {
+                ui.label("Sign in to access your collections.");
+            }
+
+            ui.add_space(20.0);
             powered_by_egui_and_eframe(ui);
         });
 

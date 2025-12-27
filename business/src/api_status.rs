@@ -11,20 +11,24 @@ pub struct ApiStatus {
     last_update_time: Option<DateTime<Utc>>,
     // if exists error, means api available
     last_error: Option<String>,
+    // HTTP status code for non-200 responses
+    status_code: Option<u16>,
 }
 
 pub enum APIAvailability<'a> {
     Available(DateTime<Utc>),
     Unavailable((DateTime<Utc>, &'a str)),
+    UnhealthyStatus((DateTime<Utc>, u16)),
     Unknown,
 }
 
 impl ApiStatus {
     pub fn api_availability(&self) -> APIAvailability<'_> {
-        match (self.last_update_time, &self.last_error) {
-            (None, None) => APIAvailability::Unknown,
-            (Some(time), None) => APIAvailability::Available(time),
-            (Some(time), Some(err)) => APIAvailability::Unavailable((time, err.as_str())),
+        match (self.last_update_time, &self.last_error, self.status_code) {
+            (None, None, None) => APIAvailability::Unknown,
+            (Some(time), None, None) => APIAvailability::Available(time),
+            (Some(time), None, Some(status)) => APIAvailability::UnhealthyStatus((time, status)),
+            (Some(time), Some(err), _) => APIAvailability::Unavailable((time, err.as_str())),
             _ => APIAvailability::Unknown,
         }
     }
@@ -70,10 +74,17 @@ impl Compute for ApiStatus {
                         let api_status = ApiStatus {
                             last_update_time: Some(now),
                             last_error: None,
+                            status_code: None,
                         };
                         updater.set(api_status);
                     } else {
                         info!("BackEnd Return with status code: {:?}", response.status);
+                        let api_status = ApiStatus {
+                            last_update_time: Some(now),
+                            last_error: None,
+                            status_code: Some(response.status),
+                        };
+                        updater.set(api_status);
                     }
                 }
                 Err(err) => {
@@ -81,6 +92,7 @@ impl Compute for ApiStatus {
                     let api_status = ApiStatus {
                         last_update_time: Some(now),
                         last_error: Some(err.to_string()),
+                        status_code: None,
                     };
                     updater.set(api_status);
                 }

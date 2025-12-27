@@ -46,14 +46,33 @@ pub mod test_utils {
                 harness,
             }
         }
+
+        #[allow(unused)]
+        pub async fn new_with_status(
+            app: impl FnMut(&mut egui::Ui, &mut State) + 'a,
+            status_code: u16,
+        ) -> Self {
+            let _ = env_logger::builder().is_test(true).try_init();
+            let (mock_server, state) = setup_test_state_with_status(status_code).await;
+            let harness = Harness::new_ui_state(app, state);
+
+            Self {
+                _mock_server: mock_server,
+                harness,
+            }
+        }
     }
 
     async fn setup_test_state() -> (MockServer, State) {
+        setup_test_state_with_status(200).await
+    }
+
+    async fn setup_test_state_with_status(status_code: u16) -> (MockServer, State) {
         let mock_server = MockServer::start().await;
 
         Mock::given(method("GET"))
             .and(path("/api/is-health"))
-            .respond_with(ResponseTemplate::new(200))
+            .respond_with(ResponseTemplate::new(status_code))
             .mount(&mock_server)
             .await;
 

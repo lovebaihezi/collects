@@ -6,7 +6,7 @@ import {
   buildSetupContext,
   setupGitHubActions,
   type BuildSetupOptions,
-} from "./services/gh-action.ts";
+} from "./services/gcloud.ts";
 import { runVersionCheck } from "./gh-actions/version-check.ts";
 
 const cli = cac("services");
@@ -44,12 +44,12 @@ cli
     const token = options.token
       ? options.token
       : await p.text({
-          message: "Enter your Neon API Token:",
-          placeholder: "neon_api_xxxxx",
-          validate: (value) => {
-            if (!value) return "Neon API Token is required";
-          },
-        });
+        message: "Enter your Neon API Token:",
+        placeholder: "neon_api_xxxxx",
+        validate: (value) => {
+          if (!value) return "Neon API Token is required";
+        },
+      });
 
     if (p.isCancel(token)) {
       p.cancel("Operation cancelled.");
@@ -60,12 +60,12 @@ cli
     const projectId = options.projectId
       ? options.projectId
       : await p.text({
-          message: "Enter your Neon Project ID:",
-          placeholder: "project-id-xxxx",
-          validate: (value) => {
-            if (!value) return "Neon Project ID is required";
-          },
-        });
+        message: "Enter your Neon Project ID:",
+        placeholder: "project-id-xxxx",
+        validate: (value) => {
+          if (!value) return "Neon Project ID is required";
+        },
+      });
 
     if (p.isCancel(projectId)) {
       p.cancel("Operation cancelled.");

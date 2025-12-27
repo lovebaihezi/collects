@@ -85,12 +85,12 @@ async function handle(req: Request, env: Env): Promise<Response> {
     return handleApi(req, env);
   }
 
-  // Log non-API requests that result in 404
+  // Delegate to ASSETS binding for static files
   log({
     timestamp: new Date().toISOString(),
     requestId: generateRequestId(),
     level: "debug",
-    message: "Non-API request - returning 404",
+    message: "Non-API request - delegating to ASSETS",
     data: {
       method: req.method,
       pathname: url.pathname,
@@ -98,7 +98,7 @@ async function handle(req: Request, env: Env): Promise<Response> {
     },
   });
 
-  return new Response("Not Found", { status: 404 });
+  return env.ASSETS.fetch(req);
 }
 
 export default {

@@ -10,6 +10,9 @@ use collects_business::{CreateInternalUserResponse, InternalUser, generate_totp_
 use egui::{Color32, Response, RichText, Ui, Vec2};
 use std::collections::{HashMap, HashSet};
 
+/// Placeholder displayed when OTP code cannot be generated.
+const OTP_ERROR_PLACEHOLDER: &str = "------";
+
 /// State for the internal users panel.
 #[derive(Default)]
 pub struct InternalUsersState {
@@ -133,7 +136,7 @@ impl InternalUsersState {
             return code.clone();
         }
 
-        let code = generate_totp_code(secret).unwrap_or_else(|| "------".to_string());
+        let code = generate_totp_code(secret).unwrap_or_else(|| OTP_ERROR_PLACEHOLDER.to_string());
         self.cached_otp_codes.insert(secret.to_string(), code.clone());
         code
     }

@@ -150,13 +150,6 @@ async function ensureRestrictedRole(
 }
 
 /**
- * Gets the admin role (the *_owner role that Neon creates by default)
- */
-function findAdminRole(roles: Role[]): Role | undefined {
-  return roles.find((r) => r.name.endsWith(ADMIN_ROLE_SUFFIX));
-}
-
-/**
  * Ensures admin role exists and returns it with a fresh password
  * Admin role should always exist (Neon creates it by default), but we check just in case
  */

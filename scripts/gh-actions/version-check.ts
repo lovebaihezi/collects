@@ -40,7 +40,7 @@ function readPreviousVersion(cargoTomlPath: string): string {
       encoding: "utf-8",
     });
     return extractVersion(content);
-  } catch (error) {
+  } catch {
     // File may not exist in previous commit or this is the first commit
     return "";
   }

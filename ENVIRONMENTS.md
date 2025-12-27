@@ -128,8 +128,8 @@ The application has two main components:
 1. **Version Check**: Compares current version with previous commit
 2. **Environment Selection**:
    - `pull_request` → `pr`
-   - Version changed → production (empty ENV)
-   - `push` to main without version change → `test` (then also deploys to `internal`)
+   - Version changed → production (empty ENV), then also deploys to `internal`
+   - `push` to main without version change → `test`, then also deploys to `test-internal`
    - `schedule` → `nightly`
 3. **Build & Deploy**: Builds WASM and deploys to Cloudflare Workers
 

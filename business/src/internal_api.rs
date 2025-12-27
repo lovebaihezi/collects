@@ -139,7 +139,6 @@ pub struct InternalUsers {
     pub last_update_time: Option<DateTime<Utc>>,
     pub users: Vec<InternalUser>,
     pub last_error: Option<String>,
-    pub is_fetching: bool,
 }
 
 impl InternalUsers {
@@ -148,9 +147,9 @@ impl InternalUsers {
         self.last_update_time.is_some() && self.last_error.is_none()
     }
 
-    /// Triggers a refresh of the users list.
-    pub fn refresh(&mut self) {
-        self.last_update_time = None;
+    /// Returns true if waiting for initial fetch.
+    pub fn is_loading(&self) -> bool {
+        self.last_update_time.is_none() && self.last_error.is_none()
     }
 }
 
@@ -161,10 +160,6 @@ impl Compute for InternalUsers {
     }
 
     fn compute(&self, deps: Dep, updater: Updater) {
-        // Don't refetch if already fetching
-        if self.is_fetching {
-            return;
-        }
 
         let config = deps.get_state_ref::<BusinessConfig>();
         let url = Ustr::from(format!("{}/internal/users", config.api_url().as_str()).as_str());
@@ -196,7 +191,6 @@ impl Compute for InternalUsers {
                                     last_update_time: Some(now),
                                     users: data.users,
                                     last_error: None,
-                                    is_fetching: false,
                                 };
                                 updater.set(state);
                             }
@@ -206,7 +200,6 @@ impl Compute for InternalUsers {
                                     last_update_time: Some(now),
                                     users: current_users.clone(),
                                     last_error: Some(err.to_string()),
-                                    is_fetching: false,
                                 };
                                 updater.set(state);
                             }
@@ -217,7 +210,6 @@ impl Compute for InternalUsers {
                             last_update_time: Some(now),
                             users: current_users.clone(),
                             last_error: Some(format!("Status code: {}", response.status)),
-                            is_fetching: false,
                         };
                         updater.set(state);
                     }
@@ -228,7 +220,6 @@ impl Compute for InternalUsers {
                         last_update_time: Some(now),
                         users: current_users,
                         last_error: Some(err.to_string()),
-                        is_fetching: false,
                     };
                     updater.set(state);
                 }
@@ -251,7 +242,6 @@ impl Clone for InternalUsers {
             last_update_time: self.last_update_time,
             users: self.users.clone(),
             last_error: self.last_error.clone(),
-            is_fetching: self.is_fetching,
         }
     }
 }

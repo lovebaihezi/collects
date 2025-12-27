@@ -14,9 +14,12 @@ use collects_states::StateCtx;
 #[cfg(any(feature = "env_internal", feature = "env_test_internal"))]
 use egui::{Color32, RichText, Ui};
 
+/// Result of a create user operation.
+#[cfg(any(feature = "env_internal", feature = "env_test_internal"))]
+type CreateUserResult = Result<CreateUserResponse, String>;
+
 /// State for the internal users panel.
 #[cfg(any(feature = "env_internal", feature = "env_test_internal"))]
-#[derive(Default)]
 pub struct InternalUsersState {
     /// Set of usernames whose OTP codes are revealed.
     revealed_otps: HashSet<String>,
@@ -30,12 +33,48 @@ pub struct InternalUsersState {
     create_error: Option<String>,
     /// Whether we're in the process of creating a user.
     is_creating: bool,
+    /// Channel receiver for create user results.
+    result_receiver: Option<flume::Receiver<CreateUserResult>>,
+}
+
+#[cfg(any(feature = "env_internal", feature = "env_test_internal"))]
+impl Default for InternalUsersState {
+    fn default() -> Self {
+        Self {
+            revealed_otps: HashSet::new(),
+            show_create_modal: false,
+            new_username: String::new(),
+            created_user: None,
+            create_error: None,
+            is_creating: false,
+            result_receiver: None,
+        }
+    }
 }
 
 #[cfg(any(feature = "env_internal", feature = "env_test_internal"))]
 impl InternalUsersState {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Check for any pending results from create user operations.
+    fn poll_results(&mut self) {
+        if let Some(ref receiver) = self.result_receiver {
+            if let Ok(result) = receiver.try_recv() {
+                self.is_creating = false;
+                match result {
+                    Ok(response) => {
+                        self.created_user = Some(response);
+                        self.create_error = None;
+                    }
+                    Err(err) => {
+                        self.create_error = Some(err);
+                    }
+                }
+                self.result_receiver = None;
+            }
+        }
     }
 }
 
@@ -46,6 +85,9 @@ pub fn internal_users_panel(
     ui: &mut Ui,
     panel_state: &mut InternalUsersState,
 ) {
+    // Poll for any pending create user results
+    panel_state.poll_results();
+
     ui.heading("Internal Users Management");
     ui.separator();
 
@@ -64,7 +106,7 @@ pub fn internal_users_panel(
 
     match users {
         Some(internal_users) => {
-            if internal_users.is_fetching {
+            if internal_users.is_loading() {
                 ui.horizontal(|ui| {
                     ui.spinner();
                     ui.label("Loading users...");
@@ -208,20 +250,14 @@ pub fn internal_users_panel(
                                 panel_state.is_creating = true;
                                 panel_state.create_error = None;
 
-                                // Note: In a real implementation, we'd use a channel to communicate
-                                // the result back. For now, we'll store the callback result.
+                                // Create a channel to receive the result
+                                let (sender, receiver) = flume::bounded(1);
+                                panel_state.result_receiver = Some(receiver);
+
+                                // Trigger the create user API call
                                 create_user(&api_base, &username, move |result| {
-                                    // This callback runs asynchronously
-                                    // The result handling will need to be improved
-                                    // to properly update the UI state
-                                    match result {
-                                        Ok(_response) => {
-                                            log::info!("User created successfully");
-                                        }
-                                        Err(err) => {
-                                            log::error!("Failed to create user: {}", err);
-                                        }
-                                    }
+                                    // Send result through channel (ignore send errors if receiver dropped)
+                                    let _ = sender.send(result);
                                 });
                             }
 

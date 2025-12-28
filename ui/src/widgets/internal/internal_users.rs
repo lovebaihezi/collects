@@ -3,9 +3,9 @@
 //! Displays a table of users with their usernames and OTP codes,
 //! along with a button to create new users.
 
-use std::any::TypeId;
-
-use collects_business::{CreateUserCompute, CreateUserInput, CreateUserResult, InternalUserItem, ListUsersResponse};
+use collects_business::{
+    CreateUserCompute, CreateUserInput, CreateUserResult, InternalUserItem, ListUsersResponse,
+};
 use collects_states::StateCtx;
 use egui::{Color32, Response, RichText, ScrollArea, Ui, Window};
 use std::collections::HashMap;
@@ -37,7 +37,10 @@ impl InternalUsersState {
 
     /// Toggle OTP visibility for a user.
     pub fn toggle_otp_visibility(&mut self, username: &str) {
-        let revealed = self.revealed_otps.entry(username.to_string()).or_insert(false);
+        let revealed = self
+            .revealed_otps
+            .entry(username.to_string())
+            .or_insert(false);
         *revealed = !*revealed;
     }
 
@@ -199,7 +202,10 @@ fn show_create_user_modal(state: &mut InternalUsersState, state_ctx: &mut StateC
             match &compute_result {
                 CreateUserResult::Success(created) => {
                     // Show success with QR code info
-                    ui.colored_label(Color32::from_rgb(34, 139, 34), "✓ User created successfully!");
+                    ui.colored_label(
+                        Color32::from_rgb(34, 139, 34),
+                        "✓ User created successfully!",
+                    );
                     ui.add_space(8.0);
 
                     ui.horizontal(|ui| {
@@ -252,7 +258,10 @@ fn show_create_user_modal(state: &mut InternalUsersState, state_ctx: &mut StateC
                     ui.horizontal(|ui| {
                         let can_create = !state.new_username.is_empty();
 
-                        if ui.add_enabled(can_create, egui::Button::new("Retry")).clicked() {
+                        if ui
+                            .add_enabled(can_create, egui::Button::new("Retry"))
+                            .clicked()
+                        {
                             trigger_create_user(state_ctx, &state.new_username);
                         }
 
@@ -289,7 +298,10 @@ fn show_create_user_modal(state: &mut InternalUsersState, state_ctx: &mut StateC
                     ui.horizontal(|ui| {
                         let can_create = !state.new_username.is_empty();
 
-                        if ui.add_enabled(can_create, egui::Button::new("Create")).clicked() {
+                        if ui
+                            .add_enabled(can_create, egui::Button::new("Create"))
+                            .clicked()
+                        {
                             trigger_create_user(state_ctx, &state.new_username);
                         }
 
@@ -307,14 +319,15 @@ fn show_create_user_modal(state: &mut InternalUsersState, state_ctx: &mut StateC
     }
 }
 
-/// Trigger the CreateUserCompute by setting input and marking dirty.
+/// Trigger the CreateUserCompute by setting input and running the compute.
 fn trigger_create_user(state_ctx: &mut StateCtx, username: &str) {
-    // Set the username in the input state
-    let input = state_ctx.state_mut::<CreateUserInput>();
-    input.username = Some(username.to_string());
+    // Update the input state - this automatically marks CreateUserCompute as dirty
+    state_ctx.update::<CreateUserInput>(|input| {
+        input.username = Some(username.to_string());
+    });
 
-    // Mark the compute as dirty to trigger it
-    state_ctx.mark_dirty(&TypeId::of::<CreateUserCompute>());
+    // Run the compute immediately (with its dependencies)
+    state_ctx.run::<CreateUserCompute>();
 }
 
 /// Fetch users from the internal API.
@@ -327,7 +340,9 @@ fn fetch_users(api_base_url: &str, ctx: egui::Context) {
         match result {
             Ok(response) => {
                 if response.status == 200 {
-                    if let Ok(list_response) = serde_json::from_slice::<ListUsersResponse>(&response.bytes) {
+                    if let Ok(list_response) =
+                        serde_json::from_slice::<ListUsersResponse>(&response.bytes)
+                    {
                         ctx.memory_mut(|mem| {
                             mem.data.insert_temp(
                                 egui::Id::new("internal_users_response"),
@@ -346,10 +361,8 @@ fn fetch_users(api_base_url: &str, ctx: egui::Context) {
             }
             Err(err) => {
                 ctx.memory_mut(|mem| {
-                    mem.data.insert_temp(
-                        egui::Id::new("internal_users_error"),
-                        err.to_string(),
-                    );
+                    mem.data
+                        .insert_temp(egui::Id::new("internal_users_error"), err.to_string());
                 });
             }
         }
@@ -361,21 +374,25 @@ fn fetch_users(api_base_url: &str, ctx: egui::Context) {
 pub fn poll_internal_users_responses(state: &mut InternalUsersState, ctx: &egui::Context) {
     // Check for users list response
     if let Some(users) = ctx.memory(|mem| {
-        mem.data.get_temp::<Vec<InternalUserItem>>(egui::Id::new("internal_users_response"))
+        mem.data
+            .get_temp::<Vec<InternalUserItem>>(egui::Id::new("internal_users_response"))
     }) {
         state.update_users(users);
         ctx.memory_mut(|mem| {
-            mem.data.remove::<Vec<InternalUserItem>>(egui::Id::new("internal_users_response"));
+            mem.data
+                .remove::<Vec<InternalUserItem>>(egui::Id::new("internal_users_response"));
         });
     }
 
     // Check for users list error
     if let Some(error) = ctx.memory(|mem| {
-        mem.data.get_temp::<String>(egui::Id::new("internal_users_error"))
+        mem.data
+            .get_temp::<String>(egui::Id::new("internal_users_error"))
     }) {
         state.set_error(error);
         ctx.memory_mut(|mem| {
-            mem.data.remove::<String>(egui::Id::new("internal_users_error"));
+            mem.data
+                .remove::<String>(egui::Id::new("internal_users_error"));
         });
     }
 }

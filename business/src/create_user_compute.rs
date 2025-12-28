@@ -5,8 +5,8 @@
 
 use std::any::{Any, TypeId};
 
-use crate::internal::{CreateUserRequest, CreateUserResponse};
 use crate::BusinessConfig;
+use crate::internal::{CreateUserRequest, CreateUserResponse};
 use collects_states::{Compute, ComputeDeps, Dep, State, Updater, assign_impl};
 use log::{error, info};
 
@@ -93,7 +93,10 @@ impl CreateUserCompute {
 
 impl Compute for CreateUserCompute {
     fn deps(&self) -> ComputeDeps {
-        const IDS: [TypeId; 2] = [TypeId::of::<CreateUserInput>(), TypeId::of::<BusinessConfig>()];
+        const IDS: [TypeId; 2] = [
+            TypeId::of::<CreateUserInput>(),
+            TypeId::of::<BusinessConfig>(),
+        ];
         (&IDS, &[])
     }
 
@@ -134,39 +137,40 @@ impl Compute for CreateUserCompute {
         let mut request = ehttp::Request::post(&url, body);
         request.headers.insert("Content-Type", "application/json");
 
-        ehttp::fetch(request, move |result| {
-            match result {
-                Ok(response) => {
-                    if response.status == 201 {
-                        match serde_json::from_slice::<CreateUserResponse>(&response.bytes) {
-                            Ok(create_response) => {
-                                info!("CreateUserCompute: User '{}' created successfully", username);
-                                updater.set(CreateUserCompute {
-                                    result: CreateUserResult::Success(create_response),
-                                });
-                            }
-                            Err(e) => {
-                                error!("Failed to parse CreateUserResponse: {}", e);
-                                updater.set(CreateUserCompute {
-                                    result: CreateUserResult::Error(format!("Parse error: {e}")),
-                                });
-                            }
+        ehttp::fetch(request, move |result| match result {
+            Ok(response) => {
+                if response.status == 201 {
+                    match serde_json::from_slice::<CreateUserResponse>(&response.bytes) {
+                        Ok(create_response) => {
+                            info!(
+                                "CreateUserCompute: User '{}' created successfully",
+                                username
+                            );
+                            updater.set(CreateUserCompute {
+                                result: CreateUserResult::Success(create_response),
+                            });
                         }
-                    } else {
-                        let error_msg = format!("API returned status: {}", response.status);
-                        error!("CreateUserCompute: {}", error_msg);
-                        updater.set(CreateUserCompute {
-                            result: CreateUserResult::Error(error_msg),
-                        });
+                        Err(e) => {
+                            error!("Failed to parse CreateUserResponse: {}", e);
+                            updater.set(CreateUserCompute {
+                                result: CreateUserResult::Error(format!("Parse error: {e}")),
+                            });
+                        }
                     }
-                }
-                Err(err) => {
-                    let error_msg = err.to_string();
-                    error!("CreateUserCompute: Request failed: {}", error_msg);
+                } else {
+                    let error_msg = format!("API returned status: {}", response.status);
+                    error!("CreateUserCompute: {}", error_msg);
                     updater.set(CreateUserCompute {
                         result: CreateUserResult::Error(error_msg),
                     });
                 }
+            }
+            Err(err) => {
+                let error_msg = err.to_string();
+                error!("CreateUserCompute: Request failed: {}", error_msg);
+                updater.set(CreateUserCompute {
+                    result: CreateUserResult::Error(error_msg),
+                });
             }
         });
     }

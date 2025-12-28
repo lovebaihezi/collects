@@ -41,8 +41,18 @@ impl eframe::App for CollectsApp {
             {
                 use collects_business::BusinessConfig;
                 ui.add_space(16.0);
-                let api_base_url = self.state.ctx.state_mut::<BusinessConfig>().api_url().to_string();
-                widgets::internal_users_panel(&mut self.state.internal_users, &mut self.state.ctx, &api_base_url, ui);
+                let api_base_url = self
+                    .state
+                    .ctx
+                    .state_mut::<BusinessConfig>()
+                    .api_url()
+                    .to_string();
+                widgets::internal_users_panel(
+                    &mut self.state.internal_users,
+                    &mut self.state.ctx,
+                    &api_base_url,
+                    ui,
+                );
             }
 
             ui.add_space(16.0);
@@ -50,7 +60,7 @@ impl eframe::App for CollectsApp {
         });
 
         // Run background jobs
-        self.state.ctx.run_computed();
+        self.state.ctx.run_all_dirty();
     }
 }
 

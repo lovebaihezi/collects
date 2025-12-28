@@ -15,6 +15,17 @@ use super::{Compute, Stage, State, StateRuntime};
 ///
 /// It holds the storage for states and computes, manages their lifecycle,
 /// and orchestrates the re-computation of derived states when dependencies change.
+///
+/// # Control Flow
+///
+/// 1. **State mutation**: Use `update::<T>()` to modify state - this automatically
+///    marks all dependent computes as dirty via the dependency graph.
+///
+/// 2. **Compute execution**: Two modes available:
+///    - `run_all_dirty()`: Runs all dirty computes (for frame loop)
+///    - `run::<T>()`: Runs a specific compute and its dirty dependencies (for user events)
+///
+/// 3. **Sync results**: Call `sync_computes()` to apply async compute results.
 #[derive(Debug)]
 pub struct StateCtx {
     runtime: StateRuntime,
@@ -49,6 +60,10 @@ impl StateCtx {
         }
     }
 
+    // ═══════════════════════════════════════════════════════════════════════
+    // STATE REGISTRATION
+    // ═══════════════════════════════════════════════════════════════════════
+
     /// Adds a new `State` to the context.
     ///
     /// The state is initialized and marked as `BeforeInit`.
@@ -70,11 +85,147 @@ impl StateCtx {
             .insert(id, (RefCell::new(Box::new(compute)), Stage::BeforeInit));
     }
 
+    // ═══════════════════════════════════════════════════════════════════════
+    // STATE MUTATION WITH AUTO-DIRTY PROPAGATION
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// Updates a state and automatically marks all dependent computes as dirty.
+    ///
+    /// This is the preferred way to modify state as it ensures the dependency
+    /// graph is respected and dependent computes will be re-run.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// ctx.update::<MyState>(|state| {
+    ///     state.value = 42;
+    /// });
+    /// // All computes that depend on MyState are now marked dirty
+    /// ```
+    pub fn update<T: State>(&mut self, f: impl FnOnce(&mut T)) {
+        let id = TypeId::of::<T>();
+
+        // Apply the mutation
+        {
+            let state = self.get_state_mut(&id);
+            f(state.as_any_mut().downcast_mut::<T>().unwrap());
+        }
+
+        // Auto-propagate dirty to all dependent computes
+        self.propagate_dirty_from(&id);
+    }
+
+    /// Propagates dirty status from a changed state/compute to all its dependents.
+    fn propagate_dirty_from(&mut self, source_id: &TypeId) {
+        // Collect dependent IDs first to avoid borrow issues
+        let dependent_ids: Vec<TypeId> = self
+            .runtime
+            .graph_mut()
+            .dependents(*source_id)
+            .copied()
+            .collect();
+
+        for dep_id in dependent_ids {
+            // Only mark computes as dirty (states don't get dirty from propagation)
+            if self.computes.contains_key(&dep_id) {
+                trace!(
+                    "Auto-marking compute {:?} as dirty (dependency changed)",
+                    dep_id
+                );
+                self.mark_dirty(&dep_id);
+            }
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // COMPUTE EXECUTION
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// Runs a specific compute and all its dirty dependencies in topological order.
+    ///
+    /// This is useful for user-triggered actions where you want to run a specific
+    /// compute immediately rather than waiting for the next frame.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // User clicks "Create User" button
+    /// ctx.update::<CreateUserInput>(|input| {
+    ///     input.username = Some("alice".to_string());
+    /// });
+    /// ctx.run::<CreateUserCompute>(); // Run immediately
+    /// ```
+    pub fn run<T: Compute + 'static>(&mut self) {
+        let target_id = TypeId::of::<T>();
+        self.run_by_id_with_deps(&target_id);
+    }
+
+    /// Runs a compute by TypeId, first running any dirty dependencies in topological order.
+    /// Each dependency is synced before the next one runs, ensuring dependent computes
+    /// can read the updated values.
+    fn run_by_id_with_deps(&mut self, target_id: &TypeId) {
+        // Get dirty dependencies in topological order
+        let deps_sorted: Vec<TypeId> = self.runtime.graph_mut().dependencies_sorted(*target_id);
+
+        // Run dirty dependencies first, syncing after each so subsequent computes
+        // can read the updated values
+        for dep_id in deps_sorted {
+            if self.is_compute_dirty(&dep_id) {
+                self.run_single_compute(&dep_id);
+                // Sync immediately so dependent computes can read the result
+                self.sync_computes();
+            }
+        }
+
+        // Run the target compute if it's dirty or before init
+        if self.is_compute_dirty(target_id) {
+            self.run_single_compute(target_id);
+        }
+    }
+
+    /// Checks if a compute is in a state that requires running (Dirty or BeforeInit).
+    fn is_compute_dirty(&self, id: &TypeId) -> bool {
+        self.computes
+            .get(id)
+            .map(|(_, stage)| matches!(stage, Stage::Dirty | Stage::BeforeInit))
+            .unwrap_or(false)
+    }
+
+    /// Runs a single compute by TypeId (without checking dependencies).
+    fn run_single_compute(&mut self, id: &TypeId) {
+        let compute = self.computes.get(id);
+        if compute.is_none() {
+            trace!("Skipping non-compute dependency: {:?}", id);
+            return;
+        }
+
+        let compute = compute.unwrap();
+        let borrowed = compute.0.borrow();
+        let (state_deps, compute_deps) = borrowed.deps();
+
+        let deps = Dep::new(
+            state_deps
+                .iter()
+                .map(|&dep_id| (dep_id, self.get_state_ptr(&dep_id))),
+            compute_deps
+                .iter()
+                .map(|&dep_id| (dep_id, self.get_compute_ptr(&dep_id))),
+        );
+
+        info!("Run compute: {:?}", borrowed.name());
+        borrowed.compute(deps, self.updater());
+        drop(borrowed);
+
+        self.mark_pending(id);
+    }
+
     /// Triggers the execution of all dirty computes.
     ///
     /// This iterates through computes marked as dirty or before init, resolves their
     /// dependencies, and executes their `compute` method.
-    pub fn run_computed(&mut self) {
+    ///
+    /// Typically called once per frame in the UI loop.
+    pub fn run_all_dirty(&mut self) {
         let dirty_computes = self.dirty_computes();
         let mut pending_ids: Vec<TypeId> = Vec::new();
         let mut pending_compute_names = Vec::new();
@@ -105,6 +256,16 @@ impl StateCtx {
         }
     }
 
+    /// Legacy alias for `run_all_dirty()`.
+    #[deprecated(note = "Use `run_all_dirty()` instead for clarity")]
+    pub fn run_computed(&mut self) {
+        self.run_all_dirty();
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // STATE ACCESS
+    // ═══════════════════════════════════════════════════════════════════════
+
     fn get_state_mut(&self, id: &TypeId) -> &'static mut dyn State {
         unsafe {
             self.states[id]
@@ -116,6 +277,10 @@ impl StateCtx {
         }
     }
 
+    /// Returns a mutable reference to a state.
+    ///
+    /// **Warning**: Prefer using `update::<T>()` instead, as it automatically
+    /// propagates dirty status to dependent computes.
     pub fn state_mut<T: State>(&self) -> &'static mut T {
         self.get_state_mut(&TypeId::of::<T>())
             .as_any_mut()
@@ -154,6 +319,10 @@ impl StateCtx {
         }
     }
 
+    // ═══════════════════════════════════════════════════════════════════════
+    // SYNC AND RUNTIME
+    // ═══════════════════════════════════════════════════════════════════════
+
     /// Synchronizes the computes by processing updates from the runtime.
     ///
     /// This processes any pending updates sent via the `Updater` and applies them
@@ -180,20 +349,12 @@ impl StateCtx {
         &self.runtime
     }
 
+    // ═══════════════════════════════════════════════════════════════════════
+    // DIRTY TRACKING
+    // ═══════════════════════════════════════════════════════════════════════
+
     // TODO: Doc for how state and compute state transforms and how they works
     pub fn dirty_computes(&self) -> impl Iterator<Item = (&TypeId, RefMut<'_, Box<dyn Compute>>)> {
-        // TODO(chaibowen): cal from graph with state
-        //let dirty_states = self
-        //    .storage
-        //    .iter()
-        //    .enumerate()
-        //    .filter_map(|(i, (ct, _, status))| {
-        //        if *status == StateSyncStatus::Dirty && ct.is {
-        //            Some(TypeId::from_usize(i))
-        //        } else {
-        //            None
-        //        }
-        //    });
         self.computes
             .iter()
             .filter_map(|(type_id, (state_cell, compute_state))| {

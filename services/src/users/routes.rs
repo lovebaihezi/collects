@@ -27,7 +27,13 @@
 //! }
 //! ```
 
-use axum::{Json, Router, extract::State, http::StatusCode, response::IntoResponse, routing::{get, post}};
+use axum::{
+    Json, Router,
+    extract::State,
+    http::StatusCode,
+    response::IntoResponse,
+    routing::{get, post},
+};
 use serde::{Deserialize, Serialize};
 
 use super::otp::{
@@ -298,7 +304,11 @@ where
                 .collect();
 
             tracing::info!("Listed {} users", user_items.len());
-            (StatusCode::OK, Json(ListUsersResponse { users: user_items })).into_response()
+            (
+                StatusCode::OK,
+                Json(ListUsersResponse { users: user_items }),
+            )
+                .into_response()
         }
         Err(e) => {
             tracing::error!("Failed to list users: {}", e);

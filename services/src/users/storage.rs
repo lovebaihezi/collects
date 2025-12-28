@@ -399,12 +399,11 @@ impl UserStorage for PgUserStorage {
     }
 
     async fn list_users(&self) -> Result<Vec<StoredUser>, Self::Error> {
-        let rows: Vec<(String, String)> = sqlx::query_as(
-            r#"SELECT username, otp_secret FROM users WHERE status = 'active'"#,
-        )
-        .fetch_all(&self.storage.pool)
-        .await
-        .map_err(|e| UserStorageError::StorageError(e.to_string()))?;
+        let rows: Vec<(String, String)> =
+            sqlx::query_as(r#"SELECT username, otp_secret FROM users WHERE status = 'active'"#)
+                .fetch_all(&self.storage.pool)
+                .await
+                .map_err(|e| UserStorageError::StorageError(e.to_string()))?;
 
         Ok(rows
             .into_iter()

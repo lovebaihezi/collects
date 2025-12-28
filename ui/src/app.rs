@@ -42,7 +42,7 @@ impl eframe::App for CollectsApp {
                 use collects_business::BusinessConfig;
                 ui.add_space(16.0);
                 let api_base_url = self.state.ctx.state_mut::<BusinessConfig>().api_url().to_string();
-                widgets::internal_users_panel(&mut self.state.internal_users, &api_base_url, ui);
+                widgets::internal_users_panel(&mut self.state.internal_users, &mut self.state.ctx, &api_base_url, ui);
             }
 
             ui.add_space(16.0);

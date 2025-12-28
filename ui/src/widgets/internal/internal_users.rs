@@ -3,7 +3,10 @@
 //! Displays a table of users with their usernames and OTP codes,
 //! along with a button to create new users.
 
-use collects_business::{CreateUserRequest, CreateUserResponse, InternalUserItem, ListUsersResponse};
+use std::any::TypeId;
+
+use collects_business::{CreateUserCompute, CreateUserInput, CreateUserResult, InternalUserItem, ListUsersResponse};
+use collects_states::StateCtx;
 use egui::{Color32, Response, RichText, ScrollArea, Ui, Window};
 use std::collections::HashMap;
 
@@ -24,12 +27,6 @@ pub struct InternalUsersState {
     create_modal_open: bool,
     /// Username input for create modal.
     new_username: String,
-    /// Whether currently creating a user.
-    is_creating: bool,
-    /// Created user response (for showing QR code).
-    created_user: Option<CreateUserResponse>,
-    /// Error from user creation.
-    create_error: Option<String>,
 }
 
 impl InternalUsersState {
@@ -73,36 +70,19 @@ impl InternalUsersState {
     pub fn open_create_modal(&mut self) {
         self.create_modal_open = true;
         self.new_username.clear();
-        self.created_user = None;
-        self.create_error = None;
     }
 
     /// Close create user modal.
     pub fn close_create_modal(&mut self) {
         self.create_modal_open = false;
         self.new_username.clear();
-        self.created_user = None;
-        self.create_error = None;
-        self.is_creating = false;
-    }
-
-    /// Set created user response.
-    pub fn set_created_user(&mut self, response: CreateUserResponse) {
-        self.created_user = Some(response);
-        self.is_creating = false;
-        self.create_error = None;
-    }
-
-    /// Set create error.
-    pub fn set_create_error(&mut self, error: String) {
-        self.create_error = Some(error);
-        self.is_creating = false;
     }
 }
 
 /// Displays the internal users panel with a table and create button.
 pub fn internal_users_panel(
     state: &mut InternalUsersState,
+    state_ctx: &mut StateCtx,
     api_base_url: &str,
     ui: &mut Ui,
 ) -> Response {
@@ -118,6 +98,8 @@ pub fn internal_users_panel(
             }
 
             if ui.button("➕ Create User").clicked() {
+                // Reset the compute state when opening modal
+                reset_create_user_compute(state_ctx);
                 state.open_create_modal();
             }
 
@@ -184,97 +166,155 @@ pub fn internal_users_panel(
 
     // Create user modal
     if state.create_modal_open {
-        show_create_user_modal(state, api_base_url, ui);
+        show_create_user_modal(state, state_ctx, ui);
     }
 
     response.response
 }
 
+/// Reset the CreateUserCompute to idle state.
+fn reset_create_user_compute(state_ctx: &mut StateCtx) {
+    // Clear the input
+    let input = state_ctx.state_mut::<CreateUserInput>();
+    input.username = None;
+    // Mark compute as clean so it doesn't auto-run
+    state_ctx.mark_clean(&TypeId::of::<CreateUserCompute>());
+}
+
 /// Shows the create user modal window.
-fn show_create_user_modal(state: &mut InternalUsersState, api_base_url: &str, ui: &mut Ui) {
+fn show_create_user_modal(state: &mut InternalUsersState, state_ctx: &mut StateCtx, ui: &mut Ui) {
     let mut open = state.create_modal_open;
+
+    // Get the compute result
+    let compute_result = state_ctx
+        .cached::<CreateUserCompute>()
+        .map(|c| c.result.clone())
+        .unwrap_or(CreateUserResult::Idle);
 
     Window::new("Create User")
         .open(&mut open)
         .collapsible(false)
         .resizable(false)
         .show(ui.ctx(), |ui| {
-            if let Some(created) = &state.created_user {
-                // Show success with QR code info
-                ui.colored_label(Color32::from_rgb(34, 139, 34), "✓ User created successfully!");
-                ui.add_space(8.0);
+            match &compute_result {
+                CreateUserResult::Success(created) => {
+                    // Show success with QR code info
+                    ui.colored_label(Color32::from_rgb(34, 139, 34), "✓ User created successfully!");
+                    ui.add_space(8.0);
 
-                ui.horizontal(|ui| {
-                    ui.strong("Username:");
-                    ui.label(&created.username);
-                });
-
-                ui.add_space(8.0);
-                ui.label("Scan this QR code with Google Authenticator:");
-                ui.add_space(4.0);
-
-                // TODO: Replace with actual QR code rendering using a QR code library
-                // Currently displaying the otpauth URL as text for users to copy
-                egui::Frame::NONE
-                    .fill(Color32::from_gray(240))
-                    .inner_margin(egui::Margin::same(8))
-                    .corner_radius(4.0)
-                    .show(ui, |ui| {
-                        ui.label(RichText::new(&created.otpauth_url).monospace().small());
+                    ui.horizontal(|ui| {
+                        ui.strong("Username:");
+                        ui.label(&created.username);
                     });
 
-                ui.add_space(8.0);
-
-                // Show secret for manual entry
-                ui.collapsing("Show secret (for manual entry)", |ui| {
-                    ui.label(RichText::new(&created.secret).monospace());
-                });
-
-                ui.add_space(16.0);
-                if ui.button("Close").clicked() {
-                    state.close_create_modal();
-                }
-            } else {
-                // Show create form
-                ui.label("Enter a username for the new user:");
-                ui.add_space(8.0);
-
-                ui.horizontal(|ui| {
-                    ui.label("Username:");
-                    ui.text_edit_singleline(&mut state.new_username);
-                });
-
-                // Error display
-                if let Some(error) = &state.create_error {
+                    ui.add_space(8.0);
+                    ui.label("Scan this QR code with Google Authenticator:");
                     ui.add_space(4.0);
-                    ui.colored_label(Color32::RED, error);
-                }
 
-                ui.add_space(16.0);
+                    // TODO: Replace with actual QR code rendering using a QR code library
+                    // Currently displaying the otpauth URL as text for users to copy
+                    egui::Frame::NONE
+                        .fill(Color32::from_gray(240))
+                        .inner_margin(egui::Margin::same(8))
+                        .corner_radius(4.0)
+                        .show(ui, |ui| {
+                            ui.label(RichText::new(&created.otpauth_url).monospace().small());
+                        });
 
-                ui.horizontal(|ui| {
-                    let can_create = !state.new_username.is_empty() && !state.is_creating;
+                    ui.add_space(8.0);
 
-                    if ui.add_enabled(can_create, egui::Button::new("Create")).clicked() {
-                        state.is_creating = true;
-                        let username = state.new_username.clone();
-                        create_user(api_base_url, &username, ui.ctx().clone());
-                    }
+                    // Show secret for manual entry
+                    ui.collapsing("Show secret (for manual entry)", |ui| {
+                        ui.label(RichText::new(&created.secret).monospace());
+                    });
 
-                    if state.is_creating {
-                        ui.spinner();
-                    }
-
-                    if ui.button("Cancel").clicked() {
+                    ui.add_space(16.0);
+                    if ui.button("Close").clicked() {
+                        reset_create_user_compute(state_ctx);
                         state.close_create_modal();
                     }
-                });
+                }
+                CreateUserResult::Error(error) => {
+                    // Show error with form to retry
+                    ui.colored_label(Color32::RED, format!("Error: {error}"));
+                    ui.add_space(8.0);
+
+                    ui.label("Enter a username for the new user:");
+                    ui.add_space(8.0);
+
+                    ui.horizontal(|ui| {
+                        ui.label("Username:");
+                        ui.text_edit_singleline(&mut state.new_username);
+                    });
+
+                    ui.add_space(16.0);
+
+                    ui.horizontal(|ui| {
+                        let can_create = !state.new_username.is_empty();
+
+                        if ui.add_enabled(can_create, egui::Button::new("Retry")).clicked() {
+                            trigger_create_user(state_ctx, &state.new_username);
+                        }
+
+                        if ui.button("Cancel").clicked() {
+                            reset_create_user_compute(state_ctx);
+                            state.close_create_modal();
+                        }
+                    });
+                }
+                CreateUserResult::Pending => {
+                    // Show loading state
+                    ui.label("Creating user...");
+                    ui.add_space(8.0);
+                    ui.spinner();
+
+                    ui.add_space(16.0);
+                    if ui.button("Cancel").clicked() {
+                        reset_create_user_compute(state_ctx);
+                        state.close_create_modal();
+                    }
+                }
+                CreateUserResult::Idle => {
+                    // Show create form
+                    ui.label("Enter a username for the new user:");
+                    ui.add_space(8.0);
+
+                    ui.horizontal(|ui| {
+                        ui.label("Username:");
+                        ui.text_edit_singleline(&mut state.new_username);
+                    });
+
+                    ui.add_space(16.0);
+
+                    ui.horizontal(|ui| {
+                        let can_create = !state.new_username.is_empty();
+
+                        if ui.add_enabled(can_create, egui::Button::new("Create")).clicked() {
+                            trigger_create_user(state_ctx, &state.new_username);
+                        }
+
+                        if ui.button("Cancel").clicked() {
+                            state.close_create_modal();
+                        }
+                    });
+                }
             }
         });
 
     if !open {
+        reset_create_user_compute(state_ctx);
         state.close_create_modal();
     }
+}
+
+/// Trigger the CreateUserCompute by setting input and marking dirty.
+fn trigger_create_user(state_ctx: &mut StateCtx, username: &str) {
+    // Set the username in the input state
+    let input = state_ctx.state_mut::<CreateUserInput>();
+    input.username = Some(username.to_string());
+
+    // Mark the compute as dirty to trigger it
+    state_ctx.mark_dirty(&TypeId::of::<CreateUserCompute>());
 }
 
 /// Fetch users from the internal API.
@@ -316,62 +356,6 @@ fn fetch_users(api_base_url: &str, ctx: egui::Context) {
     });
 }
 
-/// Create a new user via the internal API.
-fn create_user(api_base_url: &str, username: &str, ctx: egui::Context) {
-    let url = format!("{api_base_url}/internal/users");
-    let body = match serde_json::to_vec(&CreateUserRequest {
-        username: username.to_string(),
-    }) {
-        Ok(body) => body,
-        Err(e) => {
-            log::error!("Failed to serialize CreateUserRequest: {}", e);
-            ctx.memory_mut(|mem| {
-                mem.data.insert_temp(
-                    egui::Id::new("internal_create_user_error"),
-                    format!("Serialization error: {e}"),
-                );
-            });
-            return;
-        }
-    };
-
-    let mut request = ehttp::Request::post(&url, body);
-    request.headers.insert("Content-Type", "application/json");
-
-    ehttp::fetch(request, move |result| {
-        ctx.request_repaint();
-        match result {
-            Ok(response) => {
-                if response.status == 201 {
-                    if let Ok(create_response) = serde_json::from_slice::<CreateUserResponse>(&response.bytes) {
-                        ctx.memory_mut(|mem| {
-                            mem.data.insert_temp(
-                                egui::Id::new("internal_create_user_response"),
-                                create_response,
-                            );
-                        });
-                    }
-                } else {
-                    ctx.memory_mut(|mem| {
-                        mem.data.insert_temp(
-                            egui::Id::new("internal_create_user_error"),
-                            format!("API returned status: {}", response.status),
-                        );
-                    });
-                }
-            }
-            Err(err) => {
-                ctx.memory_mut(|mem| {
-                    mem.data.insert_temp(
-                        egui::Id::new("internal_create_user_error"),
-                        err.to_string(),
-                    );
-                });
-            }
-        }
-    });
-}
-
 /// Poll for async responses and update state.
 /// Call this in the update loop.
 pub fn poll_internal_users_responses(state: &mut InternalUsersState, ctx: &egui::Context) {
@@ -392,26 +376,6 @@ pub fn poll_internal_users_responses(state: &mut InternalUsersState, ctx: &egui:
         state.set_error(error);
         ctx.memory_mut(|mem| {
             mem.data.remove::<String>(egui::Id::new("internal_users_error"));
-        });
-    }
-
-    // Check for create user response
-    if let Some(response) = ctx.memory(|mem| {
-        mem.data.get_temp::<CreateUserResponse>(egui::Id::new("internal_create_user_response"))
-    }) {
-        state.set_created_user(response);
-        ctx.memory_mut(|mem| {
-            mem.data.remove::<CreateUserResponse>(egui::Id::new("internal_create_user_response"));
-        });
-    }
-
-    // Check for create user error
-    if let Some(error) = ctx.memory(|mem| {
-        mem.data.get_temp::<String>(egui::Id::new("internal_create_user_error"))
-    }) {
-        state.set_create_error(error);
-        ctx.memory_mut(|mem| {
-            mem.data.remove::<String>(egui::Id::new("internal_create_user_error"));
         });
     }
 }

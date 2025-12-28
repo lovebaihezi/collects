@@ -4,45 +4,31 @@ use egui::{Color32, Response, RichText, Ui};
 
 fn format_tooltip(status: &str, version: Option<&str>) -> String {
     match version {
-        Some(v) => format!("{status}\nVersion: {v}"),
+        Some(v) => format!("{status}:{v}"),
         None => status.to_string(),
     }
 }
 
 pub fn api_status(state_ctx: &StateCtx, ui: &mut Ui) -> Response {
-    let (status_text, tooltip_text, bg_color, text_color) = match state_ctx
+    let (tooltip_text, dot_color) = match state_ctx
         .cached::<ApiStatus>()
         .map(|v| v.api_availability())
     {
         Some(APIAvailability::Available { version, .. }) => (
-            "●",
-            format_tooltip("API Status: Healthy", version),
+            format_tooltip("api", version),
             Color32::from_rgb(34, 139, 34), // Forest green
-            Color32::WHITE,
         ),
         Some(APIAvailability::Unavailable { error, version, .. }) => (
-            "●",
-            format_tooltip(&format!("API Status: {error}"), version),
+            format_tooltip(&format!("api({error})"), version),
             Color32::from_rgb(220, 53, 69), // Red
-            Color32::WHITE,
         ),
         _ => (
-            "●",
-            "API Status: Checking...".to_string(),
+            "api:checking".to_string(),
             Color32::from_rgb(255, 193, 7), // Amber
-            Color32::BLACK,
         ),
     };
 
-    let response = egui::Frame::NONE
-        .fill(bg_color)
-        .inner_margin(egui::Margin::symmetric(6, 2))
-        .outer_margin(egui::Margin::symmetric(0, 4))
-        .corner_radius(4.0)
-        .show(ui, |ui| {
-            ui.label(RichText::new(status_text).color(text_color))
-        })
-        .inner;
+    let response = ui.label(RichText::new("●").color(dot_color));
 
     response.on_hover_text(tooltip_text)
 }

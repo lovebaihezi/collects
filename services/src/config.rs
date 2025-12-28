@@ -13,6 +13,8 @@ pub enum Env {
     Internal,
     #[serde(rename = "test")]
     Test,
+    #[serde(rename = "test-internal")]
+    TestInternal,
     #[serde(rename = "pr")]
     Pr,
     #[serde(rename = "nightly")]
@@ -37,6 +39,20 @@ mod tests {
         assert_eq!(config.server_addr(), "0.0.0.0");
         assert_eq!(config.port(), 8080);
     }
+
+    #[test]
+    fn default_server_addr_for_test_internal_is_public() {
+        let raw: RawConfig = from_iter(vec![
+            ("ENV", "test-internal"),
+            ("DATABASE_URL", "postgres://example"),
+            ("PORT", "8080"),
+        ])
+        .expect("RawConfig should deserialize");
+
+        let config = Config::from_raw(raw).expect("test-internal config should build");
+        assert_eq!(config.server_addr(), "0.0.0.0");
+        assert_eq!(config.port(), 8080);
+    }
 }
 
 impl Display for Env {
@@ -46,6 +62,7 @@ impl Display for Env {
             Env::Prod => write!(f, "prod"),
             Env::Internal => write!(f, "internal"),
             Env::Test => write!(f, "test"),
+            Env::TestInternal => write!(f, "test-internal"),
             Env::Pr => write!(f, "pr"),
             Env::Nightly => write!(f, "nightly"),
         }

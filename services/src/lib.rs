@@ -82,8 +82,6 @@ where
         .with_state(state)
 }
 
-
-
 async fn health_check<S, U>(
     State(state): State<AppState<S, U>>,
     Extension(config): Extension<Config>,
@@ -112,8 +110,6 @@ where
 
     response
 }
-
-
 
 async fn catch_all() -> impl IntoResponse {
     (StatusCode::NOT_FOUND, "nothing to see here")
@@ -212,5 +208,4 @@ mod tests {
 
         assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
     }
-
 }

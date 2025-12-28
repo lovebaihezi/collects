@@ -13,6 +13,7 @@ import {
   getDatabaseSecret,
   listEnvironments,
 } from "./services/env-config.ts";
+import { runCommitMsgCheck } from "./services/commit-msg.ts";
 
 const cli = cac("services");
 
@@ -117,6 +118,15 @@ cli
     console.log(listEnvironments().join("\n"));
   });
 
+cli
+  .command(
+    "check-commit-msg <source>",
+    "Validate commit message format (conventional commits)",
+  )
+  .action((source: string) => {
+    runCommitMsgCheck(source);
+  });
+
 cli.command("", "Show help").action(() => {
   const helpText = `
 # Services Helper Script
@@ -215,6 +225,23 @@ Lists all available environment names.
 **Example:**
 \`\`\`bash
 bun run main.ts env-list              # Lists: prod, internal, nightly, test, test-internal, pr, local
+\`\`\`
+
+### \`check-commit-msg\`
+
+Validates commit message format against conventional commits specification.
+
+**What it does:**
+1. Reads commit message from file path.
+2. Validates against conventional commit format: \`<type>[optional scope]: <description>\`
+3. Skips validation for merge commits and git-generated revert commits.
+4. Exits with code 0 if valid, 1 if invalid.
+
+**Valid types:** feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert
+
+**Example:**
+\`\`\`bash
+bun run main.ts check-commit-msg .git/COMMIT_EDITMSG
 \`\`\`
 
 ---

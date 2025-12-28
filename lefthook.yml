@@ -11,4 +11,4 @@ pre-commit:
 commit-msg:
   commands:
     conventional-commit:
-      run: bash scripts/check-commit-msg.sh {1}
+      run: bun run scripts/main.ts check-commit-msg {1}

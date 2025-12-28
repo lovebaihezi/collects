@@ -12,8 +12,8 @@ pub fn api_status(state_ctx: &StateCtx, ui: &mut Ui) -> Response {
             Color32::from_rgb(34, 139, 34), // Forest green background
             Color32::WHITE,                 // White text
         ),
-        Some(APIAvailability::Unavailable(_)) => (
-            "API Status: Unhealthy",
+        Some(APIAvailability::Unavailable((_, err))) => (
+            err,
             Color32::from_rgb(220, 53, 69), // Red background
             Color32::WHITE,                 // White text
         ),
@@ -76,6 +76,78 @@ mod api_state_widget_test {
         assert!(
             harness.query_by_label("API Status: Healthy").is_some(),
             "'API Status: Healthy' should exists in UI"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_api_status_widget_with_404() {
+        let mut ctx = TestCtx::new_with_status(
+            |ui, state| {
+                super::api_status(&state.ctx, ui);
+            },
+            404,
+        )
+        .await;
+
+        let harness = ctx.harness_mut();
+
+        harness.step();
+
+        assert!(
+            harness.query_by_label("API Status: Checking...").is_some(),
+            "'API Status: Checking...' should exists in UI"
+        );
+
+        harness.state_mut().ctx.sync_computes();
+        harness.step();
+        harness.state_mut().ctx.run_computed();
+
+        // The Mock Server Needs to wait a bit before it can return 404
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        harness.state_mut().ctx.sync_computes();
+        harness.step();
+        harness.state_mut().ctx.run_computed();
+
+        assert!(
+            harness.query_by_label("API Health: 404").is_some(),
+            "'API Health: 404' should exists in UI"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_api_status_widget_with_500() {
+        let mut ctx = TestCtx::new_with_status(
+            |ui, state| {
+                super::api_status(&state.ctx, ui);
+            },
+            500,
+        )
+        .await;
+
+        let harness = ctx.harness_mut();
+
+        harness.step();
+
+        assert!(
+            harness.query_by_label("API Status: Checking...").is_some(),
+            "'API Status: Checking...' should exists in UI"
+        );
+
+        harness.state_mut().ctx.sync_computes();
+        harness.step();
+        harness.state_mut().ctx.run_computed();
+
+        // The Mock Server Needs to wait a bit before it can return 500
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        harness.state_mut().ctx.sync_computes();
+        harness.step();
+        harness.state_mut().ctx.run_computed();
+
+        assert!(
+            harness.query_by_label("API Health: 500").is_some(),
+            "'API Health: 500' should exists in UI"
         );
     }
 }

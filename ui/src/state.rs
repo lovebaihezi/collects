@@ -1,7 +1,9 @@
 use collects_business::{ApiStatus, AuthState, BusinessConfig};
 use collects_states::{StateCtx, Time};
 
-use crate::widgets::{LoginDialogState, LoginResultReceiver, LoginResultSender, create_login_channel};
+use crate::widgets::{
+    LoginDialogState, LoginResultReceiver, LoginResultSender, create_login_channel,
+};
 
 /// The main application state.
 ///

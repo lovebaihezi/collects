@@ -77,7 +77,7 @@ fn signin_button_widget(dialog_state: &mut LoginDialogState, ui: &mut Ui) -> Res
         )
     };
 
-    let response = Frame::NONE
+    Frame::NONE
         .fill(bg_color)
         .inner_margin(Margin::symmetric(12, 4))
         .outer_margin(Margin::symmetric(0, 4))
@@ -95,9 +95,7 @@ fn signin_button_widget(dialog_state: &mut LoginDialogState, ui: &mut Ui) -> Res
 
             label_response
         })
-        .inner;
-
-    response
+        .inner
 }
 
 /// Renders the user info widget when logged in.
@@ -217,11 +215,12 @@ pub fn login_dialog(
                 });
 
                 // Handle enter key to submit
-                if ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-                    if is_form_valid(&dialog_state.form_data) && !auth_state.is_logging_in() {
-                        auth_state.start_login();
-                        result = Some(dialog_state.form_data.clone());
-                    }
+                if ui.input(|i| i.key_pressed(egui::Key::Enter))
+                    && is_form_valid(&dialog_state.form_data)
+                    && !auth_state.is_logging_in()
+                {
+                    auth_state.start_login();
+                    result = Some(dialog_state.form_data.clone());
                 }
 
                 // Handle escape key to close

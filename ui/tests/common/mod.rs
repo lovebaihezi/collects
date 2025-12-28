@@ -46,14 +46,29 @@ impl<'a> TestCtx<'a, CollectsApp> {
             harness,
         }
     }
+
+    pub async fn new_app_with_status(status_code: u16) -> Self {
+        let (mock_server, state) = setup_test_state_with_status(status_code).await;
+        let app = CollectsApp::new(state);
+        let harness = Harness::new_eframe(|_| app);
+
+        Self {
+            _mock_server: mock_server,
+            harness,
+        }
+    }
 }
 
 async fn setup_test_state() -> (MockServer, State) {
+    setup_test_state_with_status(200).await
+}
+
+async fn setup_test_state_with_status(status_code: u16) -> (MockServer, State) {
     let mock_server = MockServer::start().await;
 
     Mock::given(method("GET"))
         .and(path("/api/is-health"))
-        .respond_with(ResponseTemplate::new(200))
+        .respond_with(ResponseTemplate::new(status_code))
         .mount(&mock_server)
         .await;
 

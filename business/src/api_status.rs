@@ -9,7 +9,7 @@ use ustr::Ustr;
 #[derive(Default, Debug)]
 pub struct ApiStatus {
     last_update_time: Option<DateTime<Utc>>,
-    // if exists error, means api available
+    // if exists error, means api unavailable
     last_error: Option<String>,
 }
 
@@ -74,6 +74,11 @@ impl Compute for ApiStatus {
                         updater.set(api_status);
                     } else {
                         info!("BackEnd Return with status code: {:?}", response.status);
+                        let api_status = ApiStatus {
+                            last_update_time: Some(now),
+                            last_error: Some(format!("API Health: {}", response.status)),
+                        };
+                        updater.set(api_status);
                     }
                 }
                 Err(err) => {

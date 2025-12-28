@@ -1,5 +1,5 @@
-run:
-    RUST_LOG=info cargo run
+run env="":
+    RUST_LOG=info cargo run {{ if env == "pr" { "--features env_pr" } else if env == "test" { "--features env_test" } else if env == "test-internal" { "--features env_test_internal" } else if env == "internal" { "--features env_internal" } else if env == "nightly" { "--features env_nightly" } else { "" } }}
 
 build:
     cargo build

@@ -17,3 +17,6 @@ id = "a4dafe7674c2440b81e4ec2e5889f1ba"
 
 [vars]
 API_BASE = "https://collects-services-nightly-145756646168.us-east1.run.app"
+
+[observability]
+enabled = true

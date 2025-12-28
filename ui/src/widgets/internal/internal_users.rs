@@ -8,6 +8,7 @@ use collects_business::{
 };
 use collects_states::StateCtx;
 use egui::{Color32, Response, RichText, ScrollArea, Ui, Window};
+use std::any::TypeId;
 use std::collections::HashMap;
 
 /// State for the internal users panel.

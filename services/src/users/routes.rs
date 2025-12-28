@@ -27,15 +27,31 @@
 //! }
 //! ```
 
-use axum::{Json, Router, extract::State, http::StatusCode, response::IntoResponse, routing::post};
+use axum::{Json, Router, extract::State, http::StatusCode, response::IntoResponse, routing::{get, post}};
 use serde::{Deserialize, Serialize};
 
 use super::otp::{
     CreateUserRequest, CreateUserResponse, OtpError, VerifyOtpRequest, VerifyOtpResponse,
-    generate_otp_secret, verify_otp,
+    generate_current_otp, generate_otp_secret, verify_otp,
 };
 use super::storage::{UserStorage, UserStorageError};
 use crate::database::SqlStorage;
+
+/// Response for listing users with their current OTP codes.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UserListItem {
+    /// The username.
+    pub username: String,
+    /// The current OTP code for this user.
+    pub current_otp: String,
+}
+
+/// Response for the list users endpoint.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ListUsersResponse {
+    /// List of users with their current OTP codes.
+    pub users: Vec<UserListItem>,
+}
 
 /// Error response for API endpoints.
 #[derive(Debug, Serialize, Deserialize)]
@@ -116,7 +132,9 @@ where
     S: SqlStorage + Clone + Send + Sync + 'static,
     U: UserStorage + Clone + Send + Sync + 'static,
 {
-    Router::new().route("/users", post(create_user::<S, U>))
+    Router::new()
+        .route("/users", post(create_user::<S, U>))
+        .route("/users", get(list_users::<S, U>))
 }
 
 /// Creates the router for authentication endpoints.
@@ -219,6 +237,71 @@ where
         }
         Err(e) => {
             tracing::error!("Failed to store user: {}", e);
+            let (status, json): (StatusCode, Json<ErrorResponse>) =
+                UserStorageError::StorageError(e.to_string()).into();
+            (status, json).into_response()
+        }
+    }
+}
+
+/// Handler for listing all users with their current OTP codes.
+///
+/// This endpoint is intended for internal use only and should be protected
+/// by Zero Trust or similar access control.
+///
+/// # Request
+///
+/// GET /internal/users
+///
+/// # Response
+///
+/// ```json
+/// {
+///     "users": [
+///         {
+///             "username": "john_doe",
+///             "current_otp": "123456"
+///         }
+///     ]
+/// }
+/// ```
+#[tracing::instrument(skip_all)]
+async fn list_users<S, U>(State(state): State<AppState<S, U>>) -> impl IntoResponse
+where
+    S: SqlStorage,
+    U: UserStorage,
+{
+    tracing::info!("Listing all users with current OTP codes");
+
+    match state.user_storage.list_users().await {
+        Ok(users) => {
+            let user_items: Vec<UserListItem> = users
+                .into_iter()
+                .filter_map(|user| {
+                    // Generate current OTP code for each user
+                    match generate_current_otp(&user.secret) {
+                        Ok(otp) => Some(UserListItem {
+                            username: user.username,
+                            current_otp: otp,
+                        }),
+                        Err(e) => {
+                            tracing::warn!(
+                                "Failed to generate OTP for user {}: {}",
+                                user.username,
+                                e
+                            );
+                            // Skip users with invalid secrets
+                            None
+                        }
+                    }
+                })
+                .collect();
+
+            tracing::info!("Listed {} users", user_items.len());
+            (StatusCode::OK, Json(ListUsersResponse { users: user_items })).into_response()
+        }
+        Err(e) => {
+            tracing::error!("Failed to list users: {}", e);
             let (status, json): (StatusCode, Json<ErrorResponse>) =
                 UserStorageError::StorageError(e.to_string()).into();
             (status, json).into_response()
@@ -723,5 +806,80 @@ mod tests {
             serde_json::from_slice(&body).expect("Failed to parse response");
 
         assert!(verify_response.valid);
+    }
+
+    #[tokio::test]
+    async fn test_list_users_empty() {
+        let app = create_test_app();
+
+        let request = Request::builder()
+            .method("GET")
+            .uri("/internal/users")
+            .body(Body::empty())
+            .expect("Failed to create request");
+
+        let response = app.oneshot(request).await.expect("Failed to get response");
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("Failed to read body");
+
+        let response: ListUsersResponse =
+            serde_json::from_slice(&body).expect("Failed to parse response");
+
+        assert!(response.users.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_list_users_with_users() {
+        // Create users with valid OTP secrets
+        let (secret1, _) = generate_otp_secret("alice").expect("Should generate secret");
+        let (secret2, _) = generate_otp_secret("bob").expect("Should generate secret");
+
+        let sql_storage = MockSqlStorage { is_connected: true };
+        let user_storage = MockUserStorage::with_users(vec![
+            ("alice", secret1.as_str()),
+            ("bob", secret2.as_str()),
+        ]);
+        let state = AppState::new(sql_storage, user_storage);
+
+        let app = Router::new()
+            .nest(
+                "/internal",
+                internal_routes::<MockSqlStorage, MockUserStorage>(),
+            )
+            .with_state(state);
+
+        let request = Request::builder()
+            .method("GET")
+            .uri("/internal/users")
+            .body(Body::empty())
+            .expect("Failed to create request");
+
+        let response = app.oneshot(request).await.expect("Failed to get response");
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("Failed to read body");
+
+        let response: ListUsersResponse =
+            serde_json::from_slice(&body).expect("Failed to parse response");
+
+        assert_eq!(response.users.len(), 2);
+
+        // Check that all OTP codes are valid format (6 digits)
+        for user in &response.users {
+            assert_eq!(user.current_otp.len(), 6);
+            assert!(user.current_otp.chars().all(|c| c.is_ascii_digit()));
+        }
+
+        // Check usernames
+        let usernames: Vec<&str> = response.users.iter().map(|u| u.username.as_str()).collect();
+        assert!(usernames.contains(&"alice"));
+        assert!(usernames.contains(&"bob"));
     }
 }

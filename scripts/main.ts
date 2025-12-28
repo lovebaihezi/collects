@@ -13,6 +13,7 @@ import {
   getDatabaseSecret,
   listEnvironments,
 } from "./services/env-config.ts";
+import { runPrTitleCheck } from "./services/pr-title.ts";
 
 const cli = cac("services");
 
@@ -117,6 +118,15 @@ cli
     console.log(listEnvironments().join("\n"));
   });
 
+cli
+  .command(
+    "check-pr-title <title>",
+    "Validate PR title format (conventional commits)",
+  )
+  .action((title: string) => {
+    runPrTitleCheck(title);
+  });
+
 cli.command("", "Show help").action(() => {
   const helpText = `
 # Services Helper Script
@@ -215,6 +225,21 @@ Lists all available environment names.
 **Example:**
 \`\`\`bash
 bun run main.ts env-list              # Lists: prod, internal, nightly, test, test-internal, pr, local
+\`\`\`
+
+### \`check-pr-title\`
+
+Validates PR title format against conventional commits specification.
+
+**What it does:**
+1. Validates the PR title against conventional commit format: \`<type>[optional scope]: <description>\`
+2. Exits with code 0 if valid, 1 if invalid.
+
+**Valid types:** feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert
+
+**Example:**
+\`\`\`bash
+just scripts::check-pr-title "feat: add user authentication"
 \`\`\`
 
 ---

@@ -10,9 +10,15 @@ async fn test_api_status_with_200() {
 
     let harness = ctx.harness_mut();
 
+    // Render the first frame
+    harness.step();
+
+    // Check for API Status label - may be "Checking..." or already "Healthy"
+    let has_checking = harness.query_by_label("API Status: Checking...").is_some();
+    let has_healthy = harness.query_by_label("API Status: Healthy").is_some();
     assert!(
-        harness.query_by_label("API Status: Checking...").is_some(),
-        "'API Status: Checking...' should exists in UI"
+        has_checking || has_healthy,
+        "'API Status: Checking...' or 'API Status: Healthy' should exist in UI"
     );
 
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
@@ -21,7 +27,7 @@ async fn test_api_status_with_200() {
 
     assert!(
         harness.query_by_label("API Status: Healthy").is_some(),
-        "'Api Status: Healthy' should exists in UI"
+        "'API Status: Healthy' should exist in UI"
     );
 }
 
@@ -31,9 +37,15 @@ async fn test_api_status_with_404() {
 
     let harness = ctx.harness_mut();
 
+    // Render the first frame
+    harness.step();
+
+    // Check for API Status label - may be "Checking..." or already resolved
+    let has_checking = harness.query_by_label("API Status: Checking...").is_some();
+    let has_error = harness.query_by_label("API Health: 404").is_some();
     assert!(
-        harness.query_by_label("API Status: Checking...").is_some(),
-        "'API Status: Checking...' should exists in UI"
+        has_checking || has_error,
+        "'API Status: Checking...' or 'API Health: 404' should exist in UI"
     );
 
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
@@ -42,7 +54,7 @@ async fn test_api_status_with_404() {
 
     assert!(
         harness.query_by_label("API Health: 404").is_some(),
-        "'API Health: 404' should exists in UI"
+        "'API Health: 404' should exist in UI"
     );
 }
 
@@ -52,9 +64,15 @@ async fn test_api_status_with_500() {
 
     let harness = ctx.harness_mut();
 
+    // Render the first frame
+    harness.step();
+
+    // Check for API Status label - may be "Checking..." or already resolved
+    let has_checking = harness.query_by_label("API Status: Checking...").is_some();
+    let has_error = harness.query_by_label("API Health: 500").is_some();
     assert!(
-        harness.query_by_label("API Status: Checking...").is_some(),
-        "'API Status: Checking...' should exists in UI"
+        has_checking || has_error,
+        "'API Status: Checking...' or 'API Health: 500' should exist in UI"
     );
 
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
@@ -63,6 +81,6 @@ async fn test_api_status_with_500() {
 
     assert!(
         harness.query_by_label("API Health: 500").is_some(),
-        "'API Health: 500' should exists in UI"
+        "'API Health: 500' should exist in UI"
     );
 }

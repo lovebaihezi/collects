@@ -157,6 +157,8 @@ impl StateCtx {
     /// ```
     pub fn run<T: Compute + 'static>(&mut self) {
         let target_id = TypeId::of::<T>();
+        // Mark as dirty to ensure it runs even if not automatically dirtied
+        self.mark_dirty(&target_id);
         self.run_by_id_with_deps(&target_id);
     }
 

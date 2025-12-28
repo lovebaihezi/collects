@@ -336,9 +336,17 @@ impl StateCtx {
         for _ in 0..cur_len {
             if let Ok((id, boxed)) = self.runtime().receiver().try_recv() {
                 let compute = unsafe { self.computes.get_mut(&id).unwrap_unchecked() };
-                debug_assert_eq!(compute.1, Stage::Pending);
                 let computed_name = compute.0.borrow().name();
-                trace!("Received Compute Update, compute={:?}", computed_name);
+
+                // A compute result may arrive when the compute is in various states:
+                // - Pending: normal case, compute was run and we're receiving its result
+                // - Clean: compute was already synced (e.g., from a previous async response)
+                // - Dirty/BeforeInit: compute was re-triggered before previous result arrived
+                // In all cases, we should apply the result if it arrives.
+                trace!(
+                    "Received Compute Update, compute={:?}, current_stage={:?}",
+                    computed_name, compute.1
+                );
                 compute.0.borrow_mut().assign_box(boxed);
                 self.mark_clean(&id);
             }

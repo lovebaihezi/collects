@@ -25,9 +25,10 @@ impl State for CreateUserInput {
 }
 
 /// Result of a user creation operation.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub enum CreateUserResult {
     /// No creation attempted yet.
+    #[default]
     Idle,
     /// Creation in progress.
     Pending,
@@ -35,12 +36,6 @@ pub enum CreateUserResult {
     Success(CreateUserResponse),
     /// Creation failed with error message.
     Error(String),
-}
-
-impl Default for CreateUserResult {
-    fn default() -> Self {
-        Self::Idle
-    }
 }
 
 /// Compute for creating internal users.

@@ -8,17 +8,17 @@ pub fn api_status(state_ctx: &StateCtx, ui: &mut Ui) -> Response {
         .map(|v| v.api_availability())
     {
         Some(APIAvailability::Available(_)) => (
-            "API Status: Healthy".to_string(),
+            "API Status: Healthy",
             Color32::from_rgb(34, 139, 34), // Forest green background
             Color32::WHITE,                 // White text
         ),
         Some(APIAvailability::Unavailable((_, err))) => (
-            err.to_string(),
+            err,
             Color32::from_rgb(220, 53, 69), // Red background
             Color32::WHITE,                 // White text
         ),
         _ => (
-            "API Status: Checking...".to_string(),
+            "API Status: Checking...",
             Color32::from_rgb(255, 193, 7), // Amber background
             Color32::BLACK,                 // Black text for contrast
         ),

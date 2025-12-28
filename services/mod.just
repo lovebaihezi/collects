@@ -124,7 +124,7 @@ migrate env: install-sqlx
     set -eux
 
     # Get database secret using centralized env config
-    DATABASE_SECRET=$(cd ../scripts && bun run main.ts env-secret {{env}})
+    DATABASE_SECRET=$(just scripts::env-secret {{env}})
 
     echo "Running migrations for {{env}} environment using secret: ${DATABASE_SECRET}"
     DATABASE_URL=$(gcloud secrets versions access latest --secret=${DATABASE_SECRET})
@@ -137,7 +137,7 @@ migrate-info env: install-sqlx
     #!/bin/bash
     set -eux
 
-    DATABASE_SECRET=$(cd ../scripts && bun run main.ts env-secret {{env}})
+    DATABASE_SECRET=$(just scripts::env-secret {{env}})
 
     echo "Checking migration status for {{env}} environment..."
     DATABASE_URL=$(gcloud secrets versions access latest --secret=${DATABASE_SECRET})
@@ -148,7 +148,7 @@ reset env: install-sqlx
     #!/bin/bash
     set -eux
 
-    DATABASE_SECRET=$(cd ../scripts && bun run main.ts env-secret {{env}})
+    DATABASE_SECRET=$(just scripts::env-secret {{env}})
 
     echo "Resetting database for {{env}} environment..."
     DATABASE_URL=$(gcloud secrets versions access latest --secret=${DATABASE_SECRET})
@@ -162,7 +162,7 @@ prepare env: install-sqlx
     #!/bin/bash
     set -eux
 
-    DATABASE_SECRET=$(cd ../scripts && bun run main.ts env-secret {{env}})
+    DATABASE_SECRET=$(just scripts::env-secret {{env}})
 
     echo "Generating sqlx offline cache using {{env}} environment..."
     DATABASE_URL=$(gcloud secrets versions access latest --secret=${DATABASE_SECRET})
@@ -176,7 +176,7 @@ prepare-check env: install-sqlx
     #!/bin/bash
     set -eux
 
-    DATABASE_SECRET=$(cd ../scripts && bun run main.ts env-secret {{env}})
+    DATABASE_SECRET=$(just scripts::env-secret {{env}})
 
     echo "Checking sqlx offline cache using {{env}} environment..."
     DATABASE_URL=$(gcloud secrets versions access latest --secret=${DATABASE_SECRET})
@@ -212,7 +212,7 @@ gcloud-deploy env image_tag:
     FULL_IMAGE_NAME="${GCP_REGION}-docker.pkg.dev/${PROJECT_ID}/${REPOSITORY_NAME}/${IMAGE_NAME}:{{image_tag}}"
 
     # Get database secret using centralized env config
-    DATABASE_SECRET=$(cd ../scripts && bun run main.ts env-secret {{env}})
+    DATABASE_SECRET=$(just scripts::env-secret {{env}})
 
     # Determine service name based on environment
     if [ "{{env}}" == "prod" ]; then

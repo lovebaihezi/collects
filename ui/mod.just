@@ -1,7 +1,7 @@
 run env="":
     #!/bin/bash
     set -e
-    FEATURES=$(cd ../scripts && bun run main.ts env-feature {{env}})
+    FEATURES=$(just scripts::env-feature {{env}})
     RUST_LOG=info cargo run $FEATURES
 
 build:
@@ -25,7 +25,7 @@ install:
 web-build env="": install
     #!/bin/bash
     set -e
-    FEATURES=$(cd ../scripts && bun run main.ts env-feature {{env}})
+    FEATURES=$(just scripts::env-feature {{env}})
     trunk build $FEATURES
     du -h dist/*
 
@@ -35,7 +35,7 @@ web-fmt: install
 web-release env="": install
     #!/bin/bash
     set -e
-    FEATURES=$(cd ../scripts && bun run main.ts env-feature {{env}})
+    FEATURES=$(just scripts::env-feature {{env}})
     trunk build --release $FEATURES
     du -h dist/*
 

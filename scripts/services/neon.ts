@@ -9,14 +9,17 @@ import { $ } from "bun";
 import { confirmAndRun } from "./utils.ts";
 
 /**
- * Environment configuration mapping.
+ * Neon-specific environment configuration for database branch and role mapping.
  * - prod: production branch, restricted role (best practice: minimal permissions)
  * - internal: production branch, admin role (for admin tasks/migrations)
  * - test: development branch, default role
  * - pr: development branch, default role
  * - local: development branch, default role (for local development)
+ *
+ * NOTE: The `secretName` values MUST be in sync with the `databaseSecret` values
+ * in `./env-config.ts` which is the single source of truth for environment config.
  */
-interface EnvConfig {
+interface NeonEnvConfig {
   env: string;
   branchName: "production" | "development";
   secretName: string;
@@ -24,7 +27,7 @@ interface EnvConfig {
   description: string;
 }
 
-const ENV_CONFIGS: EnvConfig[] = [
+const NEON_ENV_CONFIGS: NeonEnvConfig[] = [
   {
     env: "prod",
     branchName: "production",
@@ -377,7 +380,7 @@ export async function initDbSecret(
   // Step 3: Generate connection URLs and update secrets
   p.log.step("Updating Google Cloud secrets...");
 
-  for (const config of ENV_CONFIGS) {
+  for (const config of NEON_ENV_CONFIGS) {
     p.log.info(`\nProcessing ${config.env} (${config.description})...`);
 
     const branchInfo =
@@ -405,7 +408,7 @@ export async function initDbSecret(
   // Step 4: Summary
   p.log.step("Summary");
 
-  for (const config of ENV_CONFIGS) {
+  for (const config of NEON_ENV_CONFIGS) {
     const branchInfo =
       config.branchName === "production" ? productionInfo : developmentInfo;
     const role = config.useAdminRole

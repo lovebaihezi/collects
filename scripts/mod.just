@@ -10,6 +10,20 @@ check-fmt:
 check-lint:
     bun oxlint --type-aware
 
+# Get cargo feature flags for an environment (used by other modules)
+# Usage: just scripts::env-feature pr
+env-feature env="":
+    @bun run main.ts env-feature {{env}}
+
+# Get database secret name for an environment (used by other modules)
+# Usage: just scripts::env-secret local
+env-secret env:
+    @bun run main.ts env-secret {{env}}
+
+# List all available environment names
+env-list:
+    @bun run main.ts env-list
+
 # Runs the setup script to get the yaml config
 actions-setup *args: install
     bun run main.ts actions-setup {{args}}

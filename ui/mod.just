@@ -1,5 +1,8 @@
 run env="":
-    RUST_LOG=info cargo run {{ if env == "pr" { "--features env_pr" } else if env == "test" { "--features env_test" } else if env == "test-internal" { "--features env_test_internal" } else if env == "internal" { "--features env_internal" } else if env == "nightly" { "--features env_nightly" } else { "" } }}
+    #!/bin/bash
+    set -e
+    FEATURES=$(just scripts::env-feature {{env}})
+    RUST_LOG=info cargo run $FEATURES
 
 build:
     cargo build
@@ -20,14 +23,20 @@ install:
     pnpm i
 
 web-build env="": install
-    trunk build {{ if env == "pr" { "--features env_pr" } else if env == "test" { "--features env_test" } else if env == "test-internal" { "--features env_test_internal" } else if env == "internal" { "--features env_internal" } else if env == "nightly" { "--features env_nightly" } else { "" } }}
+    #!/bin/bash
+    set -e
+    FEATURES=$(just scripts::env-feature {{env}})
+    trunk build $FEATURES
     du -h dist/*
 
 web-fmt: install
     pnpm prettier --write src/worker.ts index.html
 
 web-release env="": install
-    trunk build --release {{ if env == "pr" { "--features env_pr" } else if env == "test" { "--features env_test" } else if env == "test-internal" { "--features env_test_internal" } else if env == "internal" { "--features env_internal" } else if env == "nightly" { "--features env_nightly" } else { "" } }}
+    #!/bin/bash
+    set -e
+    FEATURES=$(just scripts::env-feature {{env}})
+    trunk build --release $FEATURES
     du -h dist/*
 
 wk-dev: (web-build)

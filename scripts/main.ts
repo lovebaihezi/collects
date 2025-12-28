@@ -8,6 +8,11 @@ import {
   type BuildSetupOptions,
 } from "./services/gcloud.ts";
 import { runVersionCheck } from "./gh-actions/version-check.ts";
+import {
+  getCargoFeature,
+  getDatabaseSecret,
+  listEnvironments,
+} from "./services/env-config.ts";
 
 const cli = cac("services");
 
@@ -81,6 +86,37 @@ cli
     runVersionCheck(path);
   });
 
+cli
+  .command(
+    "env-feature [env]",
+    "Get cargo feature flags for an environment (used by justfiles)",
+  )
+  .action((env: string = "") => {
+    // Output only the feature flags, suitable for command substitution
+    // Empty env means production/default (no feature flag)
+    if (!env) {
+      console.log("");
+      return;
+    }
+    console.log(getCargoFeature(env));
+  });
+
+cli
+  .command(
+    "env-secret <env>",
+    "Get database secret name for an environment (used by justfiles)",
+  )
+  .action((env: string) => {
+    // Output only the secret name, suitable for command substitution
+    console.log(getDatabaseSecret(env));
+  });
+
+cli
+  .command("env-list", "List all available environment names")
+  .action(() => {
+    console.log(listEnvironments().join("\n"));
+  });
+
 cli.command("", "Show help").action(() => {
   const helpText = `
 # Services Helper Script
@@ -148,6 +184,37 @@ Checks if the version in a Cargo.toml file has changed (for GitHub Actions).
 \`\`\`bash
 bun run main.ts version-check ui/Cargo.toml
 bun run main.ts version-check services/Cargo.toml
+\`\`\`
+
+### \`env-feature\`
+
+Gets cargo feature flags for an environment. Used by justfiles to centralize environment configuration.
+
+**Example:**
+\`\`\`bash
+bun run main.ts env-feature pr        # Output: --features env_pr
+bun run main.ts env-feature test      # Output: --features env_test
+bun run main.ts env-feature prod      # Output: (empty - no feature flag)
+\`\`\`
+
+### \`env-secret\`
+
+Gets database secret name for an environment. Used by justfiles to centralize environment configuration.
+
+**Example:**
+\`\`\`bash
+bun run main.ts env-secret pr         # Output: database-url-pr
+bun run main.ts env-secret prod       # Output: database-url
+bun run main.ts env-secret local      # Output: database-url-local
+\`\`\`
+
+### \`env-list\`
+
+Lists all available environment names.
+
+**Example:**
+\`\`\`bash
+bun run main.ts env-list              # Lists: prod, internal, nightly, test, test-internal, pr, local
 \`\`\`
 
 ---

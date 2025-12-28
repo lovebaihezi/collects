@@ -39,7 +39,9 @@ pub fn api_status(state_ctx: &StateCtx, ui: &mut Ui) -> Response {
         .inner_margin(egui::Margin::symmetric(6, 2))
         .outer_margin(egui::Margin::symmetric(0, 4))
         .corner_radius(4.0)
-        .show(ui, |ui| ui.label(RichText::new(status_text).color(text_color)))
+        .show(ui, |ui| {
+            ui.label(RichText::new(status_text).color(text_color))
+        })
         .inner;
 
     response.on_hover_text(tooltip_text)

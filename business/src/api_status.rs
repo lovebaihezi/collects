@@ -19,8 +19,15 @@ pub struct ApiStatus {
 }
 
 pub enum APIAvailability<'a> {
-    Available { time: DateTime<Utc>, version: Option<&'a str> },
-    Unavailable { time: DateTime<Utc>, error: &'a str, version: Option<&'a str> },
+    Available {
+        time: DateTime<Utc>,
+        version: Option<&'a str>,
+    },
+    Unavailable {
+        time: DateTime<Utc>,
+        error: &'a str,
+        version: Option<&'a str>,
+    },
     Unknown,
 }
 

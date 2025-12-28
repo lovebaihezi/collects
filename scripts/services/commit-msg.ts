@@ -1,4 +1,4 @@
-import { readFileSync } from "fs";
+import { readFileSync, existsSync } from "fs";
 
 /**
  * Valid conventional commit types
@@ -20,11 +20,12 @@ const VALID_TYPES = [
 type CommitType = (typeof VALID_TYPES)[number];
 
 /**
- * Conventional commit pattern
+ * Conventional commit pattern - built dynamically from VALID_TYPES
  * Format: <type>[optional scope]: <description>
  */
-const COMMIT_PATTERN =
-  /^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([a-zA-Z0-9_-]+\))?: .+/;
+const COMMIT_PATTERN = new RegExp(
+  `^(${VALID_TYPES.join("|")})(\\([a-zA-Z0-9_-]+\\))?: .+`,
+);
 
 /**
  * Result of commit message validation
@@ -123,7 +124,20 @@ export function formatErrorMessage(subject: string): string {
  * Main function to run commit message validation
  */
 export function runCommitMsgCheck(source: string): void {
-  const commitMsg = readCommitMessage(source);
+  if (!existsSync(source)) {
+    console.error(`ERROR: Commit message file not found: ${source}`);
+    process.exit(1);
+  }
+
+  let commitMsg: string;
+  try {
+    commitMsg = readCommitMessage(source);
+  } catch (err) {
+    console.error(`ERROR: Failed to read commit message file: ${source}`);
+    console.error(err instanceof Error ? err.message : String(err));
+    process.exit(1);
+  }
+
   const result = validateCommitMessage(commitMsg);
 
   if (result.valid) {

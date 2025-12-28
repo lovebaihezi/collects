@@ -134,6 +134,9 @@ pub fn internal_users_panel(
 
         ui.add_space(8.0);
 
+        // Collect usernames to toggle (avoiding borrow issues)
+        let mut username_to_toggle: Option<String> = None;
+
         // Users table
         ScrollArea::vertical().show(ui, |ui| {
             egui::Grid::new("users_table")
@@ -165,14 +168,7 @@ pub fn internal_users_panel(
                             "Reveal"
                         };
                         if ui.button(button_text).clicked() {
-                            let username = user.username.clone();
-                            // We need to toggle after the loop to avoid borrow issues
-                            ui.memory_mut(|mem| {
-                                mem.data.insert_temp(
-                                    egui::Id::new("toggle_otp_username"),
-                                    username,
-                                );
-                            });
+                            username_to_toggle = Some(user.username.clone());
                         }
 
                         ui.end_row();
@@ -180,14 +176,9 @@ pub fn internal_users_panel(
                 });
         });
 
-        // Handle toggle after iteration
-        if let Some(username) = ui.memory(|mem| {
-            mem.data.get_temp::<String>(egui::Id::new("toggle_otp_username"))
-        }) {
+        // Apply toggle action after table iteration
+        if let Some(username) = username_to_toggle {
             state.toggle_otp_visibility(&username);
-            ui.memory_mut(|mem| {
-                mem.data.remove::<String>(egui::Id::new("toggle_otp_username"));
-            });
         }
     });
 
@@ -222,7 +213,8 @@ fn show_create_user_modal(state: &mut InternalUsersState, api_base_url: &str, ui
                 ui.label("Scan this QR code with Google Authenticator:");
                 ui.add_space(4.0);
 
-                // Display the otpauth URL (in a real app, render as QR code)
+                // TODO: Replace with actual QR code rendering using a QR code library
+                // Currently displaying the otpauth URL as text for users to copy
                 egui::Frame::NONE
                     .fill(Color32::from_gray(240))
                     .inner_margin(egui::Margin::same(8))
@@ -327,10 +319,21 @@ fn fetch_users(api_base_url: &str, ctx: egui::Context) {
 /// Create a new user via the internal API.
 fn create_user(api_base_url: &str, username: &str, ctx: egui::Context) {
     let url = format!("{api_base_url}/internal/users");
-    let body = serde_json::to_vec(&CreateUserRequest {
+    let body = match serde_json::to_vec(&CreateUserRequest {
         username: username.to_string(),
-    })
-    .unwrap_or_default();
+    }) {
+        Ok(body) => body,
+        Err(e) => {
+            log::error!("Failed to serialize CreateUserRequest: {}", e);
+            ctx.memory_mut(|mem| {
+                mem.data.insert_temp(
+                    egui::Id::new("internal_create_user_error"),
+                    format!("Serialization error: {e}"),
+                );
+            });
+            return;
+        }
+    };
 
     let mut request = ehttp::Request::post(&url, body);
     request.headers.insert("Content-Type", "application/json");

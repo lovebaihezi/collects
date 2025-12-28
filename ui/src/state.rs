@@ -10,7 +10,7 @@ use crate::widgets::InternalUsersState;
 
 #[derive(Deserialize, Serialize)]
 pub struct State {
-    // We needs to store the presisent state
+    // We need to store the persistent state
     #[serde(skip)]
     pub ctx: StateCtx,
     /// Internal users state (only for internal builds)

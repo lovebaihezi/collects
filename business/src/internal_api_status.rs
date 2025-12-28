@@ -62,7 +62,7 @@ impl Compute for InternalApiStatus {
                 should
             }
             None => {
-                info!("Not fetch Internal API yet, should fetch new status");
+                info!("Have not fetched Internal API yet, should fetch new status");
                 true
             }
         };

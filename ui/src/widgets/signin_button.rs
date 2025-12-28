@@ -463,3 +463,246 @@ mod tests {
         assert!(!is_form_valid(&mixed_otp));
     }
 }
+
+#[cfg(test)]
+mod signin_widget_test {
+    use kittest::Queryable;
+
+    use crate::test_utils::TestCtx;
+
+    use super::signin_button;
+
+    #[tokio::test]
+    async fn test_signin_button_shows_sign_in_when_logged_out() {
+        let mut ctx = TestCtx::new(|ui, state| {
+            signin_button(
+                &state.ctx,
+                &state.auth_state,
+                &mut state.login_dialog_state,
+                ui,
+            );
+        })
+        .await;
+
+        let harness = ctx.harness_mut();
+        harness.step();
+
+        assert!(
+            harness.query_by_label("Sign In").is_some(),
+            "'Sign In' button should exist when logged out"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_signin_button_shows_username_when_logged_in() {
+        let mut ctx = TestCtx::new(|ui, state| {
+            signin_button(
+                &state.ctx,
+                &state.auth_state,
+                &mut state.login_dialog_state,
+                ui,
+            );
+        })
+        .await;
+
+        let harness = ctx.harness_mut();
+
+        // Simulate login
+        harness.state_mut().auth_state.login_success("testuser".to_string());
+        harness.step();
+
+        assert!(
+            harness.query_by_label_contains("testuser").is_some(),
+            "Username should be displayed when logged in"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_signin_button_changes_text_when_dialog_open() {
+        let mut ctx = TestCtx::new(|ui, state| {
+            signin_button(
+                &state.ctx,
+                &state.auth_state,
+                &mut state.login_dialog_state,
+                ui,
+            );
+        })
+        .await;
+
+        let harness = ctx.harness_mut();
+
+        // Open the dialog
+        harness.state_mut().login_dialog_state.open();
+        harness.step();
+
+        assert!(
+            harness.query_by_label("Signing In...").is_some(),
+            "'Signing In...' should be displayed when dialog is open"
+        );
+    }
+}
+
+#[cfg(test)]
+mod signin_integration_test {
+    use std::time::Duration;
+
+    use collects_business::{AuthState, LoginFormData};
+
+    use crate::test_utils::TestCtx;
+    use crate::widgets::{
+        LoginDialogState, LoginResult, create_login_channel, perform_login, poll_login_result,
+    };
+
+    #[tokio::test]
+    async fn test_login_success_with_valid_credentials() {
+        let valid_username = "testuser";
+        let valid_otp = "123456";
+
+        let mut ctx = TestCtx::new_with_auth(
+            |_ui, _state| {
+                // Empty UI - we're testing the login flow directly
+            },
+            valid_username,
+            valid_otp,
+        )
+        .await;
+
+        let harness = ctx.harness_mut();
+        let state = harness.state_mut();
+
+        // Create login channel
+        let (sender, receiver) = create_login_channel();
+
+        // Perform login with valid credentials
+        let form_data = LoginFormData {
+            username: valid_username.to_string(),
+            otp_code: valid_otp.to_string(),
+        };
+
+        perform_login(&state.ctx, &form_data, sender);
+
+        // Wait for the async request to complete
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        // Poll for result
+        let mut auth_state = AuthState::default();
+        auth_state.start_login();
+        let mut dialog_state = LoginDialogState::default();
+        dialog_state.open();
+
+        let success = poll_login_result(&receiver, &mut auth_state, &mut dialog_state);
+
+        assert!(success, "Login should succeed with valid credentials");
+        assert!(auth_state.is_logged_in(), "Auth state should be logged in");
+        assert_eq!(
+            auth_state.username,
+            Some(valid_username.to_string()),
+            "Username should be set after login"
+        );
+        assert!(!dialog_state.is_open, "Dialog should be closed after successful login");
+    }
+
+    #[tokio::test]
+    async fn test_login_failure_with_invalid_credentials() {
+        let valid_username = "testuser";
+        let valid_otp = "123456";
+
+        let mut ctx = TestCtx::new_with_auth(
+            |_ui, _state| {
+                // Empty UI - we're testing the login flow directly
+            },
+            valid_username,
+            valid_otp,
+        )
+        .await;
+
+        let harness = ctx.harness_mut();
+        let state = harness.state_mut();
+
+        // Create login channel
+        let (sender, receiver) = create_login_channel();
+
+        // Perform login with invalid credentials
+        let form_data = LoginFormData {
+            username: "wronguser".to_string(),
+            otp_code: "000000".to_string(),
+        };
+
+        perform_login(&state.ctx, &form_data, sender);
+
+        // Wait for the async request to complete
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        // Poll for result
+        let mut auth_state = AuthState::default();
+        auth_state.start_login();
+        let mut dialog_state = LoginDialogState::default();
+        dialog_state.open();
+
+        let success = poll_login_result(&receiver, &mut auth_state, &mut dialog_state);
+
+        assert!(!success, "Login should fail with invalid credentials");
+        assert!(!auth_state.is_logged_in(), "Auth state should not be logged in");
+        assert!(
+            auth_state.error.is_some(),
+            "Error message should be set after failed login"
+        );
+        assert!(dialog_state.is_open, "Dialog should remain open after failed login");
+    }
+
+    #[tokio::test]
+    async fn test_login_result_channel_communication() {
+        let (sender, receiver) = create_login_channel();
+
+        // Send a success result
+        sender
+            .send(LoginResult::Success("channeluser".to_string()))
+            .expect("Should send result");
+
+        let mut auth_state = AuthState::default();
+        auth_state.start_login();
+        let mut dialog_state = LoginDialogState::default();
+        dialog_state.open();
+
+        let success = poll_login_result(&receiver, &mut auth_state, &mut dialog_state);
+
+        assert!(success, "Poll should return success");
+        assert!(auth_state.is_logged_in(), "Auth state should be logged in");
+        assert_eq!(auth_state.username, Some("channeluser".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_login_result_channel_failure() {
+        let (sender, receiver) = create_login_channel();
+
+        // Send a failure result
+        sender
+            .send(LoginResult::Failed("Test error message".to_string()))
+            .expect("Should send result");
+
+        let mut auth_state = AuthState::default();
+        auth_state.start_login();
+        let mut dialog_state = LoginDialogState::default();
+        dialog_state.open();
+
+        let success = poll_login_result(&receiver, &mut auth_state, &mut dialog_state);
+
+        assert!(!success, "Poll should return failure");
+        assert!(!auth_state.is_logged_in(), "Auth state should not be logged in");
+        assert_eq!(auth_state.error, Some("Test error message".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_poll_login_result_empty_channel() {
+        let (_sender, receiver) = create_login_channel();
+
+        let mut auth_state = AuthState::default();
+        let mut dialog_state = LoginDialogState::default();
+
+        // Poll empty channel should return false and not modify state
+        let success = poll_login_result(&receiver, &mut auth_state, &mut dialog_state);
+
+        assert!(!success, "Poll should return false for empty channel");
+        assert!(!auth_state.is_logged_in(), "Auth state should remain unchanged");
+    }
+}

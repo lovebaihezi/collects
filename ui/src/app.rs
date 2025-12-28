@@ -10,6 +10,18 @@ impl CollectsApp {
     pub fn new(state: State) -> Self {
         Self { state }
     }
+
+    /// Returns a reference to the internal state.
+    /// Primarily used for testing purposes.
+    pub fn state(&self) -> &State {
+        &self.state
+    }
+
+    /// Returns a mutable reference to the internal state.
+    /// Primarily used for testing purposes.
+    pub fn state_mut(&mut self) -> &mut State {
+        &mut self.state
+    }
 }
 
 impl eframe::App for CollectsApp {

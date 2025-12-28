@@ -7,8 +7,3 @@ pre-commit:
       run: just check-lint
     typos:
       run: just check-typos
-
-commit-msg:
-  commands:
-    conventional-commit:
-      run: bun run scripts/main.ts check-commit-msg {1}

@@ -30,3 +30,8 @@ actions-setup *args: install
 
 init-db token project_id: install
     bun run main.ts init-db-secret --token {{token}} --project-id {{project_id}}
+
+# Validate PR title against conventional commit format
+# Usage: just scripts::check-pr-title "feat: add new feature"
+check-pr-title title: install
+    bun run main.ts check-pr-title "{{title}}"

@@ -5,7 +5,7 @@ use std::{
     ptr::NonNull,
 };
 
-use log::{Level, info, log_enabled};
+use log::{Level, info, log_enabled, trace};
 
 use crate::{Dep, Reader, Updater};
 
@@ -160,7 +160,7 @@ impl StateCtx {
     /// to the respective computes, marking them as clean.
     pub fn sync_computes(&mut self) {
         let cur_len = self.runtime().receiver().len();
-        info!(
+        trace!(
             "Start Sync Compute State, Cur Received {:?} Compute Result",
             cur_len
         );
@@ -169,7 +169,7 @@ impl StateCtx {
                 let compute = unsafe { self.computes.get_mut(&id).unwrap_unchecked() };
                 debug_assert_eq!(compute.1, Stage::Pending);
                 let computed_name = compute.0.borrow().name();
-                info!("Received Compute Update, compute={:?}", computed_name);
+                trace!("Received Compute Update, compute={:?}", computed_name);
                 compute.0.borrow_mut().assign_box(boxed);
                 self.mark_clean(&id);
             }
@@ -198,7 +198,7 @@ impl StateCtx {
             .iter()
             .filter_map(|(type_id, (state_cell, compute_state))| {
                 if matches!(compute_state, &Stage::Dirty | &Stage::BeforeInit) {
-                    info!(
+                    trace!(
                         "Run Compute which is {:?} = {:?}",
                         compute_state,
                         state_cell.borrow().name()

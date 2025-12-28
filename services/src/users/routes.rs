@@ -119,16 +119,7 @@ where
     Router::new().route("/users", post(create_user::<S, U>))
 }
 
-/// Creates the router for user-related internal endpoints with legacy SqlStorage-only state.
-///
-/// This is provided for backward compatibility with existing code that doesn't
-/// use the new UserStorage trait yet.
-pub fn internal_routes_legacy<S>() -> Router<S>
-where
-    S: SqlStorage + Clone + Send + Sync + 'static,
-{
-    Router::new().route("/users", post(create_user_legacy::<S>))
-}
+
 
 /// Creates the router for authentication endpoints.
 ///
@@ -144,15 +135,7 @@ where
     Router::new().route("/verify-otp", post(verify_otp_handler::<S, U>))
 }
 
-/// Creates the router for authentication endpoints with legacy SqlStorage-only state.
-///
-/// This is provided for backward compatibility.
-pub fn auth_routes_legacy<S>() -> Router<S>
-where
-    S: SqlStorage + Clone + Send + Sync + 'static,
-{
-    Router::new().route("/verify-otp", post(verify_otp_legacy::<S>))
-}
+
 
 /// Handler for creating a new user with OTP authentication.
 ///
@@ -247,42 +230,7 @@ where
     }
 }
 
-/// Legacy handler for creating a new user without UserStorage.
-///
-/// This is maintained for backward compatibility.
-#[tracing::instrument(skip_all, fields(username = %payload.username))]
-async fn create_user_legacy<S>(
-    State(_storage): State<S>,
-    Json(payload): Json<CreateUserRequest>,
-) -> impl IntoResponse
-where
-    S: SqlStorage,
-{
-    tracing::info!("Creating user with OTP setup (legacy mode)");
 
-    match generate_otp_secret(&payload.username) {
-        Ok((secret, otpauth_url)) => {
-            // In legacy mode, we just return the generated secret
-            // without storing it in the database
-            tracing::warn!("User created in legacy mode - secret not persisted to database");
-
-            (
-                StatusCode::CREATED,
-                Json(CreateUserResponse {
-                    username: payload.username,
-                    secret,
-                    otpauth_url,
-                }),
-            )
-                .into_response()
-        }
-        Err(err) => {
-            tracing::warn!("Failed to create user: {}", err);
-            let (status, json): (StatusCode, Json<ErrorResponse>) = err.into();
-            (status, json).into_response()
-        }
-    }
-}
 
 /// Handler for verifying an OTP code.
 ///
@@ -410,61 +358,7 @@ where
     }
 }
 
-/// Legacy handler for verifying an OTP code without UserStorage.
-///
-/// This is maintained for backward compatibility.
-#[tracing::instrument(skip_all, fields(username = %payload.username))]
-async fn verify_otp_legacy<S>(
-    State(_storage): State<S>,
-    Json(payload): Json<VerifyOtpRequest>,
-) -> impl IntoResponse
-where
-    S: SqlStorage,
-{
-    tracing::info!("Verifying OTP code (legacy mode)");
 
-    // Validate that username is not empty
-    if payload.username.is_empty() {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(VerifyOtpResponse {
-                valid: false,
-                message: Some("Username cannot be empty".to_string()),
-            }),
-        )
-            .into_response();
-    }
-
-    // Validate that code is not empty and is 6 digits
-    let is_valid_format =
-        payload.code.len() == 6 && payload.code.bytes().all(|b| b.is_ascii_digit());
-
-    if !is_valid_format {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(VerifyOtpResponse {
-                valid: false,
-                message: Some("Invalid OTP code format. Code must be 6 digits.".to_string()),
-            }),
-        )
-            .into_response();
-    }
-
-    // In legacy mode, we can't verify because we don't have access to stored secrets
-    tracing::warn!("OTP verification attempted in legacy mode - user secrets not available");
-
-    (
-        StatusCode::NOT_IMPLEMENTED,
-        Json(VerifyOtpResponse {
-            valid: false,
-            message: Some(
-                "User verification requires database integration. User secrets not yet stored."
-                    .to_string(),
-            ),
-        }),
-    )
-        .into_response()
-}
 
 #[cfg(test)]
 mod tests {

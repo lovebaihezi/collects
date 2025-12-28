@@ -37,25 +37,4 @@ where
     }
 }
 
-/// Create internal routes with optional Zero Trust middleware (legacy).
-pub fn create_internal_routes_legacy<S>(config: &Config) -> Router<S>
-where
-    S: SqlStorage + Clone + Send + Sync + 'static,
-{
-    let routes = users::internal_routes_legacy::<S>();
 
-    match (config.cf_access_team_domain(), config.cf_access_aud()) {
-        (Some(team_domain), Some(audience)) => {
-            let zero_trust_config = Arc::new(auth::ZeroTrustConfig::new(
-                team_domain.to_string(),
-                audience.to_string(),
-            ));
-
-            routes.layer(middleware::from_fn(move |req, next| {
-                let config = Arc::clone(&zero_trust_config);
-                auth::zero_trust_middleware(config, req, next)
-            }))
-        }
-        _ => routes,
-    }
-}

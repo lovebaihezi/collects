@@ -2,29 +2,30 @@ use collects_business::{APIAvailability, ApiStatus};
 use collects_states::StateCtx;
 use egui::{Color32, Response, RichText, Ui};
 
+fn format_tooltip(status: &str, version: Option<&str>) -> String {
+    match version {
+        Some(v) => format!("{status}\nVersion: {v}"),
+        None => status.to_string(),
+    }
+}
+
 pub fn api_status(state_ctx: &StateCtx, ui: &mut Ui) -> Response {
     let (status_text, tooltip_text, bg_color, text_color) = match state_ctx
         .cached::<ApiStatus>()
         .map(|v| v.api_availability())
     {
-        Some(APIAvailability::Available { version, .. }) => {
-            let version_display = version.unwrap_or("unknown");
-            (
-                "●",
-                format!("API Status: Healthy\nVersion: {version_display}"),
-                Color32::from_rgb(34, 139, 34), // Forest green
-                Color32::WHITE,
-            )
-        }
-        Some(APIAvailability::Unavailable { error, version, .. }) => {
-            let version_display = version.unwrap_or("unknown");
-            (
-                "●",
-                format!("API Status: {error}\nVersion: {version_display}"),
-                Color32::from_rgb(220, 53, 69), // Red
-                Color32::WHITE,
-            )
-        }
+        Some(APIAvailability::Available { version, .. }) => (
+            "●",
+            format_tooltip("API Status: Healthy", version),
+            Color32::from_rgb(34, 139, 34), // Forest green
+            Color32::WHITE,
+        ),
+        Some(APIAvailability::Unavailable { error, version, .. }) => (
+            "●",
+            format_tooltip(&format!("API Status: {error}"), version),
+            Color32::from_rgb(220, 53, 69), // Red
+            Color32::WHITE,
+        ),
         _ => (
             "●",
             "API Status: Checking...".to_string(),

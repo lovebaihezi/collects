@@ -6,6 +6,9 @@ use collects_states::{Compute, ComputeDeps, Dep, State, Time, Updater, assign_im
 use log::{debug, info, warn};
 use ustr::Ustr;
 
+/// HTTP header name for the service version
+const SERVICE_VERSION_HEADER: &str = "x-service-version";
+
 #[derive(Default, Debug)]
 pub struct ApiStatus {
     last_update_time: Option<DateTime<Utc>>,
@@ -74,7 +77,7 @@ impl Compute for ApiStatus {
                 Ok(response) => {
                     let service_version = response
                         .headers
-                        .get("x-service-version")
+                        .get(SERVICE_VERSION_HEADER)
                         .map(String::from);
                     if response.status == 200 {
                         debug!("BackEnd Available, checked at {:?}", now);

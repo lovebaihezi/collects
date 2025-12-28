@@ -1,8 +1,37 @@
+use collects_ui::CollectsApp;
+use egui_kittest::Harness;
 use kittest::Queryable;
 
 use crate::common::TestCtx;
 
 mod common;
+
+/// Helper function to setup login credentials on the dialog
+fn setup_login_credentials(harness: &mut Harness<'_, CollectsApp>, username: &str, otp_code: &str) {
+    let state = harness.state_mut().state_mut();
+    state.login_dialog_state.open();
+    state.login_dialog_state.form_data.username = username.to_string();
+    state.login_dialog_state.form_data.otp_code = otp_code.to_string();
+    state.auth_state.start_login();
+}
+
+/// Helper function to perform login request
+fn perform_login_request(harness: &mut Harness<'_, CollectsApp>) {
+    let sender = harness.state().state().login_result_sender.clone();
+    let form_data = harness.state().state().login_dialog_state.form_data.clone();
+    collects_ui::widgets::perform_login(&harness.state().state().ctx, &form_data, sender);
+}
+
+/// Helper function to poll for login result
+fn poll_login(harness: &mut Harness<'_, CollectsApp>) {
+    let receiver = harness.state().state().login_result_receiver.clone();
+    let state = harness.state_mut().state_mut();
+    collects_ui::widgets::poll_login_result(
+        &receiver,
+        &mut state.auth_state,
+        &mut state.login_dialog_state,
+    );
+}
 
 #[tokio::test]
 async fn test_signin_button_visible_in_app() {
@@ -43,33 +72,15 @@ async fn test_signin_flow_with_valid_credentials() {
         "'Sign In' button should be visible initially"
     );
 
-    // Simulate opening dialog and logging in
-    {
-        let state = harness.state_mut().state_mut();
-        state.login_dialog_state.open();
-        state.login_dialog_state.form_data.username = "testuser".to_string();
-        state.login_dialog_state.form_data.otp_code = "123456".to_string();
-        state.auth_state.start_login();
-    }
-
-    // Trigger login - need to get sender first
-    let sender = harness.state().state().login_result_sender.clone();
-    let form_data = harness.state().state().login_dialog_state.form_data.clone();
-    collects_ui::widgets::perform_login(&harness.state().state().ctx, &form_data, sender);
+    // Setup and perform login
+    setup_login_credentials(harness, "testuser", "123456");
+    perform_login_request(harness);
 
     // Wait for the mock server response
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
-    // Poll for login result - clone receiver first
-    let receiver = harness.state().state().login_result_receiver.clone();
-    {
-        let state = harness.state_mut().state_mut();
-        collects_ui::widgets::poll_login_result(
-            &receiver,
-            &mut state.auth_state,
-            &mut state.login_dialog_state,
-        );
-    }
+    // Poll for login result
+    poll_login(harness);
 
     harness.step();
 
@@ -92,33 +103,15 @@ async fn test_signin_flow_with_invalid_credentials() {
     let harness = ctx.harness_mut();
     harness.step();
 
-    // Simulate opening dialog and logging in with wrong credentials
-    {
-        let state = harness.state_mut().state_mut();
-        state.login_dialog_state.open();
-        state.login_dialog_state.form_data.username = "wronguser".to_string();
-        state.login_dialog_state.form_data.otp_code = "000000".to_string();
-        state.auth_state.start_login();
-    }
-
-    // Trigger login
-    let sender = harness.state().state().login_result_sender.clone();
-    let form_data = harness.state().state().login_dialog_state.form_data.clone();
-    collects_ui::widgets::perform_login(&harness.state().state().ctx, &form_data, sender);
+    // Setup and perform login with wrong credentials
+    setup_login_credentials(harness, "wronguser", "000000");
+    perform_login_request(harness);
 
     // Wait for the mock server response
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
     // Poll for login result
-    let receiver = harness.state().state().login_result_receiver.clone();
-    {
-        let state = harness.state_mut().state_mut();
-        collects_ui::widgets::poll_login_result(
-            &receiver,
-            &mut state.auth_state,
-            &mut state.login_dialog_state,
-        );
-    }
+    poll_login(harness);
 
     harness.step();
 

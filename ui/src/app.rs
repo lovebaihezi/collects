@@ -21,7 +21,6 @@ impl eframe::App for CollectsApp {
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
             egui::MenuBar::new().ui(ui, |ui| {
                 widgets::api_status(&self.state.ctx, ui);
-                widgets::env_version(ui);
             });
         });
 

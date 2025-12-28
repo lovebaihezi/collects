@@ -68,7 +68,9 @@ async fn setup_test_state_with_status(status_code: u16) -> (MockServer, State) {
 
     Mock::given(method("GET"))
         .and(path("/api/is-health"))
-        .respond_with(ResponseTemplate::new(status_code))
+        .respond_with(
+            ResponseTemplate::new(status_code).insert_header("x-service-version", "0.1.0+test"),
+        )
         .mount(&mock_server)
         .await;
 

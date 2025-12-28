@@ -6,25 +6,42 @@ use collects_states::{Compute, ComputeDeps, Dep, State, Time, Updater, assign_im
 use log::{debug, info, warn};
 use ustr::Ustr;
 
+/// HTTP header name for the service version
+const SERVICE_VERSION_HEADER: &str = "x-service-version";
+
 #[derive(Default, Debug)]
 pub struct ApiStatus {
     last_update_time: Option<DateTime<Utc>>,
     // if exists error, means api unavailable
     last_error: Option<String>,
+    // Service version from x-service-version header
+    service_version: Option<String>,
 }
 
 pub enum APIAvailability<'a> {
-    Available(DateTime<Utc>),
-    Unavailable((DateTime<Utc>, &'a str)),
+    Available {
+        time: DateTime<Utc>,
+        version: Option<&'a str>,
+    },
+    Unavailable {
+        time: DateTime<Utc>,
+        error: &'a str,
+        version: Option<&'a str>,
+    },
     Unknown,
 }
 
 impl ApiStatus {
     pub fn api_availability(&self) -> APIAvailability<'_> {
+        let version = self.service_version.as_deref();
         match (self.last_update_time, &self.last_error) {
             (None, None) => APIAvailability::Unknown,
-            (Some(time), None) => APIAvailability::Available(time),
-            (Some(time), Some(err)) => APIAvailability::Unavailable((time, err.as_str())),
+            (Some(time), None) => APIAvailability::Available { time, version },
+            (Some(time), Some(err)) => APIAvailability::Unavailable {
+                time,
+                error: err.as_str(),
+                version,
+            },
             _ => APIAvailability::Unknown,
         }
     }
@@ -65,11 +82,16 @@ impl Compute for ApiStatus {
             );
             ehttp::fetch(request, move |res| match res {
                 Ok(response) => {
+                    let service_version = response
+                        .headers
+                        .get(SERVICE_VERSION_HEADER)
+                        .map(String::from);
                     if response.status == 200 {
                         debug!("BackEnd Available, checked at {:?}", now);
                         let api_status = ApiStatus {
                             last_update_time: Some(now),
                             last_error: None,
+                            service_version,
                         };
                         updater.set(api_status);
                     } else {
@@ -77,6 +99,7 @@ impl Compute for ApiStatus {
                         let api_status = ApiStatus {
                             last_update_time: Some(now),
                             last_error: Some(format!("API Health: {}", response.status)),
+                            service_version,
                         };
                         updater.set(api_status);
                     }
@@ -86,6 +109,7 @@ impl Compute for ApiStatus {
                     let api_status = ApiStatus {
                         last_update_time: Some(now),
                         last_error: Some(err.to_string()),
+                        service_version: None,
                     };
                     updater.set(api_status);
                 }

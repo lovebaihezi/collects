@@ -119,8 +119,6 @@ where
     Router::new().route("/users", post(create_user::<S, U>))
 }
 
-
-
 /// Creates the router for authentication endpoints.
 ///
 /// # Type Parameters
@@ -134,8 +132,6 @@ where
 {
     Router::new().route("/verify-otp", post(verify_otp_handler::<S, U>))
 }
-
-
 
 /// Handler for creating a new user with OTP authentication.
 ///
@@ -229,8 +225,6 @@ where
         }
     }
 }
-
-
 
 /// Handler for verifying an OTP code.
 ///
@@ -357,8 +351,6 @@ where
         }
     }
 }
-
-
 
 #[cfg(test)]
 mod tests {

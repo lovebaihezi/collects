@@ -9,7 +9,5 @@ pub mod otp;
 pub mod routes;
 pub mod storage;
 
-pub use routes::{
-    AppState, auth_routes, auth_routes_legacy, internal_routes, internal_routes_legacy,
-};
+pub use routes::{AppState, auth_routes, internal_routes};
 pub use storage::{MockUserStorage, PgUserStorage, StoredUser, UserStorage, UserStorageError};

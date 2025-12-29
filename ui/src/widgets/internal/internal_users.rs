@@ -20,8 +20,8 @@ fn generate_qr_image(data: &str, size: usize) -> Option<ColorImage> {
     let code = qrcode::QrCode::new(data.as_bytes()).ok()?;
     let qr_width = code.width();
 
-    // Calculate scale factor to fit the desired size
-    let scale = size / qr_width;
+    // Calculate scale factor to fit the desired size (minimum scale of 1)
+    let scale = (size / qr_width).max(1);
     let actual_size = qr_width * scale;
 
     // Create pixel buffer
@@ -39,7 +39,9 @@ fn generate_qr_image(data: &str, size: usize) -> Option<ColorImage> {
                 for dx in 0..scale {
                     let px = x * scale + dx;
                     let py = y * scale + dy;
-                    pixels[py * actual_size + px] = pixel_color;
+                    if px < actual_size && py < actual_size {
+                        pixels[py * actual_size + px] = pixel_color;
+                    }
                 }
             }
         }

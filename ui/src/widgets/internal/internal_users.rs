@@ -3,11 +3,12 @@
 //! Displays a table of users with their usernames and OTP codes,
 //! along with a button to create new users.
 
+use chrono::{DateTime, Utc};
 use collects_business::{
     CreateUserCommand, CreateUserCompute, CreateUserInput, CreateUserResult, InternalUserItem,
     ListUsersResponse,
 };
-use collects_states::StateCtx;
+use collects_states::{StateCtx, Time};
 use egui::{Color32, Response, RichText, ScrollArea, Ui, Window};
 use std::any::TypeId;
 use std::collections::HashMap;
@@ -23,8 +24,8 @@ pub struct InternalUsersState {
     is_fetching: bool,
     /// Error message if fetch failed.
     error: Option<String>,
-    /// Last fetch timestamp.
-    last_fetch: Option<std::time::Instant>,
+    /// Last fetch timestamp (using DateTime<Utc> for WASM compatibility and test mockability).
+    last_fetch: Option<DateTime<Utc>>,
     /// Whether the create user modal is open.
     create_modal_open: bool,
     /// Username input for create modal.
@@ -52,11 +53,13 @@ impl InternalUsersState {
     }
 
     /// Update users from API response.
-    pub fn update_users(&mut self, users: Vec<InternalUserItem>) {
+    ///
+    /// Takes `now` as a parameter to allow test mockability via the `Time` state.
+    pub fn update_users(&mut self, users: Vec<InternalUserItem>, now: DateTime<Utc>) {
         self.users = users;
         self.is_fetching = false;
         self.error = None;
-        self.last_fetch = Some(std::time::Instant::now());
+        self.last_fetch = Some(now);
     }
 
     /// Set error state.
@@ -376,13 +379,19 @@ fn fetch_users(api_base_url: &str, ctx: egui::Context) {
 
 /// Poll for async responses and update state.
 /// Call this in the update loop.
-pub fn poll_internal_users_responses(state: &mut InternalUsersState, ctx: &egui::Context) {
+pub fn poll_internal_users_responses(
+    state: &mut InternalUsersState,
+    state_ctx: &StateCtx,
+    ctx: &egui::Context,
+) {
     // Check for users list response
     if let Some(users) = ctx.memory(|mem| {
         mem.data
             .get_temp::<Vec<InternalUserItem>>(egui::Id::new("internal_users_response"))
     }) {
-        state.update_users(users);
+        // Get current time from Time state for mockability
+        let now = *state_ctx.state_mut::<Time>().as_ref();
+        state.update_users(users, now);
         ctx.memory_mut(|mem| {
             mem.data
                 .remove::<Vec<InternalUserItem>>(egui::Id::new("internal_users_response"));

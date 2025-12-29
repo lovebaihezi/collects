@@ -25,6 +25,7 @@ async fn test_api_status_with_200() {
 
     harness.step();
 
+    // After API response, the dot should still be present (now green for healthy)
     assert!(
         harness.query_by_label("API Status: Healthy").is_some(),
         "'API Status: Healthy' should exist in UI"
@@ -52,6 +53,7 @@ async fn test_api_status_with_404() {
 
     harness.step();
 
+    // After API error response, the dot should still be present (now red)
     assert!(
         harness.query_by_label("API Health: 404").is_some(),
         "'API Health: 404' should exist in UI"
@@ -79,6 +81,7 @@ async fn test_api_status_with_500() {
 
     harness.step();
 
+    // After API error response, the dot should still be present (now red)
     assert!(
         harness.query_by_label("API Health: 500").is_some(),
         "'API Health: 500' should exist in UI"

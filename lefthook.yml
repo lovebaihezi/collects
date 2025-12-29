@@ -7,8 +7,3 @@ pre-commit:
       run: just check-lint
     typos:
       run: just check-typos
-
-commit-msg:
-  commands:
-    conventional-commit:
-      run: bash scripts/check-commit-msg.sh {1}

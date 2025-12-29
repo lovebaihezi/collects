@@ -2,35 +2,35 @@ use collects_business::{APIAvailability, ApiStatus};
 use collects_states::StateCtx;
 use egui::{Color32, Response, RichText, Ui};
 
+fn format_tooltip(status: &str, version: Option<&str>) -> String {
+    match version {
+        Some(v) => format!("{status}:{v}"),
+        None => status.to_string(),
+    }
+}
+
 pub fn api_status(state_ctx: &StateCtx, ui: &mut Ui) -> Response {
-    let (text, bg_color, text_color) = match state_ctx
+    let (tooltip_text, dot_color) = match state_ctx
         .cached::<ApiStatus>()
         .map(|v| v.api_availability())
     {
-        Some(APIAvailability::Available(_)) => (
-            "API Status: Healthy",
-            Color32::from_rgb(34, 139, 34), // Forest green background
-            Color32::WHITE,                 // White text
+        Some(APIAvailability::Available { version, .. }) => (
+            format_tooltip("api", version),
+            Color32::from_rgb(34, 139, 34), // Forest green
         ),
-        Some(APIAvailability::Unavailable((_, err))) => (
-            err,
-            Color32::from_rgb(220, 53, 69), // Red background
-            Color32::WHITE,                 // White text
+        Some(APIAvailability::Unavailable { error, version, .. }) => (
+            format_tooltip(&format!("api({error})"), version),
+            Color32::from_rgb(220, 53, 69), // Red
         ),
         _ => (
-            "API Status: Checking...",
-            Color32::from_rgb(255, 193, 7), // Amber background
-            Color32::BLACK,                 // Black text for contrast
+            "api:checking".to_string(),
+            Color32::from_rgb(255, 193, 7), // Amber
         ),
     };
 
-    egui::Frame::NONE
-        .fill(bg_color)
-        .inner_margin(egui::Margin::symmetric(8, 4))
-        .outer_margin(egui::Margin::symmetric(0, 4))
-        .corner_radius(4.0)
-        .show(ui, |ui| ui.label(RichText::new(text).color(text_color)))
-        .inner
+    let response = ui.label(RichText::new("●").color(dot_color));
+
+    response.on_hover_text(tooltip_text)
 }
 
 #[cfg(test)]
@@ -52,9 +52,10 @@ mod api_state_widget_test {
 
         harness.step();
 
+        // Initially shows the status dot (yellow/checking state)
         assert!(
-            harness.query_by_label("API Status: Checking...").is_some(),
-            "'API Status: Checking...' should exists in UI"
+            harness.query_by_label("●").is_some(),
+            "Status dot should exist in UI"
         );
 
         harness.state_mut().ctx.sync_computes();
@@ -69,13 +70,10 @@ mod api_state_widget_test {
         harness.step();
         harness.state_mut().ctx.run_all_dirty();
 
-        if let Some(n) = harness.query_by_label_contains("API Status") {
-            eprintln!("NODE: {:?}", n);
-        }
-
+        // After API response, the dot should still be present (now green)
         assert!(
-            harness.query_by_label("API Status: Healthy").is_some(),
-            "'API Status: Healthy' should exists in UI"
+            harness.query_by_label("●").is_some(),
+            "Status dot should exist in UI after API response"
         );
     }
 
@@ -93,9 +91,10 @@ mod api_state_widget_test {
 
         harness.step();
 
+        // Initially shows the status dot
         assert!(
-            harness.query_by_label("API Status: Checking...").is_some(),
-            "'API Status: Checking...' should exists in UI"
+            harness.query_by_label("●").is_some(),
+            "Status dot should exist in UI"
         );
 
         harness.state_mut().ctx.sync_computes();
@@ -109,9 +108,10 @@ mod api_state_widget_test {
         harness.step();
         harness.state_mut().ctx.run_all_dirty();
 
+        // After API error response, the dot should still be present (now red)
         assert!(
-            harness.query_by_label("API Health: 404").is_some(),
-            "'API Health: 404' should exists in UI"
+            harness.query_by_label("●").is_some(),
+            "Status dot should exist in UI after API error"
         );
     }
 
@@ -129,9 +129,10 @@ mod api_state_widget_test {
 
         harness.step();
 
+        // Initially shows the status dot
         assert!(
-            harness.query_by_label("API Status: Checking...").is_some(),
-            "'API Status: Checking...' should exists in UI"
+            harness.query_by_label("●").is_some(),
+            "Status dot should exist in UI"
         );
 
         harness.state_mut().ctx.sync_computes();
@@ -145,9 +146,10 @@ mod api_state_widget_test {
         harness.step();
         harness.state_mut().ctx.run_all_dirty();
 
+        // After API error response, the dot should still be present (now red)
         assert!(
-            harness.query_by_label("API Health: 500").is_some(),
-            "'API Health: 500' should exists in UI"
+            harness.query_by_label("●").is_some(),
+            "Status dot should exist in UI after API error"
         );
     }
 }

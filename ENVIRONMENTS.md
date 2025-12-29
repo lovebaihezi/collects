@@ -7,6 +7,23 @@ This document describes the different deployment environments available in the C
 The application has two main components:
 1. **Services** (Backend API) - Deployed on Google Cloud Run
 2. **Worker** (Frontend/Static Assets) - Deployed on Cloudflare Workers
+3. **WASM Storage** (PR WASM files) - Stored in Cloudflare R2
+
+## Cloudflare R2 Storage
+
+For PR environments, WASM files are uploaded to Cloudflare R2 with version-specific paths. This allows:
+- Each PR to have its own isolated WASM bundle
+- Automatic cleanup when PRs are closed
+- Version tracking for debugging and rollback
+
+**R2 Configuration:**
+- Bucket Name: `collects-wasm`
+- Path Format: `pr-{pr_number}/{filename}`
+- Example: `pr-123/collects-ui-abc123.wasm`
+
+**Required Secrets:**
+- `CLOUDFLARE_API_TOKEN` - API token with R2 read/write permissions
+- `CLOUDFLARE_ACCOUNT_ID` - Cloudflare account ID
 
 ## Environments
 
@@ -98,6 +115,7 @@ The application has two main components:
 **When deployed:**
 - On pull request creation or update
 - Used for testing proposed changes
+- WASM files uploaded to R2 with PR-specific paths
 
 **Services:**
 - Service Name: `collects-services-pr`
@@ -109,6 +127,13 @@ The application has two main components:
 - URL: `https://collects-pr.lqxclqxc.com`
 - Configuration: `wrangler.pr.toml`
 - API Base: `https://collects-services-pr-145756646168.us-east1.run.app`
+- R2 Bucket: `collects-wasm`
+- R2 Path: `pr-{pr_number}/`
+
+**Cleanup:**
+- When a PR is closed (merged or abandoned), the cleanup workflow deletes:
+  - R2 WASM files for the PR
+  - Docker image for the PR
 
 ## Deployment Workflows
 

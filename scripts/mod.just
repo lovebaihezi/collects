@@ -35,3 +35,13 @@ init-db token project_id: install
 # Usage: just scripts::check-pr-title "feat: add new feature"
 check-pr-title title: install
     bun run main.ts check-pr-title "{{title}}"
+
+# Upload WASM files to R2 for a PR
+# Usage: just scripts::r2-wasm-upload 123 ./ui/dist
+r2-wasm-upload pr_number dist_path: install
+    bun run main.ts r2-wasm-upload {{pr_number}} {{dist_path}}
+
+# Delete WASM files from R2 for a PR
+# Usage: just scripts::r2-wasm-delete 123
+r2-wasm-delete pr_number: install
+    bun run main.ts r2-wasm-delete {{pr_number}}

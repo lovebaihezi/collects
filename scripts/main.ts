@@ -14,6 +14,7 @@ import {
   listEnvironments,
 } from "./services/env-config.ts";
 import { runPrTitleCheck } from "./services/pr-title.ts";
+import { runR2WasmCli } from "./services/r2-wasm.ts";
 
 const cli = cac("services");
 
@@ -125,6 +126,18 @@ cli
   )
   .action((title: string) => {
     runPrTitleCheck(title);
+  });
+
+cli
+  .command("r2-wasm-upload <prNumber> <distPath>", "Upload WASM files to R2 for a PR")
+  .action((prNumber: string, distPath: string) => {
+    runR2WasmCli("upload", prNumber, distPath);
+  });
+
+cli
+  .command("r2-wasm-delete <prNumber>", "Delete WASM files from R2 for a PR")
+  .action((prNumber: string) => {
+    runR2WasmCli("delete", prNumber);
   });
 
 cli.command("", "Show help").action(() => {
@@ -240,6 +253,34 @@ Validates PR title format against conventional commits specification.
 **Example:**
 \`\`\`bash
 just scripts::check-pr-title "feat: add user authentication"
+\`\`\`
+
+### \`r2-wasm-upload\`
+
+Uploads WASM files from the dist directory to Cloudflare R2 for a specific PR.
+
+**What it does:**
+1. Finds all .wasm files in the specified dist directory.
+2. Uploads them to R2 with the path format: \`pr-{prNumber}/{filename}\`.
+3. Sets appropriate content-type headers for WASM files.
+
+**Example:**
+\`\`\`bash
+bun run main.ts r2-wasm-upload 123 ./ui/dist
+\`\`\`
+
+### \`r2-wasm-delete\`
+
+Deletes all WASM files for a specific PR from Cloudflare R2.
+
+**What it does:**
+1. Lists all objects in R2 with the prefix \`pr-{prNumber}/\`.
+2. Deletes each object found.
+3. Used during PR cleanup to remove temporary WASM files.
+
+**Example:**
+\`\`\`bash
+bun run main.ts r2-wasm-delete 123
 \`\`\`
 
 ---

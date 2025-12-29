@@ -15,6 +15,37 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install Scripts Dependencies
+        working-directory: scripts
+        run: bun install --frozen-lockfile
+
+      - name: Install Pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 10
+
+      - name: Install UI Dependencies
+        working-directory: ui
+        run: pnpm install --frozen-lockfile
+
+      - name: Delete WASM from R2
+        id: delete-wasm
+        working-directory: scripts
+        run: |
+          if bun run main.ts r2-wasm-delete ${{ github.event.pull_request.number }}; then
+            echo "wasm_deleted=true" >> $GITHUB_OUTPUT
+          else
+            echo "wasm_deleted=false" >> $GITHUB_OUTPUT
+          fi
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
       - name: Google Auth
         id: auth
         uses: google-github-actions/auth@v2
@@ -52,6 +83,11 @@ jobs:
         run: |
           echo "## Cleanup Summary for PR #${{ github.event.pull_request.number }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
+          if [[ "${{ steps.delete-wasm.outputs.wasm_deleted }}" == "true" ]]; then
+            echo "- ✅ R2 WASM files \`pr-${{ github.event.pull_request.number }}\` deleted" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- ℹ️ R2 WASM files \`pr-${{ github.event.pull_request.number }}\` not found or already deleted" >> $GITHUB_STEP_SUMMARY
+          fi
           if [[ "${{ steps.delete-image.outputs.image_deleted }}" == "true" ]]; then
             echo "- ✅ Docker image \`pr-${{ github.event.pull_request.number }}\` deleted" >> $GITHUB_STEP_SUMMARY
           else

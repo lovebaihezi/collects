@@ -222,14 +222,23 @@ fn show_create_user_modal(state: &mut InternalUsersState, state_ctx: &mut StateC
                     ui.label("Scan this QR code with Google Authenticator:");
                     ui.add_space(4.0);
 
-                    // TODO: Replace with actual QR code rendering using a QR code library
-                    // Currently displaying the otpauth URL as text for users to copy
+                    // Display QR code as an image
                     egui::Frame::NONE
-                        .fill(Color32::from_gray(240))
+                        .fill(Color32::WHITE)
                         .inner_margin(egui::Margin::same(8))
                         .corner_radius(4.0)
                         .show(ui, |ui| {
-                            ui.label(RichText::new(&created.otpauth_url).monospace().small());
+                            if let Ok(qr_widget) =
+                                egui_qr::QrCodeWidget::from_data(created.otpauth_url.as_bytes())
+                            {
+                                // Constrain the QR code size
+                                ui.set_min_size(egui::vec2(200.0, 200.0));
+                                ui.set_max_size(egui::vec2(200.0, 200.0));
+                                ui.add(qr_widget);
+                            } else {
+                                // Fallback: display the URL as text if QR generation fails
+                                ui.label(RichText::new(&created.otpauth_url).monospace().small());
+                            }
                         });
 
                     ui.add_space(8.0);

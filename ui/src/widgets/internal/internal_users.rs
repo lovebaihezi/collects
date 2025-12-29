@@ -9,9 +9,44 @@ use collects_business::{
     ListUsersResponse,
 };
 use collects_states::{StateCtx, Time};
-use egui::{Color32, Response, RichText, ScrollArea, Ui, Window};
+use egui::{Color32, ColorImage, Response, RichText, ScrollArea, TextureHandle, Ui, Window};
 use std::any::TypeId;
 use std::collections::HashMap;
+
+/// Generate a QR code image from data.
+///
+/// Returns a `ColorImage` that can be loaded as a texture in egui.
+fn generate_qr_image(data: &str, size: usize) -> Option<ColorImage> {
+    let code = qrcode::QrCode::new(data.as_bytes()).ok()?;
+    let qr_width = code.width();
+
+    // Calculate scale factor to fit the desired size
+    let scale = size / qr_width;
+    let actual_size = qr_width * scale;
+
+    // Create pixel buffer
+    let mut pixels = vec![Color32::WHITE; actual_size * actual_size];
+
+    for (y, row) in code.to_colors().chunks(qr_width).enumerate() {
+        for (x, color) in row.iter().enumerate() {
+            let pixel_color = match color {
+                qrcode::Color::Dark => Color32::BLACK,
+                qrcode::Color::Light => Color32::WHITE,
+            };
+
+            // Fill scaled pixels
+            for dy in 0..scale {
+                for dx in 0..scale {
+                    let px = x * scale + dx;
+                    let py = y * scale + dy;
+                    pixels[py * actual_size + px] = pixel_color;
+                }
+            }
+        }
+    }
+
+    Some(ColorImage::new([actual_size, actual_size], pixels))
+}
 
 /// State for the internal users panel.
 #[derive(Default)]
@@ -30,6 +65,8 @@ pub struct InternalUsersState {
     create_modal_open: bool,
     /// Username input for create modal.
     new_username: String,
+    /// Cached QR code texture for the created user.
+    qr_texture: Option<TextureHandle>,
 }
 
 impl InternalUsersState {
@@ -84,6 +121,7 @@ impl InternalUsersState {
     pub fn close_create_modal(&mut self) {
         self.create_modal_open = false;
         self.new_username.clear();
+        self.qr_texture = None;
     }
 }
 
@@ -222,19 +260,25 @@ fn show_create_user_modal(state: &mut InternalUsersState, state_ctx: &mut StateC
                     ui.label("Scan this QR code with Google Authenticator:");
                     ui.add_space(4.0);
 
+                    // Generate QR code texture if not cached
+                    if state.qr_texture.is_none() {
+                        if let Some(qr_image) = generate_qr_image(&created.otpauth_url, 200) {
+                            state.qr_texture = Some(ui.ctx().load_texture(
+                                "qr_code",
+                                qr_image,
+                                egui::TextureOptions::NEAREST,
+                            ));
+                        }
+                    }
+
                     // Display QR code as an image
                     egui::Frame::NONE
                         .fill(Color32::WHITE)
                         .inner_margin(egui::Margin::same(8))
                         .corner_radius(4.0)
                         .show(ui, |ui| {
-                            if let Ok(qr_widget) =
-                                egui_qr::QrCodeWidget::from_data(created.otpauth_url.as_bytes())
-                            {
-                                // Constrain the QR code size
-                                ui.set_min_size(egui::vec2(200.0, 200.0));
-                                ui.set_max_size(egui::vec2(200.0, 200.0));
-                                ui.add(qr_widget);
+                            if let Some(texture) = &state.qr_texture {
+                                ui.image(texture);
                             } else {
                                 // Fallback: display the URL as text if QR generation fails
                                 ui.label(RichText::new(&created.otpauth_url).monospace().small());

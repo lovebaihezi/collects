@@ -1093,7 +1093,6 @@ dependencies = [
  "collects-states",
  "eframe",
  "egui",
- "egui-qr",
  "egui_kittest",
  "ehttp",
  "embed-resource",
@@ -1105,6 +1104,7 @@ dependencies = [
  "kittest",
  "log",
  "mimalloc",
+ "qrcode",
  "reqwest",
  "serde",
  "serde_json",
@@ -1572,16 +1572,6 @@ dependencies = [
  "serde",
  "smallvec",
  "unicode-segmentation",
-]
-
-[[package]]
-name = "egui-qr"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f2e0302855d8b081c990b8e2975ccbb5751fd3b6e51189f0c88ab14b63880488"
-dependencies = [
- "egui",
- "qrcode",
 ]
 
 [[package]]
@@ -4274,6 +4264,9 @@ name = "qrcode"
 version = "0.14.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d68782463e408eb1e668cf6152704bd856c78c5b6417adaee3203d8f4c1fc9ec"
+dependencies = [
+ "image",
+]
 
 [[package]]
 name = "quick-error"

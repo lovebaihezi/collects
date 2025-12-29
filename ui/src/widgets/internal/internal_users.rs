@@ -263,14 +263,14 @@ fn show_create_user_modal(state: &mut InternalUsersState, state_ctx: &mut StateC
                     ui.add_space(4.0);
 
                     // Generate QR code texture if not cached
-                    if state.qr_texture.is_none() {
-                        if let Some(qr_image) = generate_qr_image(&created.otpauth_url, 200) {
-                            state.qr_texture = Some(ui.ctx().load_texture(
-                                "qr_code",
-                                qr_image,
-                                egui::TextureOptions::NEAREST,
-                            ));
-                        }
+                    if state.qr_texture.is_none()
+                        && let Some(qr_image) = generate_qr_image(&created.otpauth_url, 200)
+                    {
+                        state.qr_texture = Some(ui.ctx().load_texture(
+                            "qr_code",
+                            qr_image,
+                            egui::TextureOptions::NEAREST,
+                        ));
                     }
 
                     // Display QR code as an image

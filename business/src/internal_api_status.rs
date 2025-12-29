@@ -11,12 +11,17 @@ use collects_states::{Compute, ComputeDeps, Dep, State, Time, Updater, assign_im
 use log::{debug, info, warn};
 use ustr::Ustr;
 
+/// Maximum number of retry attempts on failure before waiting for the full interval
+const MAX_RETRY_COUNT: u8 = 3;
+
 /// Status of the internal API.
 #[derive(Default, Debug)]
 pub struct InternalApiStatus {
     last_update_time: Option<DateTime<Utc>>,
     /// If exists error, means internal API unavailable
     last_error: Option<String>,
+    /// Number of consecutive failed attempts (resets on success)
+    retry_count: u8,
 }
 
 /// Availability status for internal API.
@@ -49,17 +54,35 @@ impl Compute for InternalApiStatus {
         let url = Ustr::from(format!("{}/internal/users", config.api_url().as_str()).as_str());
         let request = ehttp::Request::get(url);
         let now = deps.get_state_ref::<Time>().as_ref().to_utc();
+        let current_retry_count = self.retry_count;
+
+        // Determine if we should fetch:
+        // 1. Never fetched before -> fetch
+        // 2. 5 minutes have passed since last update -> fetch
+        // 3. Had an error and retry count < MAX_RETRY_COUNT -> retry immediately
         let should_fetch = match &self.last_update_time {
             Some(last_update_time) => {
                 let duration_since_update = now.signed_duration_since(*last_update_time);
-                let should = duration_since_update.num_minutes() >= 5;
-                if should {
+                let interval_passed = duration_since_update.num_minutes() >= 5;
+
+                // If we have an error and haven't exceeded max retries, retry immediately
+                let should_retry =
+                    self.last_error.is_some() && current_retry_count < MAX_RETRY_COUNT;
+
+                if interval_passed {
                     info!(
                         "Internal API status last updated at {:?}, now is {:?}, should fetch new status",
                         last_update_time, now
                     );
+                } else if should_retry {
+                    info!(
+                        "Internal API status check failed, retry attempt {}/{}",
+                        current_retry_count + 1,
+                        MAX_RETRY_COUNT
+                    );
                 }
-                should
+
+                interval_passed || should_retry
             }
             None => {
                 info!("Have not fetched Internal API yet, should fetch new status");
@@ -78,6 +101,7 @@ impl Compute for InternalApiStatus {
                         let api_status = InternalApiStatus {
                             last_update_time: Some(now),
                             last_error: None,
+                            retry_count: 0, // Reset retry count on success
                         };
                         updater.set(api_status);
                     } else {
@@ -88,6 +112,7 @@ impl Compute for InternalApiStatus {
                         let api_status = InternalApiStatus {
                             last_update_time: Some(now),
                             last_error: Some(format!("Internal API: {}", response.status)),
+                            retry_count: current_retry_count.saturating_add(1),
                         };
                         updater.set(api_status);
                     }
@@ -97,6 +122,7 @@ impl Compute for InternalApiStatus {
                     let api_status = InternalApiStatus {
                         last_update_time: Some(now),
                         last_error: Some(err.to_string()),
+                        retry_count: current_retry_count.saturating_add(1),
                     };
                     updater.set(api_status);
                 }

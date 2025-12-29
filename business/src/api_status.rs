@@ -9,6 +9,9 @@ use ustr::Ustr;
 /// HTTP header name for the service version
 const SERVICE_VERSION_HEADER: &str = "x-service-version";
 
+/// Maximum number of retry attempts on failure before waiting for the full interval
+const MAX_RETRY_COUNT: u8 = 3;
+
 #[derive(Default, Debug)]
 pub struct ApiStatus {
     last_update_time: Option<DateTime<Utc>>,
@@ -16,6 +19,8 @@ pub struct ApiStatus {
     last_error: Option<String>,
     // Service version from x-service-version header
     service_version: Option<String>,
+    // Number of consecutive failed attempts (resets on success)
+    retry_count: u8,
 }
 
 pub enum APIAvailability<'a> {
@@ -58,17 +63,35 @@ impl Compute for ApiStatus {
         let url = Ustr::from(format!("{}/is-health", config.api_url().as_str()).as_str());
         let request = ehttp::Request::get(url);
         let now = deps.get_state_ref::<Time>().as_ref().to_utc();
+        let current_retry_count = self.retry_count;
+
+        // Determine if we should fetch:
+        // 1. Never fetched before -> fetch
+        // 2. 5 minutes have passed since last update -> fetch
+        // 3. Had an error and retry count < MAX_RETRY_COUNT -> retry immediately
         let should_fetch = match &self.last_update_time {
             Some(last_update_time) => {
                 let duration_since_update = now.signed_duration_since(*last_update_time);
-                let should = duration_since_update.num_minutes() >= 5;
-                if should {
+                let interval_passed = duration_since_update.num_minutes() >= 5;
+
+                // If we have an error and haven't exceeded max retries, retry immediately
+                let should_retry =
+                    self.last_error.is_some() && current_retry_count < MAX_RETRY_COUNT;
+
+                if interval_passed {
                     info!(
                         "API status last updated at {:?}, now is {:?}, should fetch new status",
                         last_update_time, now
                     );
+                } else if should_retry {
+                    info!(
+                        "API status check failed, retry attempt {}/{}",
+                        current_retry_count + 1,
+                        MAX_RETRY_COUNT
+                    );
                 }
-                should
+
+                interval_passed || should_retry
             }
             None => {
                 info!("Not fetch API yet, should fetch new status");
@@ -92,6 +115,7 @@ impl Compute for ApiStatus {
                             last_update_time: Some(now),
                             last_error: None,
                             service_version,
+                            retry_count: 0, // Reset retry count on success
                         };
                         updater.set(api_status);
                     } else {
@@ -100,6 +124,7 @@ impl Compute for ApiStatus {
                             last_update_time: Some(now),
                             last_error: Some(format!("API Health: {}", response.status)),
                             service_version,
+                            retry_count: current_retry_count.saturating_add(1),
                         };
                         updater.set(api_status);
                     }
@@ -110,6 +135,7 @@ impl Compute for ApiStatus {
                         last_update_time: Some(now),
                         last_error: Some(err.to_string()),
                         service_version: None,
+                        retry_count: current_retry_count.saturating_add(1),
                     };
                     updater.set(api_status);
                 }

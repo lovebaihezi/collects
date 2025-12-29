@@ -2,6 +2,10 @@ use crate::common::TestCtx;
 
 mod common;
 
+/// Message displayed when skipping snapshot test due to missing GPU.
+const GPU_NOT_AVAILABLE_MSG: &str = "Skipping snapshot test: No GPU adapter found. \
+    Install mesa-vulkan-drivers for software rendering support.";
+
 /// Check if a GPU adapter is available for rendering.
 /// Returns true if a GPU (including software renderer) is available.
 fn is_gpu_available() -> bool {
@@ -32,10 +36,7 @@ fn is_gpu_available() -> bool {
 async fn test_app_ui_snapshot() {
     // Skip test if no GPU adapter is available
     if !is_gpu_available() {
-        eprintln!(
-            "Skipping snapshot test: No GPU adapter found. \
-             Install mesa-vulkan-drivers for software rendering support."
-        );
+        eprintln!("{GPU_NOT_AVAILABLE_MSG}");
         return;
     }
 
@@ -55,10 +56,7 @@ async fn test_app_ui_snapshot() {
         }
         Err(egui_kittest::SnapshotError::RenderError { err }) => {
             if err.contains("No adapter found") {
-                eprintln!(
-                    "Skipping snapshot test: No GPU adapter found. \
-                     Install mesa-vulkan-drivers for software rendering support."
-                );
+                eprintln!("{GPU_NOT_AVAILABLE_MSG}");
                 return;
             }
             panic!("Snapshot render error: {err}");

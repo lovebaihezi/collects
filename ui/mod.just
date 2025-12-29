@@ -11,7 +11,7 @@ release:
     cargo build --release
 
 test log_level="DEBUG":
-    RUST_LOG={{log_level}} cargo test
+    RUST_LOG={{log_level}} cargo test --all-features
 
 lint:
     cargo clippy

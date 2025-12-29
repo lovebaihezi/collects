@@ -1,0 +1,120 @@
+//! Internal API status checking.
+//!
+//! This module provides status checking for the internal API endpoint.
+//! It is only available in internal builds (env_internal and env_test_internal).
+
+use std::any::{Any, TypeId};
+
+use crate::BusinessConfig;
+use chrono::{DateTime, Utc};
+use collects_states::{Compute, ComputeDeps, Dep, State, Time, Updater, assign_impl};
+use log::{debug, info, warn};
+use ustr::Ustr;
+
+/// Status of the internal API.
+#[derive(Default, Debug)]
+pub struct InternalApiStatus {
+    last_update_time: Option<DateTime<Utc>>,
+    /// If exists error, means internal API unavailable
+    last_error: Option<String>,
+}
+
+/// Availability status for internal API.
+pub enum InternalAPIAvailability<'a> {
+    Available(DateTime<Utc>),
+    Unavailable((DateTime<Utc>, &'a str)),
+    Unknown,
+}
+
+impl InternalApiStatus {
+    /// Get the availability status of the internal API.
+    pub fn api_availability(&self) -> InternalAPIAvailability<'_> {
+        match (self.last_update_time, &self.last_error) {
+            (None, None) => InternalAPIAvailability::Unknown,
+            (Some(time), None) => InternalAPIAvailability::Available(time),
+            (Some(time), Some(err)) => InternalAPIAvailability::Unavailable((time, err.as_str())),
+            _ => InternalAPIAvailability::Unknown,
+        }
+    }
+}
+
+impl Compute for InternalApiStatus {
+    fn deps(&self) -> ComputeDeps {
+        const IDS: [TypeId; 2] = [TypeId::of::<Time>(), TypeId::of::<BusinessConfig>()];
+        (&IDS, &[])
+    }
+
+    fn compute(&self, deps: Dep, updater: Updater) {
+        let config = deps.get_state_ref::<BusinessConfig>();
+        let url = Ustr::from(format!("{}/internal/users", config.api_url().as_str()).as_str());
+        let request = ehttp::Request::get(url);
+        let now = deps.get_state_ref::<Time>().as_ref().to_utc();
+        let should_fetch = match &self.last_update_time {
+            Some(last_update_time) => {
+                let duration_since_update = now.signed_duration_since(*last_update_time);
+                let should = duration_since_update.num_minutes() >= 5;
+                if should {
+                    info!(
+                        "Internal API status last updated at {:?}, now is {:?}, should fetch new status",
+                        last_update_time, now
+                    );
+                }
+                should
+            }
+            None => {
+                info!("Have not fetched Internal API yet, should fetch new status");
+                true
+            }
+        };
+        if should_fetch {
+            info!(
+                "Fetching Internal API Status at {:?} on: {:?}, Waiting Result",
+                &url, now
+            );
+            ehttp::fetch(request, move |res| match res {
+                Ok(response) => {
+                    if response.status == 200 {
+                        debug!("Internal API Available, checked at {:?}", now);
+                        let api_status = InternalApiStatus {
+                            last_update_time: Some(now),
+                            last_error: None,
+                        };
+                        updater.set(api_status);
+                    } else {
+                        info!(
+                            "Internal API Return with status code: {:?}",
+                            response.status
+                        );
+                        let api_status = InternalApiStatus {
+                            last_update_time: Some(now),
+                            last_error: Some(format!("Internal API: {}", response.status)),
+                        };
+                        updater.set(api_status);
+                    }
+                }
+                Err(err) => {
+                    warn!("Internal API status check failed: {:?}", err);
+                    let api_status = InternalApiStatus {
+                        last_update_time: Some(now),
+                        last_error: Some(err.to_string()),
+                    };
+                    updater.set(api_status);
+                }
+            });
+        }
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn assign_box(&mut self, new_self: Box<dyn Any>) {
+        assign_impl(self, new_self);
+    }
+}
+
+impl State for InternalApiStatus {
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+}

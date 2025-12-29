@@ -50,4 +50,10 @@ impl StateRuntime {
     pub fn verify_deps(&mut self) -> Result<(), TopologyError<TypeId>> {
         self.graph.topology_sort()
     }
+
+    /// Returns a mutable reference to the dependency graph.
+    /// Used by StateCtx for dirty propagation and dependency-aware compute execution.
+    pub fn graph_mut(&mut self) -> &mut Graph<TypeId> {
+        &mut self.graph
+    }
 }

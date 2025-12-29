@@ -141,6 +141,13 @@ pub trait UserStorage: Clone + Send + Sync + 'static {
     /// Returns `true` if the user was deleted, `false` if the user didn't exist.
     fn delete_user(&self, username: &str)
     -> impl Future<Output = Result<bool, Self::Error>> + Send;
+
+    /// Lists all users in the storage.
+    ///
+    /// # Returns
+    ///
+    /// Returns a vector of all stored users.
+    fn list_users(&self) -> impl Future<Output = Result<Vec<StoredUser>, Self::Error>> + Send;
 }
 
 /// In-memory mock implementation of `UserStorage` for testing.
@@ -257,6 +264,11 @@ impl UserStorage for MockUserStorage {
     async fn delete_user(&self, username: &str) -> Result<bool, Self::Error> {
         let mut users = self.users.write().expect("lock poisoned");
         Ok(users.remove(username).is_some())
+    }
+
+    async fn list_users(&self) -> Result<Vec<StoredUser>, Self::Error> {
+        let users = self.users.read().expect("lock poisoned");
+        Ok(users.values().cloned().collect())
     }
 }
 
@@ -384,6 +396,19 @@ impl UserStorage for PgUserStorage {
         .map_err(|e| UserStorageError::StorageError(e.to_string()))?;
 
         Ok(result.rows_affected() > 0)
+    }
+
+    async fn list_users(&self) -> Result<Vec<StoredUser>, Self::Error> {
+        let rows: Vec<(String, String)> =
+            sqlx::query_as(r#"SELECT username, otp_secret FROM users WHERE status = 'active'"#)
+                .fetch_all(&self.storage.pool)
+                .await
+                .map_err(|e| UserStorageError::StorageError(e.to_string()))?;
+
+        Ok(rows
+            .into_iter()
+            .map(|(username, otp_secret)| StoredUser::new(username, otp_secret))
+            .collect())
     }
 }
 
@@ -640,5 +665,32 @@ mod tests {
             .expect("should create user");
 
         assert_eq!(user.username, "alice");
+    }
+
+    #[tokio::test]
+    async fn test_mock_list_users() {
+        let storage = MockUserStorage::new();
+
+        // List should be empty initially
+        let users = storage.list_users().await.expect("should not error");
+        assert!(users.is_empty());
+
+        // Add some users
+        storage
+            .create_user("alice", "SECRET_A")
+            .await
+            .expect("should create user");
+        storage
+            .create_user("bob", "SECRET_B")
+            .await
+            .expect("should create user");
+
+        // List should contain both users
+        let users = storage.list_users().await.expect("should not error");
+        assert_eq!(users.len(), 2);
+
+        let usernames: Vec<&str> = users.iter().map(|u| u.username.as_str()).collect();
+        assert!(usernames.contains(&"alice"));
+        assert!(usernames.contains(&"bob"));
     }
 }

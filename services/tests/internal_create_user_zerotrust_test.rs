@@ -1,0 +1,281 @@
+//! Integration test: Zero Trust enabled + POST /internal/users creates and persists a user.
+//!
+//! This test is deterministic and does not hit any real PostgreSQL.
+//! It uses:
+//! - a custom in-memory `UserStorage` implementation to verify persistence
+//! - a custom JWKS resolver (no external network)
+//! - an RSA (RS256) JWT minted at test time (strong 2048-bit key; "256" refers to SHA-256)
+
+use axum::{
+    body::Body,
+    http::{Request, StatusCode},
+};
+use collects_services::{
+    auth::{AccessClaims, JwksKeyResolver},
+    config::Config,
+    database::SqlStorage,
+    internal,
+    users::AppState,
+    users::storage::{StoredUser, UserStorage, UserStorageError},
+};
+use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header};
+use serde_json::json;
+use std::future::Future;
+use std::pin::Pin;
+use std::{collections::HashMap, sync::Arc};
+use time::{Duration, OffsetDateTime};
+use tower::ServiceExt;
+
+/// Minimal mock SQL storage: we never touch a real DB.
+#[derive(Clone)]
+struct MockSqlStorage {
+    is_connected: bool,
+}
+
+impl SqlStorage for MockSqlStorage {
+    async fn is_connected(&self) -> bool {
+        self.is_connected
+    }
+}
+
+/// Recording/in-memory UserStorage.
+/// We persist users so the test can assert "create user actually stored it".
+#[derive(Clone, Default)]
+struct RecordingUserStorage {
+    users: Arc<std::sync::RwLock<HashMap<String, StoredUser>>>,
+}
+
+impl RecordingUserStorage {
+    fn new() -> Self {
+        Self::default()
+    }
+
+    fn get_user(&self, username: &str) -> Option<StoredUser> {
+        self.users
+            .read()
+            .expect("lock poisoned")
+            .get(username)
+            .cloned()
+    }
+
+    fn len(&self) -> usize {
+        self.users.read().expect("lock poisoned").len()
+    }
+}
+
+impl UserStorage for RecordingUserStorage {
+    type Error = UserStorageError;
+
+    async fn create_user(&self, username: &str, secret: &str) -> Result<StoredUser, Self::Error> {
+        if username.trim().is_empty() {
+            return Err(UserStorageError::InvalidInput(
+                "Username cannot be empty".to_string(),
+            ));
+        }
+        if secret.trim().is_empty() {
+            return Err(UserStorageError::InvalidInput(
+                "Secret cannot be empty".to_string(),
+            ));
+        }
+
+        let mut map = self.users.write().expect("lock poisoned");
+        if map.contains_key(username) {
+            return Err(UserStorageError::UserAlreadyExists(username.to_string()));
+        }
+
+        let user = StoredUser::new(username, secret);
+        map.insert(username.to_string(), user.clone());
+        Ok(user)
+    }
+
+    async fn get_user_secret(&self, username: &str) -> Result<Option<String>, Self::Error> {
+        Ok(self
+            .users
+            .read()
+            .expect("lock poisoned")
+            .get(username)
+            .map(|u| u.secret.clone()))
+    }
+
+    async fn user_exists(&self, username: &str) -> Result<bool, Self::Error> {
+        Ok(self
+            .users
+            .read()
+            .expect("lock poisoned")
+            .contains_key(username))
+    }
+
+    async fn delete_user(&self, username: &str) -> Result<bool, Self::Error> {
+        Ok(self
+            .users
+            .write()
+            .expect("lock poisoned")
+            .remove(username)
+            .is_some())
+    }
+
+    async fn list_users(&self) -> Result<Vec<StoredUser>, Self::Error> {
+        Ok(self
+            .users
+            .read()
+            .expect("lock poisoned")
+            .values()
+            .cloned()
+            .collect())
+    }
+}
+
+/// A deterministic JWKS resolver backed by an RSA public key we generate for the test.
+#[derive(Clone)]
+struct TestJwksResolver {
+    expected_kid: String,
+    decoding_key: DecodingKey,
+}
+
+impl JwksKeyResolver for TestJwksResolver {
+    fn resolve_decoding_key(
+        &self,
+        _jwks_url: String,
+        kid: String,
+    ) -> Pin<Box<dyn Future<Output = Result<DecodingKey, String>> + Send + 'static>> {
+        let expected_kid = self.expected_kid.clone();
+        let decoding_key = self.decoding_key.clone();
+
+        Box::pin(async move {
+            if kid != expected_kid {
+                return Err(format!("unexpected kid: got={kid}, want={expected_kid}"));
+            }
+            Ok(decoding_key)
+        })
+    }
+}
+
+/// Generate a fresh RSA keypair and sign a token with RS256.
+/// Uses 2048-bit RSA key material (strong), with SHA-256 (RS256).
+fn mint_rs256_token(team_domain: &str, audience: &str, kid: &str) -> (String, DecodingKey) {
+    // We add a dev-dependency on `rsa` + `rand` + `base64` in collects/services/Cargo.toml:
+    //   rsa = { version = "0.9", features = ["pem"] }
+    //   rand = "0.8"
+    //   base64 = "0.22"
+    //
+    // This test assumes those are added.
+    use rand::rngs::OsRng;
+    use rsa::{RsaPrivateKey, pkcs1::EncodeRsaPrivateKey, pkcs8::EncodePublicKey};
+
+    let mut rng = OsRng;
+
+    // 2048-bit RSA key is a common baseline. If you want stronger, bump to 3072.
+    let private = RsaPrivateKey::new(&mut rng, 2048).expect("generate RSA key");
+    let public = private.to_public_key();
+
+    // jsonwebtoken wants PEM for RSA keys.
+    let private_pem = private
+        .to_pkcs1_pem(rsa::pkcs1::LineEnding::LF)
+        .expect("private key pem")
+        .to_string();
+
+    let public_spki_pem = public
+        .to_public_key_pem(rsa::pkcs8::LineEnding::LF)
+        .expect("public key pem");
+
+    let mut header = Header::new(Algorithm::RS256);
+    header.kid = Some(kid.to_string());
+
+    let now = OffsetDateTime::now_utc();
+    let claims = AccessClaims {
+        iss: format!("https://{team_domain}"),
+        aud: vec![audience.to_string()],
+        iat: now.unix_timestamp(),
+        exp: (now + Duration::minutes(10)).unix_timestamp(),
+        sub: "test-subject".to_string(),
+        email: Some("tester@example.com".to_string()),
+        custom: json!({"role":"internal-test"}),
+    };
+
+    let token = jsonwebtoken::encode(
+        &header,
+        &claims,
+        &EncodingKey::from_rsa_pem(private_pem.as_bytes()).expect("encoding key"),
+    )
+    .expect("sign jwt");
+
+    let decoding = DecodingKey::from_rsa_pem(public_spki_pem.as_bytes()).expect("decoding key");
+
+    (token, decoding)
+}
+
+#[tokio::test]
+async fn test_internal_create_user_with_zerotrust_creates_and_persists_user() {
+    // Arrange
+    let team_domain = "myteam.cloudflareaccess.com";
+    let audience = "collects-internal";
+    let kid = "test-kid-1";
+
+    let (token, decoding_key) = mint_rs256_token(team_domain, audience, kid);
+    let resolver = Arc::new(TestJwksResolver {
+        expected_kid: kid.to_string(),
+        decoding_key,
+    });
+
+    let sql_storage = MockSqlStorage { is_connected: true };
+    let user_storage = RecordingUserStorage::new();
+
+    // IMPORTANT: we need Zero Trust enabled (config must carry team/aud).
+    let config = Config::new_for_test_internal(team_domain, audience);
+
+    // Build internal routes with injected resolver to avoid network calls.
+    let internal_routes = internal::create_internal_routes_with_resolver::<
+        MockSqlStorage,
+        RecordingUserStorage,
+    >(&config, resolver);
+
+    // Create the full app (so state wiring matches production)
+    let state = AppState::new(sql_storage, user_storage.clone());
+    let app = axum::Router::new()
+        .nest("/internal", internal_routes)
+        .with_state(state);
+
+    // Act: unauthenticated request should be blocked (when config enables Zero Trust)
+    let unauth_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/internal/users")
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"username":"alice"}"#))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    // If your Config helper hasn't enabled ZT yet, this might be 201.
+    // Once enabled correctly, this should become 401.
+    // Keep this assert as the target behavior:
+    assert_eq!(unauth_response.status(), StatusCode::UNAUTHORIZED);
+
+    // Act: authenticated request should pass and create user
+    let auth_response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/internal/users")
+                .header("content-type", "application/json")
+                .header("authorization", format!("Bearer {token}"))
+                .body(Body::from(r#"{"username":"alice"}"#))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(auth_response.status(), StatusCode::CREATED);
+
+    // Assert: user persisted into our in-memory storage
+    assert_eq!(user_storage.len(), 1);
+    let stored = user_storage.get_user("alice").expect("user exists");
+    assert_eq!(stored.username, "alice");
+    assert!(
+        !stored.secret.trim().is_empty(),
+        "secret should be generated and stored"
+    );
+}

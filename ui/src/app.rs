@@ -18,8 +18,13 @@ impl eframe::App for CollectsApp {
         // Sync Compute for render
         self.state.ctx.sync_computes();
 
+        // Poll for async responses (internal builds only)
+        #[cfg(any(feature = "env_internal", feature = "env_test_internal"))]
+        widgets::poll_internal_users_responses(&mut self.state.internal_users, ctx);
+
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
             egui::MenuBar::new().ui(ui, |ui| {
+                // API status dots (includes internal API for internal builds)
                 widgets::api_status(&self.state.ctx, ui);
             });
         });
@@ -27,11 +32,32 @@ impl eframe::App for CollectsApp {
         egui::CentralPanel::default().show(ctx, |ui| {
             // The central panel the region left after adding TopPanel's and SidePanel's
             ui.heading("Collects App");
+
+            // Show internal users panel for internal builds
+            #[cfg(any(feature = "env_internal", feature = "env_test_internal"))]
+            {
+                use collects_business::BusinessConfig;
+                ui.add_space(16.0);
+                let api_base_url = self
+                    .state
+                    .ctx
+                    .state_mut::<BusinessConfig>()
+                    .api_url()
+                    .to_string();
+                widgets::internal_users_panel(
+                    &mut self.state.internal_users,
+                    &mut self.state.ctx,
+                    &api_base_url,
+                    ui,
+                );
+            }
+
+            ui.add_space(16.0);
             powered_by_egui_and_eframe(ui);
         });
 
         // Run background jobs
-        self.state.ctx.run_computed();
+        self.state.ctx.run_all_dirty();
     }
 }
 

@@ -24,11 +24,8 @@ impl eframe::App for CollectsApp {
 
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
             egui::MenuBar::new().ui(ui, |ui| {
+                // API status dots (includes internal API for internal builds)
                 widgets::api_status(&self.state.ctx, ui);
-                // Show internal API status for internal builds
-                #[cfg(any(feature = "env_internal", feature = "env_test_internal"))]
-                widgets::internal_api_status(&self.state.ctx, ui);
-                widgets::env_version(ui);
             });
         });
 

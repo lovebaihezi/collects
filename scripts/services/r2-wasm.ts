@@ -10,7 +10,29 @@
 
 import { $ } from "bun";
 import { readdirSync, statSync } from "fs";
-import { join } from "path";
+import { join, basename } from "path";
+
+/**
+ * Validate that a string contains only safe characters for use in R2 paths.
+ * Allows alphanumeric characters, hyphens, underscores, dots, and forward slashes.
+ */
+function isValidR2Key(key: string): boolean {
+  return /^[a-zA-Z0-9\-_./]+$/.test(key);
+}
+
+/**
+ * Validate that a PR number is a valid positive integer string.
+ */
+function isValidPrNumber(prNumber: string): boolean {
+  return /^\d+$/.test(prNumber);
+}
+
+/**
+ * Validate that a bucket name contains only safe characters.
+ */
+function isValidBucketName(name: string): boolean {
+  return /^[a-zA-Z0-9\-]+$/.test(name);
+}
 
 /**
  * Upload WASM files from dist directory to R2
@@ -24,6 +46,14 @@ export async function uploadWasmToR2(
   distPath: string,
   bucketName: string = "collects-wasm",
 ): Promise<void> {
+  // Validate inputs to prevent command injection
+  if (!isValidPrNumber(prNumber)) {
+    throw new Error(`Invalid PR number: ${prNumber}. Must be a positive integer.`);
+  }
+  if (!isValidBucketName(bucketName)) {
+    throw new Error(`Invalid bucket name: ${bucketName}. Must contain only alphanumeric characters and hyphens.`);
+  }
+
   console.log(`Uploading WASM files for PR #${prNumber} to R2...`);
 
   // Find all .wasm files in the dist directory
@@ -36,16 +66,23 @@ export async function uploadWasmToR2(
   }
 
   for (const wasmFile of wasmFiles) {
-    const localPath = join(distPath, wasmFile);
-    const r2Key = `pr-${prNumber}/${wasmFile}`;
+    // Use basename to ensure we only get the filename, not a path traversal
+    const safeFilename = basename(wasmFile);
+    if (!isValidR2Key(safeFilename)) {
+      console.warn(`Skipping file with invalid name: ${wasmFile}`);
+      continue;
+    }
+
+    const localPath = join(distPath, safeFilename);
+    const r2Key = `pr-${prNumber}/${safeFilename}`;
 
     const size = statSync(localPath).size;
-    console.log(`Uploading ${wasmFile} (${(size / 1024).toFixed(2)} KB) to ${r2Key}...`);
+    console.log(`Uploading ${safeFilename} (${(size / 1024).toFixed(2)} KB) to ${r2Key}...`);
 
-    // Use wrangler r2 to upload
+    // Use wrangler r2 to upload - inputs are validated above
     await $`pnpm wrangler r2 object put ${bucketName}/${r2Key} --file ${localPath} --content-type application/wasm`;
 
-    console.log(`✓ Uploaded ${wasmFile}`);
+    console.log(`✓ Uploaded ${safeFilename}`);
   }
 
   console.log(`Successfully uploaded ${wasmFiles.length} WASM file(s) for PR #${prNumber}`);
@@ -61,6 +98,14 @@ export async function deleteWasmFromR2(
   prNumber: string,
   bucketName: string = "collects-wasm",
 ): Promise<void> {
+  // Validate inputs to prevent command injection
+  if (!isValidPrNumber(prNumber)) {
+    throw new Error(`Invalid PR number: ${prNumber}. Must be a positive integer.`);
+  }
+  if (!isValidBucketName(bucketName)) {
+    throw new Error(`Invalid bucket name: ${bucketName}. Must contain only alphanumeric characters and hyphens.`);
+  }
+
   console.log(`Deleting WASM files for PR #${prNumber} from R2...`);
 
   const prefix = `pr-${prNumber}/`;
@@ -70,11 +115,16 @@ export async function deleteWasmFromR2(
     const result =
       await $`pnpm wrangler r2 object list ${bucketName} --prefix ${prefix}`.text();
 
-    // Parse the output to get object keys
-    // wrangler r2 object list outputs JSON
-    const objects = JSON.parse(result);
+    // Parse the output to get object keys with proper error handling
+    let objects: Array<{ key?: string; Key?: string }>;
+    try {
+      objects = JSON.parse(result);
+    } catch {
+      console.log(`Failed to parse R2 list response, no objects found for PR #${prNumber}`);
+      return;
+    }
 
-    if (!objects || objects.length === 0) {
+    if (!Array.isArray(objects) || objects.length === 0) {
       console.log(`No WASM files found for PR #${prNumber}`);
       return;
     }
@@ -82,10 +132,13 @@ export async function deleteWasmFromR2(
     let deletedCount = 0;
     for (const obj of objects) {
       const key = obj.key || obj.Key;
-      if (key) {
+      if (key && isValidR2Key(key)) {
         console.log(`Deleting ${key}...`);
+        // Key is validated above to contain only safe characters
         await $`pnpm wrangler r2 object delete ${bucketName}/${key}`;
         deletedCount++;
+      } else if (key) {
+        console.warn(`Skipping object with invalid key: ${key}`);
       }
     }
 

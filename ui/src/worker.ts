@@ -1,5 +1,7 @@
 import { generateRequestId, getSafeHeaders, log } from "./logger";
 
+const WASM_PATH_PREFIX = "/wasm/";
+
 /**
  * Handle requests for WASM files stored in R2.
  * Path format: /wasm/{pr_number}/{filename}
@@ -23,7 +25,7 @@ async function handleWasm(req: Request, env: Env): Promise<Response> {
 
   // Extract the path after /wasm/
   // Format: /wasm/{pr_number}/{filename}
-  const wasmPath = url.pathname.substring("/wasm/".length);
+  const wasmPath = url.pathname.substring(WASM_PATH_PREFIX.length);
 
   log({
     timestamp: new Date().toISOString(),
@@ -166,7 +168,7 @@ async function handle(req: Request, env: Env): Promise<Response> {
     return handleApi(req, env);
   }
 
-  if (url.pathname.startsWith("/wasm/")) {
+  if (url.pathname.startsWith(WASM_PATH_PREFIX)) {
     return handleWasm(req, env);
   }
 

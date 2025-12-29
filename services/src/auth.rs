@@ -13,7 +13,39 @@ use axum::{
 };
 use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode, decode_header};
 use serde::{Deserialize, Serialize};
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::Arc;
+
+/// Trait for resolving a JWT decoding key from the configured JWKS endpoint.
+///
+/// This is injectable so tests can provide a deterministic in-memory resolver
+/// (no external network calls) while production uses HTTP fetching from Cloudflare.
+pub trait JwksKeyResolver: Send + Sync + 'static {
+    /// Resolve a decoding key for the given `kid` from the JWKS endpoint.
+    ///
+    /// This returns a `'static` future by taking owned inputs, which makes the trait
+    /// object-safe and avoids lifetime issues when boxing the future.
+    fn resolve_decoding_key(
+        &self,
+        jwks_url: String,
+        kid: String,
+    ) -> Pin<Box<dyn Future<Output = Result<DecodingKey, String>> + Send + 'static>>;
+}
+
+/// Default resolver that fetches JWKS over HTTP using `reqwest`.
+#[derive(Debug, Default, Clone)]
+pub struct ReqwestJwksKeyResolver;
+
+impl JwksKeyResolver for ReqwestJwksKeyResolver {
+    fn resolve_decoding_key(
+        &self,
+        jwks_url: String,
+        kid: String,
+    ) -> Pin<Box<dyn Future<Output = Result<DecodingKey, String>> + Send + 'static>> {
+        Box::pin(async move { fetch_public_key(&jwks_url, &kid).await })
+    }
+}
 
 /// Configuration for Cloudflare Zero Trust authentication.
 #[derive(Clone, Debug)]
@@ -106,6 +138,19 @@ impl IntoResponse for AuthError {
 /// `CF-Authorization` or `Authorization` header.
 pub async fn zero_trust_middleware(
     config: Arc<ZeroTrustConfig>,
+    request: Request,
+    next: Next,
+) -> Result<Response, AuthError> {
+    zero_trust_middleware_with_resolver(Arc::new(ReqwestJwksKeyResolver), config, request, next)
+        .await
+}
+
+/// Middleware function to validate Cloudflare Access JWT tokens using an injectable resolver.
+///
+/// Tests should call this variant with an in-memory resolver to avoid external network calls.
+pub async fn zero_trust_middleware_with_resolver(
+    resolver: Arc<dyn JwksKeyResolver>,
+    config: Arc<ZeroTrustConfig>,
     mut request: Request,
     next: Next,
 ) -> Result<Response, AuthError> {
@@ -116,7 +161,7 @@ pub async fn zero_trust_middleware(
     })?;
 
     // Validate token
-    let claims = validate_token(token, &config)
+    let claims = validate_token_with_resolver(token, &config, resolver.as_ref())
         .await
         .map_err(|e| AuthError {
             error: "invalid_token".to_string(),
@@ -149,15 +194,20 @@ fn extract_token_from_headers(headers: &axum::http::HeaderMap) -> Option<&str> {
     None
 }
 
-/// Validate a Cloudflare Access JWT token
-async fn validate_token(token: &str, config: &ZeroTrustConfig) -> Result<AccessClaims, String> {
+/// Validate a Cloudflare Access JWT token using an injectable JWKS resolver.
+async fn validate_token_with_resolver(
+    token: &str,
+    config: &ZeroTrustConfig,
+    resolver: &dyn JwksKeyResolver,
+) -> Result<AccessClaims, String> {
     // Decode header to get key ID
     let header = decode_header(token).map_err(|e| format!("Failed to decode JWT header: {}", e))?;
 
     let kid = header.kid.ok_or("JWT header missing kid field")?;
 
-    // Fetch public keys from Cloudflare
-    let public_key = fetch_public_key(&config.jwks_url(), &kid)
+    // Resolve decoding key (injectable for tests)
+    let public_key = resolver
+        .resolve_decoding_key(config.jwks_url(), kid)
         .await
         .map_err(|e| format!("Failed to fetch public key: {}", e))?;
 

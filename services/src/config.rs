@@ -131,6 +131,20 @@ impl Config {
         }
     }
 
+    /// Create a test configuration with Cloudflare Zero Trust enabled for internal routes.
+    ///
+    /// This is intended for integration tests that validate the `/internal/*` routes with
+    /// Zero Trust middleware enabled (e.g. `cargo test --all-features`).
+    pub fn new_for_test_internal(
+        team_domain: impl Into<String>,
+        audience: impl Into<String>,
+    ) -> Self {
+        let mut config = Self::new_for_test();
+        config.cf_access_team_domain = Some(team_domain.into());
+        config.cf_access_aud = Some(audience.into());
+        config
+    }
+
     pub fn environment(&self) -> &Env {
         &self.env
     }

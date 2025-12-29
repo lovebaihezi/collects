@@ -7,7 +7,7 @@ use std::{
 
 use log::{Level, info, log_enabled, trace};
 
-use crate::{Dep, Reader, Updater};
+use crate::{Command, Dep, Reader, Updater};
 
 use super::{Compute, Stage, State, StateRuntime};
 
@@ -34,6 +34,13 @@ pub struct StateCtx {
     // TODO: We better not store Box, consider using raw pointer to reduce indirection
     // We will not using RefCell with Box, the State should be Sized, and it will not needs to by Any to downcast, we just use NoNullPointer with unsafe
     computes: BTreeMap<TypeId, (RefCell<Box<dyn Compute>>, Stage)>,
+
+    /// Manual-only commands/effects.
+    ///
+    /// Commands are *not* part of the compute dependency graph and will never be
+    /// executed by `run_all_dirty()`. They must be invoked explicitly via
+    /// `dispatch::<T>()`.
+    commands: BTreeMap<TypeId, RefCell<Box<dyn Command>>>,
 }
 
 impl Default for StateCtx {
@@ -53,10 +60,12 @@ impl StateCtx {
         let runtime = StateRuntime::new();
         let computes = BTreeMap::new();
         let states = BTreeMap::new();
+        let commands = BTreeMap::new();
         Self {
             runtime,
             states,
             computes,
+            commands,
         }
     }
 
@@ -83,6 +92,17 @@ impl StateCtx {
         self.runtime.record(&compute);
         self.computes
             .insert(id, (RefCell::new(Box::new(compute)), Stage::BeforeInit));
+    }
+
+    /// Registers a manual-only `Command` to the context.
+    ///
+    /// Commands are intentionally *not* recorded in the dependency graph, and thus
+    /// will never be auto-dirtied or auto-executed. The command type must be known
+    /// at the call-site (i.e. you dispatch by type).
+    pub fn record_command<T: Command>(&mut self, command: T) {
+        let id = TypeId::of::<T>();
+        info!("Record Command: id={:?}, command={:?}", id, command);
+        self.commands.insert(id, RefCell::new(Box::new(command)));
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -160,6 +180,37 @@ impl StateCtx {
         // Mark as dirty to ensure it runs even if not automatically dirtied
         self.mark_dirty(&target_id);
         self.run_by_id_with_deps(&target_id);
+    }
+
+    /// Dispatches a manual-only command by its type.
+    ///
+    /// The command is executed immediately and synchronously in the caller's thread.
+    /// Any async work should be spawned inside the command implementation (e.g. using tokio),
+    /// and results should flow back through your chosen state update mechanism.
+    pub fn dispatch<T: Command + 'static>(&mut self) {
+        let id = TypeId::of::<T>();
+        let Some(cell) = self.commands.get(&id) else {
+            panic!("No command found for id: {:?}", id);
+        };
+
+        // Build deps from currently registered states + computes (commands may read both).
+        //
+        // Commands are intentionally not part of the dependency graph, so we construct
+        // the dependency access from what's available in this context at dispatch time.
+        let state_ids: Vec<TypeId> = self.states.keys().copied().collect();
+        let compute_ids: Vec<TypeId> = self.computes.keys().copied().collect();
+
+        let deps = Dep::new(
+            state_ids
+                .into_iter()
+                .map(|dep_id| (dep_id, self.get_state_ptr(&dep_id))),
+            compute_ids
+                .into_iter()
+                .map(|dep_id| (dep_id, self.get_compute_ptr(&dep_id))),
+        );
+
+        let borrowed = cell.borrow();
+        borrowed.run(deps, self.updater());
     }
 
     /// Runs a compute by TypeId, first running any dirty dependencies in topological order.
@@ -337,7 +388,14 @@ impl StateCtx {
         );
         for _ in 0..cur_len {
             if let Ok((id, boxed)) = self.runtime().receiver().try_recv() {
-                let compute = unsafe { self.computes.get_mut(&id).unwrap_unchecked() };
+                let compute = self.computes.get_mut(&id).unwrap_or_else(|| {
+                    panic!(
+                        "Received compute update for an unregistered compute id={:?}. \
+This is a programmer error (e.g. a Command/Compute called `Updater::set(...)` for a compute type that was never `record_compute(...)`).",
+                        id
+                    )
+                });
+
                 let computed_name = compute.0.borrow().name();
 
                 // A compute result may arrive when the compute is in various states:
@@ -421,6 +479,7 @@ impl StateCtx {
     pub fn clear(&mut self) {
         self.states.clear();
         self.computes.clear();
+        self.commands.clear();
     }
 
     pub fn reader(&self) -> Reader {

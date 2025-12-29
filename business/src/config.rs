@@ -5,12 +5,17 @@ use ustr::Ustr;
 #[derive(Debug, Clone)]
 pub struct BusinessConfig {
     pub api_base_url: String,
+    /// Optional Cloudflare Access token used for internal endpoints.
+    ///
+    /// When present, internal API calls should send it via the `cf-authorization` header.
+    pub cf_authorization: Option<String>,
 }
 
 impl BusinessConfig {
     pub fn new(base_url: String) -> Self {
         Self {
             api_base_url: base_url,
+            cf_authorization: None,
         }
     }
 
@@ -20,6 +25,10 @@ impl BusinessConfig {
         } else {
             Ustr::from(&format!("{}/api", self.api_base_url))
         }
+    }
+
+    pub fn cf_authorization(&self) -> Option<&str> {
+        self.cf_authorization.as_deref()
     }
 }
 
@@ -41,6 +50,7 @@ impl Default for BusinessConfig {
             } else {
                 "https://collects.lqxclqxc.com".to_string()
             },
+            cf_authorization: None,
         }
     }
 }

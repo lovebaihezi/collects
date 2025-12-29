@@ -1,7 +1,10 @@
 use collects_business::ApiStatus;
 use collects_business::BusinessConfig;
 #[cfg(any(feature = "env_internal", feature = "env_test_internal"))]
-use collects_business::{CreateUserCompute, CreateUserInput, InternalApiStatus};
+use collects_business::{
+    CFTokenCompute, CFTokenInput, CreateUserCommand, CreateUserCompute, CreateUserInput,
+    InternalApiStatus, SetCFTokenCommand,
+};
 use collects_states::{StateCtx, Time};
 use serde::{Deserialize, Serialize};
 
@@ -30,9 +33,16 @@ impl Default for State {
         // Add internal states and computes for internal builds
         #[cfg(any(feature = "env_internal", feature = "env_test_internal"))]
         {
+            // Cloudflare Access token (manual input) + compute cache
+            ctx.add_state(CFTokenInput::default());
+            ctx.record_compute(CFTokenCompute::default());
+            ctx.record_command(SetCFTokenCommand::default());
+
+            // Create user flow
             ctx.add_state(CreateUserInput::default());
             ctx.record_compute(InternalApiStatus::default());
             ctx.record_compute(CreateUserCompute::default());
+            ctx.record_command(CreateUserCommand::default());
         }
 
         Self {
@@ -54,9 +64,16 @@ impl State {
         // Add internal states and computes for internal builds
         #[cfg(any(feature = "env_internal", feature = "env_test_internal"))]
         {
+            // Cloudflare Access token (manual input) + compute cache
+            ctx.add_state(CFTokenInput::default());
+            ctx.record_compute(CFTokenCompute::default());
+            ctx.record_command(SetCFTokenCommand::default());
+
+            // Create user flow
             ctx.add_state(CreateUserInput::default());
             ctx.record_compute(InternalApiStatus::default());
             ctx.record_compute(CreateUserCompute::default());
+            ctx.record_command(CreateUserCommand::default());
         }
 
         Self {

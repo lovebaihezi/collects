@@ -14,7 +14,24 @@ use crate::users::storage::UserStorage;
 use crate::users::{self, AppState};
 
 /// Create internal routes with optional Zero Trust middleware.
+///
+/// This uses the default JWKS resolver (HTTP fetch via reqwest).
 pub fn create_internal_routes<S, U>(config: &Config) -> Router<AppState<S, U>>
+where
+    S: SqlStorage + Clone + Send + Sync + 'static,
+    U: UserStorage + Clone + Send + Sync + 'static,
+{
+    create_internal_routes_with_resolver::<S, U>(config, Arc::new(auth::ReqwestJwksKeyResolver))
+}
+
+/// Create internal routes with optional Zero Trust middleware, using a custom JWKS resolver.
+///
+/// This exists primarily for deterministic tests in "internal env" (Zero Trust enabled)
+/// without making external network calls to Cloudflare's JWKS endpoint.
+pub fn create_internal_routes_with_resolver<S, U>(
+    config: &Config,
+    resolver: Arc<dyn auth::JwksKeyResolver>,
+) -> Router<AppState<S, U>>
 where
     S: SqlStorage + Clone + Send + Sync + 'static,
     U: UserStorage + Clone + Send + Sync + 'static,
@@ -30,7 +47,8 @@ where
 
             routes.layer(middleware::from_fn(move |req, next| {
                 let config = Arc::clone(&zero_trust_config);
-                auth::zero_trust_middleware(config, req, next)
+                let resolver = Arc::clone(&resolver);
+                auth::zero_trust_middleware_with_resolver(resolver, config, req, next)
             }))
         }
         _ => routes,

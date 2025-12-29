@@ -1,17 +1,19 @@
 //! Integration tests for the internal environment create user feature.
 //!
 //! These tests verify the complete create user flow from UI interaction
-//! through the business logic compute to the mocked API endpoint.
+//! through the business command to the mocked API endpoint.
 //!
 //! Tests are only compiled when the `env_test_internal` feature is enabled.
 
 #![cfg(any(feature = "env_internal", feature = "env_test_internal"))]
 
-use collects_business::{CreateUserCompute, CreateUserInput, CreateUserResult};
+use collects_business::{
+    CFTokenInput, CreateUserCommand, CreateUserCompute, CreateUserInput, CreateUserResult,
+    SetCFTokenCommand,
+};
 use collects_ui::state::State;
 use egui_kittest::Harness;
-use std::any::TypeId;
-use wiremock::matchers::{body_json, method, path};
+use wiremock::matchers::{body_json, header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 /// Test context for create user integration tests.
@@ -47,7 +49,16 @@ async fn setup_create_user_test<'a>(
         .await;
 
     let base_url = mock_server.uri();
-    let state = State::test(base_url);
+    let mut state = State::test(base_url);
+
+    // In internal env, services expects a Zero Trust token via `cf-authorization`.
+    // The business command attaches this header when `CFTokenCompute` is set via `SetCFTokenCommand`.
+    {
+        let token_input = state.ctx.state_mut::<CFTokenInput>();
+        token_input.token = Some("test-cf-authorization-token".to_string());
+        state.ctx.dispatch::<SetCFTokenCommand>();
+        state.ctx.sync_computes();
+    }
 
     let harness = Harness::new_ui_state(app, state);
 
@@ -68,6 +79,7 @@ async fn setup_with_create_user_success<'a>(
     // Note: The API URL is constructed as {base_url}/api/internal/users
     Mock::given(method("POST"))
         .and(path("/api/internal/users"))
+        .and(header("cf-authorization", "test-cf-authorization-token"))
         .and(body_json(serde_json::json!({
             "username": expected_username
         })))
@@ -95,6 +107,7 @@ async fn setup_with_create_user_duplicate<'a>(
     // Note: The API URL is constructed as {base_url}/api/internal/users
     Mock::given(method("POST"))
         .and(path("/api/internal/users"))
+        .and(header("cf-authorization", "test-cf-authorization-token"))
         .and(body_json(serde_json::json!({
             "username": expected_username
         })))
@@ -118,6 +131,7 @@ async fn setup_with_create_user_server_error<'a>(
     // Note: The API URL is constructed as {base_url}/api/internal/users
     Mock::given(method("POST"))
         .and(path("/api/internal/users"))
+        .and(header("cf-authorization", "test-cf-authorization-token"))
         .respond_with(ResponseTemplate::new(500).set_body_json(serde_json::json!({
             "error": "internal_error",
             "message": "Database connection failed"
@@ -207,8 +221,7 @@ async fn test_trigger_create_user_sets_pending() {
         state.ctx.update::<CreateUserInput>(|input| {
             input.username = Some("testuser".to_string());
         });
-        state.ctx.mark_dirty(&TypeId::of::<CreateUserCompute>());
-        state.ctx.run::<CreateUserCompute>();
+        state.ctx.dispatch::<CreateUserCommand>();
     }
 
     // Sync computes to apply the pending state
@@ -269,8 +282,7 @@ async fn test_create_user_success_flow() {
         state.ctx.update::<CreateUserInput>(|input| {
             input.username = Some("newuser".to_string());
         });
-        state.ctx.mark_dirty(&TypeId::of::<CreateUserCompute>());
-        state.ctx.run::<CreateUserCompute>();
+        state.ctx.dispatch::<CreateUserCommand>();
     }
 
     harness.step();
@@ -338,8 +350,7 @@ async fn test_create_user_duplicate_error() {
         state.ctx.update::<CreateUserInput>(|input| {
             input.username = Some("existinguser".to_string());
         });
-        state.ctx.mark_dirty(&TypeId::of::<CreateUserCompute>());
-        state.ctx.run::<CreateUserCompute>();
+        state.ctx.dispatch::<CreateUserCommand>();
     }
 
     harness.step();
@@ -406,8 +417,7 @@ async fn test_create_user_server_error() {
         state.ctx.update::<CreateUserInput>(|input| {
             input.username = Some("anyuser".to_string());
         });
-        state.ctx.mark_dirty(&TypeId::of::<CreateUserCompute>());
-        state.ctx.run::<CreateUserCompute>();
+        state.ctx.dispatch::<CreateUserCommand>();
     }
 
     harness.step();
@@ -466,8 +476,7 @@ async fn test_create_user_empty_username_skipped() {
         state.ctx.update::<CreateUserInput>(|input| {
             input.username = Some("".to_string());
         });
-        state.ctx.mark_dirty(&TypeId::of::<CreateUserCompute>());
-        state.ctx.run::<CreateUserCompute>();
+        state.ctx.dispatch::<CreateUserCommand>();
     }
 
     harness.step();
@@ -504,8 +513,7 @@ async fn test_create_user_none_username_skipped() {
     // Trigger with None username (which is the default)
     {
         let state = harness.state_mut();
-        state.ctx.mark_dirty(&TypeId::of::<CreateUserCompute>());
-        state.ctx.run::<CreateUserCompute>();
+        state.ctx.dispatch::<CreateUserCommand>();
     }
 
     harness.step();
@@ -566,8 +574,7 @@ async fn test_create_user_compute_helper_methods() {
         state.ctx.update::<CreateUserInput>(|input| {
             input.username = Some("helpertest".to_string());
         });
-        state.ctx.mark_dirty(&TypeId::of::<CreateUserCompute>());
-        state.ctx.run::<CreateUserCompute>();
+        state.ctx.dispatch::<CreateUserCommand>();
     }
 
     harness.step();
@@ -629,8 +636,7 @@ async fn test_create_user_compute_reset() {
         state.ctx.update::<CreateUserInput>(|input| {
             input.username = Some("resettest".to_string());
         });
-        state.ctx.mark_dirty(&TypeId::of::<CreateUserCompute>());
-        state.ctx.run::<CreateUserCompute>();
+        state.ctx.dispatch::<CreateUserCommand>();
     }
 
     harness.step();

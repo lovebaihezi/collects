@@ -20,9 +20,27 @@ pub use runtime::StateRuntime;
 pub use state::{Reader, State, Updater};
 pub use state_sync_status::Stage;
 
+/// Manual-only side effects / commands.
+///
+/// Commands intentionally **do not** participate in the compute dependency graph.
+/// They must be invoked explicitly (e.g. from UI events, app init, or a scheduler).
+///
+/// Best practice:
+/// - Keep `Compute` pure/derived.
+/// - Put IO / async work / heavy CPU into `Command`.
+pub trait Command: std::fmt::Debug + Send + Sync + 'static {
+    fn run(&self, dep: Dep, updater: Updater);
+}
+
 #[cfg(test)]
 mod state_runtime_test {
-    use std::any::{Any, TypeId};
+    use std::{
+        any::{Any, TypeId},
+        sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        },
+    };
 
     use crate::compute::ComputeDeps;
 
@@ -258,5 +276,168 @@ mod state_runtime_test {
         assert_eq!(ctx.cached::<DummyComputeA>().unwrap().doubled, 10);
         // ComputeC: 10 * 2 = 20
         assert_eq!(ctx.cached::<DummyComputeC>().unwrap().quadrupled, 20);
+    }
+
+    #[allow(dead_code)]
+    #[derive(Default, Debug)]
+    struct SideEffectCountState {
+        count: usize,
+    }
+
+    impl State for SideEffectCountState {
+        fn as_any_mut(&mut self) -> &mut dyn Any {
+            self
+        }
+    }
+
+    #[derive(Debug)]
+    struct IncrementCountCommand {
+        shared: Arc<AtomicUsize>,
+    }
+
+    impl Command for IncrementCountCommand {
+        fn run(&self, _dep: Dep, _updater: Updater) {
+            self.shared.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+
+    #[test]
+    fn test_command_dispatch_is_manual_only() {
+        let shared = Arc::new(AtomicUsize::new(0));
+
+        let mut ctx = StateCtx::new();
+        ctx.add_state(SideEffectCountState::default());
+
+        // Store the command in ctx, but it must NOT run during `run_all_dirty()`.
+        ctx.record_command(IncrementCountCommand {
+            shared: Arc::clone(&shared),
+        });
+
+        ctx.run_all_dirty();
+        ctx.sync_computes();
+
+        assert_eq!(shared.load(Ordering::SeqCst), 0);
+
+        // Only runs when explicitly invoked.
+        ctx.dispatch::<IncrementCountCommand>();
+
+        assert_eq!(shared.load(Ordering::SeqCst), 1);
+    }
+
+    #[derive(Default, Debug)]
+    struct DummyComputeFromCommand {
+        value: i32,
+    }
+
+    impl State for DummyComputeFromCommand {
+        fn as_any_mut(&mut self) -> &mut dyn Any {
+            self
+        }
+    }
+
+    impl Compute for DummyComputeFromCommand {
+        fn as_any(&self) -> &dyn Any {
+            self
+        }
+
+        fn deps(&self) -> ComputeDeps {
+            const STATE_IDS: [TypeId; 0] = [];
+            const COMPUTE_IDS: [TypeId; 0] = [];
+            (&STATE_IDS, &COMPUTE_IDS)
+        }
+
+        fn compute(&self, _dep: Dep, _updater: Updater) {
+            // Intentionally no-op: this compute is updated by a Command via Updater.
+        }
+
+        fn assign_box(&mut self, new_self: Box<dyn Any>) {
+            assign_impl(self, new_self);
+        }
+    }
+
+    #[derive(Debug)]
+    struct SetComputeValueCommand {
+        value: i32,
+    }
+
+    impl Command for SetComputeValueCommand {
+        fn run(&self, _dep: Dep, updater: Updater) {
+            updater.set(DummyComputeFromCommand { value: self.value });
+        }
+    }
+
+    #[test]
+    fn test_command_can_update_compute_via_updater_and_sync() {
+        let mut ctx = StateCtx::new();
+
+        // Register the compute so it can receive updates via `Updater`.
+        ctx.record_compute(DummyComputeFromCommand { value: 0 });
+
+        // Register the command and dispatch it.
+        ctx.record_command(SetComputeValueCommand { value: 123 });
+        ctx.dispatch::<SetComputeValueCommand>();
+
+        // Command updates are delivered via the same runtime channel as computes.
+        ctx.sync_computes();
+
+        assert_eq!(ctx.cached::<DummyComputeFromCommand>().unwrap().value, 123);
+    }
+
+    #[allow(dead_code)]
+    #[derive(Debug)]
+    struct UnregisteredCompute {
+        value: i32,
+    }
+
+    impl State for UnregisteredCompute {
+        fn as_any_mut(&mut self) -> &mut dyn Any {
+            self
+        }
+    }
+
+    impl Compute for UnregisteredCompute {
+        fn as_any(&self) -> &dyn Any {
+            self
+        }
+
+        fn deps(&self) -> ComputeDeps {
+            const STATE_IDS: [TypeId; 0] = [];
+            const COMPUTE_IDS: [TypeId; 0] = [];
+            (&STATE_IDS, &COMPUTE_IDS)
+        }
+
+        fn compute(&self, _dep: Dep, _updater: Updater) {
+            // Intentionally no-op: this compute is only used to validate strict syncing.
+        }
+
+        fn assign_box(&mut self, new_self: Box<dyn Any>) {
+            assign_impl(self, new_self);
+        }
+    }
+
+    #[derive(Debug)]
+    struct SetUnregisteredComputeCommand {
+        value: i32,
+    }
+
+    impl Command for SetUnregisteredComputeCommand {
+        fn run(&self, _dep: Dep, updater: Updater) {
+            // Intentionally send an update for a compute type that was never registered.
+            updater.set(UnregisteredCompute { value: self.value });
+        }
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_updater_set_on_unregistered_compute_panics_strictly() {
+        let mut ctx = StateCtx::new();
+
+        // Register the command (but NOT the compute type `UnregisteredCompute`).
+        ctx.record_command(SetUnregisteredComputeCommand { value: 1 });
+
+        // Dispatch queues an update; syncing must panic strictly because the compute
+        // receiving the update was never registered with `record_compute`.
+        ctx.dispatch::<SetUnregisteredComputeCommand>();
+        ctx.sync_computes();
     }
 }

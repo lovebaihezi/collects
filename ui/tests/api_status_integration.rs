@@ -6,7 +6,8 @@ mod common;
 
 /// Helper function to trigger tooltip by hovering and running multiple frames
 fn trigger_tooltip(harness: &mut egui_kittest::Harness<'_, collects_ui::CollectsApp>) {
-    if let Some(dot) = harness.query_by_label("●") {
+    // Some configurations render multiple status dots. Hover the first one.
+    if let Some(dot) = harness.query_all_by_label("●").next() {
         dot.hover();
     }
     // Run multiple frames to allow tooltip delay to pass
@@ -32,7 +33,7 @@ async fn test_api_status_with_200() {
 
     // Initially shows the status dot
     assert!(
-        harness.query_by_label("●").is_some(),
+        harness.query_all_by_label("●").next().is_some(),
         "Status dot should exist in UI"
     );
 
@@ -42,7 +43,7 @@ async fn test_api_status_with_200() {
 
     // After API response, the dot should still be present (now green for healthy)
     assert!(
-        harness.query_by_label("●").is_some(),
+        harness.query_all_by_label("●").next().is_some(),
         "Status dot should exist in UI after API response"
     );
 
@@ -66,7 +67,7 @@ async fn test_api_status_with_404() {
 
     // Initially shows the status dot
     assert!(
-        harness.query_by_label("●").is_some(),
+        harness.query_all_by_label("●").next().is_some(),
         "Status dot should exist in UI"
     );
 
@@ -76,7 +77,7 @@ async fn test_api_status_with_404() {
 
     // After API error response, the dot should still be present (now red)
     assert!(
-        harness.query_by_label("●").is_some(),
+        harness.query_all_by_label("●").next().is_some(),
         "Status dot should exist in UI after API error"
     );
 
@@ -99,7 +100,7 @@ async fn test_api_status_with_500() {
 
     // Initially shows the status dot
     assert!(
-        harness.query_by_label("●").is_some(),
+        harness.query_all_by_label("●").next().is_some(),
         "Status dot should exist in UI"
     );
 
@@ -109,7 +110,7 @@ async fn test_api_status_with_500() {
 
     // After API error response, the dot should still be present (now red)
     assert!(
-        harness.query_by_label("●").is_some(),
+        harness.query_all_by_label("●").next().is_some(),
         "Status dot should exist in UI after API error"
     );
 

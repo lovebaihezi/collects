@@ -4,7 +4,8 @@
 //! along with a button to create new users.
 
 use collects_business::{
-    CreateUserCompute, CreateUserInput, CreateUserResult, InternalUserItem, ListUsersResponse,
+    CreateUserCommand, CreateUserCompute, CreateUserInput, CreateUserResult, InternalUserItem,
+    ListUsersResponse,
 };
 use collects_states::StateCtx;
 use egui::{Color32, Response, RichText, ScrollArea, Ui, Window};
@@ -320,15 +321,18 @@ fn show_create_user_modal(state: &mut InternalUsersState, state_ctx: &mut StateC
     }
 }
 
-/// Trigger the CreateUserCompute by setting input and running the compute.
+/// Trigger the create-user side effect by setting input and dispatching the command.
+///
+/// The command will update `CreateUserCompute` via `Updater`, and the normal
+/// `StateCtx::sync_computes()` path will apply the result.
 fn trigger_create_user(state_ctx: &mut StateCtx, username: &str) {
-    // Update the input state - this automatically marks CreateUserCompute as dirty
+    // Update command input state
     state_ctx.update::<CreateUserInput>(|input| {
         input.username = Some(username.to_string());
     });
 
-    // Run the compute immediately (with its dependencies)
-    state_ctx.run::<CreateUserCompute>();
+    // Explicitly dispatch the command (manual-only; never runs implicitly)
+    state_ctx.dispatch::<CreateUserCommand>();
 }
 
 /// Fetch users from the internal API.

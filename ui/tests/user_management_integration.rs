@@ -175,7 +175,10 @@ async fn test_update_username_conflict() {
     // Verify mock server returns 409
     let client = reqwest::Client::new();
     let response = client
-        .put(&format!("{}/api/internal/users/alice", ctx.mock_server.uri()))
+        .put(&format!(
+            "{}/api/internal/users/alice",
+            ctx.mock_server.uri()
+        ))
         .header("Content-Type", "application/json")
         .body(r#"{"new_username": "bob"}"#)
         .send()

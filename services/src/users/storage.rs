@@ -348,7 +348,9 @@ impl UserStorage for MockUserStorage {
 
         // Check if new username is already taken (unless it's the same)
         if old_username != new_username && users.contains_key(new_username) {
-            return Err(UserStorageError::UserAlreadyExists(new_username.to_string()));
+            return Err(UserStorageError::UserAlreadyExists(
+                new_username.to_string(),
+            ));
         }
 
         // Remove old entry and insert new one
@@ -359,7 +361,11 @@ impl UserStorage for MockUserStorage {
         Ok(updated_user)
     }
 
-    async fn revoke_otp(&self, username: &str, new_secret: &str) -> Result<StoredUser, Self::Error> {
+    async fn revoke_otp(
+        &self,
+        username: &str,
+        new_secret: &str,
+    ) -> Result<StoredUser, Self::Error> {
         if new_secret.trim().is_empty() {
             return Err(UserStorageError::InvalidInput(
                 "Secret cannot be empty".to_string(),
@@ -570,7 +576,11 @@ impl UserStorage for PgUserStorage {
             .ok_or_else(|| UserStorageError::UserNotFound(old_username.to_string()))
     }
 
-    async fn revoke_otp(&self, username: &str, new_secret: &str) -> Result<StoredUser, Self::Error> {
+    async fn revoke_otp(
+        &self,
+        username: &str,
+        new_secret: &str,
+    ) -> Result<StoredUser, Self::Error> {
         if new_secret.trim().is_empty() {
             return Err(UserStorageError::InvalidInput(
                 "Secret cannot be empty".to_string(),

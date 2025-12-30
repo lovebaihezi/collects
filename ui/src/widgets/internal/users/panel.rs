@@ -1,8 +1,6 @@
 //! Main panel for internal users management.
 
-use collects_business::{
-    CreateUserCommand, CreateUserCompute, CreateUserInput, InternalUserItem,
-};
+use collects_business::{CreateUserCommand, CreateUserCompute, CreateUserInput, InternalUserItem};
 use collects_states::{StateCtx, Time};
 use egui::{Color32, Response, RichText, ScrollArea, Ui};
 use std::any::TypeId;
@@ -93,17 +91,20 @@ pub fn internal_users_panel(
                         // Action buttons
                         ui.horizontal(|ui| {
                             if ui.button("📱 QR").on_hover_text("Show QR Code").clicked() {
-                                action_to_start = Some(UserAction::ShowQrCode(user.username.clone()));
+                                action_to_start =
+                                    Some(UserAction::ShowQrCode(user.username.clone()));
                             }
                             if ui.button("✏️").on_hover_text("Edit Username").clicked() {
                                 action_to_start =
                                     Some(UserAction::EditUsername(user.username.clone()));
                             }
                             if ui.button("🔄").on_hover_text("Revoke OTP").clicked() {
-                                action_to_start = Some(UserAction::RevokeOtp(user.username.clone()));
+                                action_to_start =
+                                    Some(UserAction::RevokeOtp(user.username.clone()));
                             }
                             if ui.button("🗑️").on_hover_text("Delete User").clicked() {
-                                action_to_start = Some(UserAction::DeleteUser(user.username.clone()));
+                                action_to_start =
+                                    Some(UserAction::DeleteUser(user.username.clone()));
                             }
                         });
 
@@ -182,10 +183,9 @@ pub fn poll_internal_users_responses(
     }
 
     // Check for action error
-    if let Some(error) = ctx.memory(|mem| {
-        mem.data
-            .get_temp::<String>(egui::Id::new("action_error"))
-    }) {
+    if let Some(error) =
+        ctx.memory(|mem| mem.data.get_temp::<String>(egui::Id::new("action_error")))
+    {
         state.set_action_error(error);
         ctx.memory_mut(|mem| {
             mem.data.remove::<String>(egui::Id::new("action_error"));
@@ -193,13 +193,11 @@ pub fn poll_internal_users_responses(
     }
 
     // Check for action success (triggers refresh)
-    if let Some(action) = ctx.memory(|mem| {
-        mem.data
-            .get_temp::<String>(egui::Id::new("action_success"))
-    }) {
+    if let Some(action) =
+        ctx.memory(|mem| mem.data.get_temp::<String>(egui::Id::new("action_success")))
+    {
         ctx.memory_mut(|mem| {
-            mem.data
-                .remove::<String>(egui::Id::new("action_success"));
+            mem.data.remove::<String>(egui::Id::new("action_success"));
         });
         // Close action modal and mark for refresh
         state.close_action();

@@ -703,10 +703,7 @@ where
             }
             (
                 StatusCode::OK,
-                Json(DeleteUserResponse {
-                    username,
-                    deleted,
-                }),
+                Json(DeleteUserResponse { username, deleted }),
             )
                 .into_response()
         }
@@ -1702,7 +1699,10 @@ mod tests {
             .body(Body::empty())
             .expect("Failed to create request");
 
-        let response = app.oneshot(get_request).await.expect("Failed to get response");
+        let response = app
+            .oneshot(get_request)
+            .await
+            .expect("Failed to get response");
 
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
     }

@@ -226,7 +226,10 @@ pub fn show_revoke_otp_modal(
 
             // Check if we have new QR code data (after revoke)
             if let Some(otpauth_url) = &state.qr_code_data {
-                ui.colored_label(Color32::from_rgb(34, 139, 34), "✓ OTP revoked successfully!");
+                ui.colored_label(
+                    Color32::from_rgb(34, 139, 34),
+                    "✓ OTP revoked successfully!",
+                );
                 ui.add_space(8.0);
                 ui.label("The user must scan this new QR code:");
                 ui.add_space(4.0);
@@ -313,7 +316,10 @@ pub fn show_create_user_modal(
             match &compute_result {
                 CreateUserResult::Success(created) => {
                     // Show success with QR code info
-                    ui.colored_label(Color32::from_rgb(34, 139, 34), "✓ User created successfully!");
+                    ui.colored_label(
+                        Color32::from_rgb(34, 139, 34),
+                        "✓ User created successfully!",
+                    );
                     ui.add_space(8.0);
 
                     ui.horizontal(|ui| {

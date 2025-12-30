@@ -151,7 +151,9 @@ impl UserStorage for RecordingUserStorage {
             .ok_or_else(|| UserStorageError::UserNotFound(old_username.to_string()))?;
 
         if old_username != new_username && map.contains_key(new_username) {
-            return Err(UserStorageError::UserAlreadyExists(new_username.to_string()));
+            return Err(UserStorageError::UserAlreadyExists(
+                new_username.to_string(),
+            ));
         }
 
         map.remove(old_username);
@@ -160,7 +162,11 @@ impl UserStorage for RecordingUserStorage {
         Ok(updated_user)
     }
 
-    async fn revoke_otp(&self, username: &str, new_secret: &str) -> Result<StoredUser, Self::Error> {
+    async fn revoke_otp(
+        &self,
+        username: &str,
+        new_secret: &str,
+    ) -> Result<StoredUser, Self::Error> {
         if new_secret.trim().is_empty() {
             return Err(UserStorageError::InvalidInput(
                 "Secret cannot be empty".to_string(),

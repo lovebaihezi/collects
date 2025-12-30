@@ -1242,4 +1242,468 @@ mod tests {
         assert!(usernames.contains(&"alice"));
         assert!(usernames.contains(&"bob"));
     }
+
+    // ===========================================
+    // Tests for GET /internal/users/{username}
+    // ===========================================
+
+    #[tokio::test]
+    async fn test_get_user_success() {
+        let (secret, _) = generate_otp_secret("alice").expect("Should generate secret");
+
+        let sql_storage = MockSqlStorage { is_connected: true };
+        let user_storage = MockUserStorage::with_users(vec![("alice", secret.as_str())]);
+        let state = AppState::new(sql_storage, user_storage);
+
+        let app = Router::new()
+            .nest(
+                "/internal",
+                internal_routes::<MockSqlStorage, MockUserStorage>(),
+            )
+            .with_state(state);
+
+        let request = Request::builder()
+            .method("GET")
+            .uri("/internal/users/alice")
+            .body(Body::empty())
+            .expect("Failed to create request");
+
+        let response = app.oneshot(request).await.expect("Failed to get response");
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("Failed to read body");
+
+        let response: GetUserResponse =
+            serde_json::from_slice(&body).expect("Failed to parse response");
+
+        assert_eq!(response.username, "alice");
+        assert_eq!(response.current_otp.len(), 6);
+        assert!(response.otpauth_url.contains("alice"));
+        assert!(response.otpauth_url.starts_with("otpauth://totp/"));
+    }
+
+    #[tokio::test]
+    async fn test_get_user_not_found() {
+        let app = create_test_app();
+
+        let request = Request::builder()
+            .method("GET")
+            .uri("/internal/users/nonexistent")
+            .body(Body::empty())
+            .expect("Failed to create request");
+
+        let response = app.oneshot(request).await.expect("Failed to get response");
+
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    // ===========================================
+    // Tests for PUT /internal/users/{username}
+    // ===========================================
+
+    #[tokio::test]
+    async fn test_update_username_success() {
+        let (secret, _) = generate_otp_secret("oldname").expect("Should generate secret");
+
+        let sql_storage = MockSqlStorage { is_connected: true };
+        let user_storage = MockUserStorage::with_users(vec![("oldname", secret.as_str())]);
+        let state = AppState::new(sql_storage, user_storage);
+
+        let app = Router::new()
+            .nest(
+                "/internal",
+                internal_routes::<MockSqlStorage, MockUserStorage>(),
+            )
+            .with_state(state);
+
+        let request = Request::builder()
+            .method("PUT")
+            .uri("/internal/users/oldname")
+            .header("content-type", "application/json")
+            .body(Body::from(r#"{"new_username": "newname"}"#))
+            .expect("Failed to create request");
+
+        let response = app.oneshot(request).await.expect("Failed to get response");
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("Failed to read body");
+
+        let response: UpdateUsernameResponse =
+            serde_json::from_slice(&body).expect("Failed to parse response");
+
+        assert_eq!(response.old_username, "oldname");
+        assert_eq!(response.new_username, "newname");
+    }
+
+    #[tokio::test]
+    async fn test_update_username_user_not_found() {
+        let app = create_test_app();
+
+        let request = Request::builder()
+            .method("PUT")
+            .uri("/internal/users/nonexistent")
+            .header("content-type", "application/json")
+            .body(Body::from(r#"{"new_username": "newname"}"#))
+            .expect("Failed to create request");
+
+        let response = app.oneshot(request).await.expect("Failed to get response");
+
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_update_username_empty_new_username() {
+        let (secret, _) = generate_otp_secret("alice").expect("Should generate secret");
+
+        let sql_storage = MockSqlStorage { is_connected: true };
+        let user_storage = MockUserStorage::with_users(vec![("alice", secret.as_str())]);
+        let state = AppState::new(sql_storage, user_storage);
+
+        let app = Router::new()
+            .nest(
+                "/internal",
+                internal_routes::<MockSqlStorage, MockUserStorage>(),
+            )
+            .with_state(state);
+
+        let request = Request::builder()
+            .method("PUT")
+            .uri("/internal/users/alice")
+            .header("content-type", "application/json")
+            .body(Body::from(r#"{"new_username": ""}"#))
+            .expect("Failed to create request");
+
+        let response = app.oneshot(request).await.expect("Failed to get response");
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_update_username_duplicate() {
+        let (secret1, _) = generate_otp_secret("alice").expect("Should generate secret");
+        let (secret2, _) = generate_otp_secret("bob").expect("Should generate secret");
+
+        let sql_storage = MockSqlStorage { is_connected: true };
+        let user_storage = MockUserStorage::with_users(vec![
+            ("alice", secret1.as_str()),
+            ("bob", secret2.as_str()),
+        ]);
+        let state = AppState::new(sql_storage, user_storage);
+
+        let app = Router::new()
+            .nest(
+                "/internal",
+                internal_routes::<MockSqlStorage, MockUserStorage>(),
+            )
+            .with_state(state);
+
+        // Try to rename alice to bob (which already exists)
+        let request = Request::builder()
+            .method("PUT")
+            .uri("/internal/users/alice")
+            .header("content-type", "application/json")
+            .body(Body::from(r#"{"new_username": "bob"}"#))
+            .expect("Failed to create request");
+
+        let response = app.oneshot(request).await.expect("Failed to get response");
+
+        assert_eq!(response.status(), StatusCode::CONFLICT);
+    }
+
+    // ===========================================
+    // Tests for DELETE /internal/users/{username}
+    // ===========================================
+
+    #[tokio::test]
+    async fn test_delete_user_success() {
+        let (secret, _) = generate_otp_secret("todelete").expect("Should generate secret");
+
+        let sql_storage = MockSqlStorage { is_connected: true };
+        let user_storage = MockUserStorage::with_users(vec![("todelete", secret.as_str())]);
+        let state = AppState::new(sql_storage, user_storage);
+
+        let app = Router::new()
+            .nest(
+                "/internal",
+                internal_routes::<MockSqlStorage, MockUserStorage>(),
+            )
+            .with_state(state);
+
+        let request = Request::builder()
+            .method("DELETE")
+            .uri("/internal/users/todelete")
+            .body(Body::empty())
+            .expect("Failed to create request");
+
+        let response = app.oneshot(request).await.expect("Failed to get response");
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("Failed to read body");
+
+        let response: DeleteUserResponse =
+            serde_json::from_slice(&body).expect("Failed to parse response");
+
+        assert_eq!(response.username, "todelete");
+        assert!(response.deleted);
+    }
+
+    #[tokio::test]
+    async fn test_delete_user_not_found() {
+        let app = create_test_app();
+
+        let request = Request::builder()
+            .method("DELETE")
+            .uri("/internal/users/nonexistent")
+            .body(Body::empty())
+            .expect("Failed to create request");
+
+        let response = app.oneshot(request).await.expect("Failed to get response");
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("Failed to read body");
+
+        let response: DeleteUserResponse =
+            serde_json::from_slice(&body).expect("Failed to parse response");
+
+        assert_eq!(response.username, "nonexistent");
+        assert!(!response.deleted);
+    }
+
+    // ===========================================
+    // Tests for POST /internal/users/{username}/revoke
+    // ===========================================
+
+    #[tokio::test]
+    async fn test_revoke_otp_success() {
+        let (secret, _) = generate_otp_secret("alice").expect("Should generate secret");
+
+        let sql_storage = MockSqlStorage { is_connected: true };
+        let user_storage = MockUserStorage::with_users(vec![("alice", secret.as_str())]);
+        let state = AppState::new(sql_storage, user_storage);
+
+        let app = Router::new()
+            .nest(
+                "/internal",
+                internal_routes::<MockSqlStorage, MockUserStorage>(),
+            )
+            .with_state(state);
+
+        let request = Request::builder()
+            .method("POST")
+            .uri("/internal/users/alice/revoke")
+            .body(Body::empty())
+            .expect("Failed to create request");
+
+        let response = app.oneshot(request).await.expect("Failed to get response");
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("Failed to read body");
+
+        let response: RevokeOtpResponse =
+            serde_json::from_slice(&body).expect("Failed to parse response");
+
+        assert_eq!(response.username, "alice");
+        // New secret should be different from the old one
+        assert_ne!(response.secret, secret);
+        assert!(response.otpauth_url.contains("alice"));
+    }
+
+    #[tokio::test]
+    async fn test_revoke_otp_user_not_found() {
+        let app = create_test_app();
+
+        let request = Request::builder()
+            .method("POST")
+            .uri("/internal/users/nonexistent/revoke")
+            .body(Body::empty())
+            .expect("Failed to create request");
+
+        let response = app.oneshot(request).await.expect("Failed to get response");
+
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    // ===========================================
+    // Integration test for user management flow
+    // ===========================================
+
+    #[tokio::test]
+    async fn test_full_user_management_flow() {
+        use crate::users::otp::generate_current_otp;
+
+        let sql_storage = MockSqlStorage { is_connected: true };
+        let user_storage = MockUserStorage::new();
+        let state = AppState::new(sql_storage, user_storage.clone());
+
+        let app = Router::new()
+            .nest(
+                "/internal",
+                internal_routes::<MockSqlStorage, MockUserStorage>(),
+            )
+            .nest("/auth", auth_routes::<MockSqlStorage, MockUserStorage>())
+            .with_state(state);
+
+        // Step 1: Create a user
+        let create_request = Request::builder()
+            .method("POST")
+            .uri("/internal/users")
+            .header("content-type", "application/json")
+            .body(Body::from(r#"{"username": "mgmttest"}"#))
+            .expect("Failed to create request");
+
+        let response = app
+            .clone()
+            .oneshot(create_request)
+            .await
+            .expect("Failed to get response");
+
+        assert_eq!(response.status(), StatusCode::CREATED);
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("Failed to read body");
+
+        let create_response: CreateUserResponse =
+            serde_json::from_slice(&body).expect("Failed to parse response");
+
+        let original_secret = create_response.secret.clone();
+
+        // Step 2: Get user details
+        let get_request = Request::builder()
+            .method("GET")
+            .uri("/internal/users/mgmttest")
+            .body(Body::empty())
+            .expect("Failed to create request");
+
+        let response = app
+            .clone()
+            .oneshot(get_request)
+            .await
+            .expect("Failed to get response");
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        // Step 3: Update username
+        let update_request = Request::builder()
+            .method("PUT")
+            .uri("/internal/users/mgmttest")
+            .header("content-type", "application/json")
+            .body(Body::from(r#"{"new_username": "renameduser"}"#))
+            .expect("Failed to create request");
+
+        let response = app
+            .clone()
+            .oneshot(update_request)
+            .await
+            .expect("Failed to get response");
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        // Step 4: Verify OTP still works with renamed user
+        let valid_code = generate_current_otp(&original_secret).expect("Should generate code");
+
+        let verify_request = Request::builder()
+            .method("POST")
+            .uri("/auth/verify-otp")
+            .header("content-type", "application/json")
+            .body(Body::from(format!(
+                r#"{{"username": "renameduser", "code": "{}"}}"#,
+                valid_code
+            )))
+            .expect("Failed to create request");
+
+        let response = app
+            .clone()
+            .oneshot(verify_request)
+            .await
+            .expect("Failed to get response");
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        // Step 5: Revoke OTP
+        let revoke_request = Request::builder()
+            .method("POST")
+            .uri("/internal/users/renameduser/revoke")
+            .body(Body::empty())
+            .expect("Failed to create request");
+
+        let response = app
+            .clone()
+            .oneshot(revoke_request)
+            .await
+            .expect("Failed to get response");
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("Failed to read body");
+
+        let revoke_response: RevokeOtpResponse =
+            serde_json::from_slice(&body).expect("Failed to parse response");
+
+        // Verify new secret is different
+        assert_ne!(revoke_response.secret, original_secret);
+
+        // Step 6: Verify old OTP code no longer works
+        let verify_request = Request::builder()
+            .method("POST")
+            .uri("/auth/verify-otp")
+            .header("content-type", "application/json")
+            .body(Body::from(format!(
+                r#"{{"username": "renameduser", "code": "{}"}}"#,
+                valid_code
+            )))
+            .expect("Failed to create request");
+
+        let response = app
+            .clone()
+            .oneshot(verify_request)
+            .await
+            .expect("Failed to get response");
+
+        // Should be unauthorized because OTP was revoked
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+
+        // Step 7: Delete user
+        let delete_request = Request::builder()
+            .method("DELETE")
+            .uri("/internal/users/renameduser")
+            .body(Body::empty())
+            .expect("Failed to create request");
+
+        let response = app
+            .clone()
+            .oneshot(delete_request)
+            .await
+            .expect("Failed to get response");
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        // Step 8: Verify user no longer exists
+        let get_request = Request::builder()
+            .method("GET")
+            .uri("/internal/users/renameduser")
+            .body(Body::empty())
+            .expect("Failed to create request");
+
+        let response = app.oneshot(get_request).await.expect("Failed to get response");
+
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
 }

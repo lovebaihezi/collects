@@ -352,6 +352,7 @@ pub fn show_create_user_modal(
                     ui.add_space(8.0);
 
                     if ui.button("Close").clicked() {
+                        super::reset_create_user_compute(state_ctx);
                         state.close_create_modal();
                     }
                 }
@@ -360,6 +361,7 @@ pub fn show_create_user_modal(
                     ui.add_space(8.0);
 
                     if ui.button("Close").clicked() {
+                        super::reset_create_user_compute(state_ctx);
                         state.close_create_modal();
                     }
                 }

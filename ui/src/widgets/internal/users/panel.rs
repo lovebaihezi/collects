@@ -201,13 +201,12 @@ pub fn poll_internal_users_responses(
             mem.data
                 .remove::<String>(egui::Id::new("action_success"));
         });
-        // Close action modal and refresh users list
+        // Close action modal and mark for refresh
         state.close_action();
         if action == "user_deleted" || action == "username_updated" {
+            // Mark as needing fetch - the actual fetch will happen on next panel render
+            // when internal_users_panel() is called with api_base_url
             state.set_fetching();
-            // Note: We need the api_base_url here, but we don't have it in poll.
-            // For now, we'll just close the action. The user can manually refresh.
-            // A better approach would be to trigger refresh from the modal itself.
         }
     }
 

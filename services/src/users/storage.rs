@@ -332,7 +332,7 @@ impl UserStorage for MockUserStorage {
         old_username: &str,
         new_username: &str,
     ) -> Result<StoredUser, Self::Error> {
-        if new_username.is_empty() {
+        if new_username.trim().is_empty() {
             return Err(UserStorageError::InvalidInput(
                 "Username cannot be empty".to_string(),
             ));
@@ -360,7 +360,7 @@ impl UserStorage for MockUserStorage {
     }
 
     async fn revoke_otp(&self, username: &str, new_secret: &str) -> Result<StoredUser, Self::Error> {
-        if new_secret.is_empty() {
+        if new_secret.trim().is_empty() {
             return Err(UserStorageError::InvalidInput(
                 "Secret cannot be empty".to_string(),
             ));
@@ -537,7 +537,7 @@ impl UserStorage for PgUserStorage {
         old_username: &str,
         new_username: &str,
     ) -> Result<StoredUser, Self::Error> {
-        if new_username.is_empty() {
+        if new_username.trim().is_empty() {
             return Err(UserStorageError::InvalidInput(
                 "Username cannot be empty".to_string(),
             ));
@@ -571,7 +571,7 @@ impl UserStorage for PgUserStorage {
     }
 
     async fn revoke_otp(&self, username: &str, new_secret: &str) -> Result<StoredUser, Self::Error> {
-        if new_secret.is_empty() {
+        if new_secret.trim().is_empty() {
             return Err(UserStorageError::InvalidInput(
                 "Secret cannot be empty".to_string(),
             ));

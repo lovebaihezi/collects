@@ -646,9 +646,25 @@ where
         }
         Err(e) => {
             tracing::error!("Failed to update username: {}", e);
-            let (status, json): (StatusCode, Json<ErrorResponse>) =
-                UserStorageError::StorageError(e.to_string()).into();
-            (status, json).into_response()
+            // Parse error type from the message to provide appropriate status
+            let error_str = e.to_string();
+            let (status, error_type) = if error_str.contains("not found") {
+                (StatusCode::NOT_FOUND, "user_not_found")
+            } else if error_str.contains("already exists") {
+                (StatusCode::CONFLICT, "user_already_exists")
+            } else if error_str.contains("Invalid input") || error_str.contains("cannot be empty") {
+                (StatusCode::BAD_REQUEST, "invalid_input")
+            } else {
+                (StatusCode::INTERNAL_SERVER_ERROR, "storage_error")
+            };
+            (
+                status,
+                Json(ErrorResponse {
+                    error: error_type.to_string(),
+                    message: error_str,
+                }),
+            )
+                .into_response()
         }
     }
 }

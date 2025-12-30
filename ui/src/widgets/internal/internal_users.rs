@@ -1,12 +1,13 @@
 //! Internal users management widget.
 //!
 //! Displays a table of users with their usernames and OTP codes,
-//! along with a button to create new users.
+//! along with buttons to create, edit, delete users and manage OTP.
 
 use chrono::{DateTime, Utc};
 use collects_business::{
-    CreateUserCommand, CreateUserCompute, CreateUserInput, CreateUserResult, InternalUserItem,
-    ListUsersResponse,
+    CreateUserCommand, CreateUserCompute, CreateUserInput, CreateUserResult, DeleteUserResponse,
+    GetUserResponse, InternalUserItem, ListUsersResponse, RevokeOtpResponse,
+    UpdateUsernameResponse,
 };
 use collects_states::{StateCtx, Time};
 use egui::{Color32, ColorImage, Response, RichText, ScrollArea, TextureHandle, Ui, Window};
@@ -50,6 +51,27 @@ fn generate_qr_image(data: &str, size: usize) -> Option<ColorImage> {
     Some(ColorImage::new([actual_size, actual_size], pixels))
 }
 
+/// Action type for user management.
+#[derive(Debug, Clone, PartialEq)]
+enum UserAction {
+    /// No action.
+    None,
+    /// Show QR code for a user.
+    ShowQrCode(String),
+    /// Edit username.
+    EditUsername(String),
+    /// Delete user (with confirmation).
+    DeleteUser(String),
+    /// Revoke OTP for a user.
+    RevokeOtp(String),
+}
+
+impl Default for UserAction {
+    fn default() -> Self {
+        Self::None
+    }
+}
+
 /// State for the internal users panel.
 #[derive(Default)]
 pub struct InternalUsersState {
@@ -69,6 +91,16 @@ pub struct InternalUsersState {
     new_username: String,
     /// Cached QR code texture for the created user.
     qr_texture: Option<TextureHandle>,
+    /// Current action being performed.
+    current_action: UserAction,
+    /// Edit username input.
+    edit_username_input: String,
+    /// Whether an action is in progress.
+    action_in_progress: bool,
+    /// Action error message.
+    action_error: Option<String>,
+    /// QR code data for display (otpauth URL).
+    qr_code_data: Option<String>,
 }
 
 impl InternalUsersState {
@@ -125,6 +157,48 @@ impl InternalUsersState {
         self.new_username.clear();
         self.qr_texture = None;
     }
+
+    /// Start an action.
+    fn start_action(&mut self, action: UserAction) {
+        self.current_action = action.clone();
+        self.action_in_progress = false;
+        self.action_error = None;
+        self.qr_texture = None;
+        self.qr_code_data = None;
+
+        // Initialize edit username input if editing
+        if let UserAction::EditUsername(username) = &action {
+            self.edit_username_input = username.clone();
+        }
+    }
+
+    /// Close the current action modal.
+    fn close_action(&mut self) {
+        self.current_action = UserAction::None;
+        self.action_in_progress = false;
+        self.action_error = None;
+        self.edit_username_input.clear();
+        self.qr_texture = None;
+        self.qr_code_data = None;
+    }
+
+    /// Set action error.
+    fn set_action_error(&mut self, error: String) {
+        self.action_error = Some(error);
+        self.action_in_progress = false;
+    }
+
+    /// Set action in progress.
+    fn set_action_in_progress(&mut self) {
+        self.action_in_progress = true;
+        self.action_error = None;
+    }
+
+    /// Set QR code data for display.
+    fn set_qr_code_data(&mut self, otpauth_url: String) {
+        self.qr_code_data = Some(otpauth_url);
+        self.action_in_progress = false;
+    }
 }
 
 /// Displays the internal users panel with a table and create button.
@@ -164,19 +238,21 @@ pub fn internal_users_panel(
 
         ui.add_space(8.0);
 
-        // Collect usernames to toggle (avoiding borrow issues)
+        // Collect actions (avoiding borrow issues)
         let mut username_to_toggle: Option<String> = None;
+        let mut action_to_start: Option<UserAction> = None;
 
         // Users table
         ScrollArea::vertical().show(ui, |ui| {
             egui::Grid::new("users_table")
-                .num_columns(3)
+                .num_columns(4)
                 .striped(true)
-                .spacing([40.0, 8.0])
+                .spacing([20.0, 8.0])
                 .show(ui, |ui| {
                     // Header row
                     ui.strong("Username");
                     ui.strong("OTP Code");
+                    ui.strong("OTP");
                     ui.strong("Actions");
                     ui.end_row();
 
@@ -201,6 +277,22 @@ pub fn internal_users_panel(
                             username_to_toggle = Some(user.username.clone());
                         }
 
+                        // Action buttons
+                        ui.horizontal(|ui| {
+                            if ui.button("📱 QR").on_hover_text("Show QR Code").clicked() {
+                                action_to_start = Some(UserAction::ShowQrCode(user.username.clone()));
+                            }
+                            if ui.button("✏️").on_hover_text("Edit Username").clicked() {
+                                action_to_start = Some(UserAction::EditUsername(user.username.clone()));
+                            }
+                            if ui.button("🔄").on_hover_text("Revoke OTP").clicked() {
+                                action_to_start = Some(UserAction::RevokeOtp(user.username.clone()));
+                            }
+                            if ui.button("🗑️").on_hover_text("Delete User").clicked() {
+                                action_to_start = Some(UserAction::DeleteUser(user.username.clone()));
+                            }
+                        });
+
                         ui.end_row();
                     }
                 });
@@ -210,11 +302,33 @@ pub fn internal_users_panel(
         if let Some(username) = username_to_toggle {
             state.toggle_otp_visibility(&username);
         }
+
+        // Start action if requested
+        if let Some(action) = action_to_start {
+            state.start_action(action);
+        }
     });
 
     // Create user modal
     if state.create_modal_open {
         show_create_user_modal(state, state_ctx, ui);
+    }
+
+    // Action modals
+    match &state.current_action {
+        UserAction::ShowQrCode(username) => {
+            show_qr_code_modal(state, api_base_url, username.clone(), ui);
+        }
+        UserAction::EditUsername(username) => {
+            show_edit_username_modal(state, api_base_url, username.clone(), ui);
+        }
+        UserAction::DeleteUser(username) => {
+            show_delete_user_modal(state, api_base_url, username.clone(), ui);
+        }
+        UserAction::RevokeOtp(username) => {
+            show_revoke_otp_modal(state, api_base_url, username.clone(), ui);
+        }
+        UserAction::None => {}
     }
 
     response.response
@@ -393,6 +507,261 @@ fn trigger_create_user(state_ctx: &mut StateCtx, username: &str) {
     state_ctx.dispatch::<CreateUserCommand>();
 }
 
+/// Shows the QR code modal for an existing user.
+fn show_qr_code_modal(state: &mut InternalUsersState, api_base_url: &str, username: String, ui: &mut Ui) {
+    let mut open = true;
+
+    Window::new(format!("QR Code - {}", username))
+        .open(&mut open)
+        .collapsible(false)
+        .resizable(false)
+        .show(ui.ctx(), |ui| {
+            if let Some(error) = &state.action_error {
+                ui.colored_label(Color32::RED, format!("Error: {error}"));
+                ui.add_space(8.0);
+                if ui.button("Close").clicked() {
+                    state.close_action();
+                }
+                return;
+            }
+
+            if state.action_in_progress {
+                ui.label("Loading QR code...");
+                ui.spinner();
+                return;
+            }
+
+            if let Some(otpauth_url) = &state.qr_code_data {
+                ui.label("Scan this QR code with Google Authenticator:");
+                ui.add_space(4.0);
+
+                // Generate QR code texture if not cached
+                if state.qr_texture.is_none()
+                    && let Some(qr_image) = generate_qr_image(otpauth_url, 200)
+                {
+                    state.qr_texture = Some(ui.ctx().load_texture(
+                        "qr_code_display",
+                        qr_image,
+                        egui::TextureOptions::NEAREST,
+                    ));
+                }
+
+                // Display QR code as an image
+                egui::Frame::NONE
+                    .fill(Color32::WHITE)
+                    .inner_margin(egui::Margin::same(8))
+                    .corner_radius(4.0)
+                    .show(ui, |ui| {
+                        if let Some(texture) = &state.qr_texture {
+                            ui.image(texture);
+                        } else {
+                            ui.label(RichText::new(otpauth_url).monospace().small());
+                        }
+                    });
+
+                ui.add_space(8.0);
+                if ui.button("Close").clicked() {
+                    state.close_action();
+                }
+            } else {
+                // Fetch user data to get QR code
+                state.set_action_in_progress();
+                fetch_user_qr_code(api_base_url, &username, ui.ctx().clone());
+            }
+        });
+
+    if !open {
+        state.close_action();
+    }
+}
+
+/// Shows the edit username modal.
+fn show_edit_username_modal(state: &mut InternalUsersState, api_base_url: &str, username: String, ui: &mut Ui) {
+    let mut open = true;
+
+    Window::new(format!("Edit Username - {}", username))
+        .open(&mut open)
+        .collapsible(false)
+        .resizable(false)
+        .show(ui.ctx(), |ui| {
+            if let Some(error) = &state.action_error {
+                ui.colored_label(Color32::RED, format!("Error: {error}"));
+                ui.add_space(8.0);
+            }
+
+            if state.action_in_progress {
+                ui.label("Updating username...");
+                ui.spinner();
+                return;
+            }
+
+            ui.label("Enter the new username:");
+            ui.add_space(8.0);
+
+            ui.horizontal(|ui| {
+                ui.label("New Username:");
+                ui.text_edit_singleline(&mut state.edit_username_input);
+            });
+
+            ui.add_space(16.0);
+
+            ui.horizontal(|ui| {
+                let can_update = !state.edit_username_input.is_empty() 
+                    && state.edit_username_input != username;
+
+                if ui
+                    .add_enabled(can_update, egui::Button::new("Update"))
+                    .clicked()
+                {
+                    state.set_action_in_progress();
+                    update_username(api_base_url, &username, &state.edit_username_input, ui.ctx().clone());
+                }
+
+                if ui.button("Cancel").clicked() {
+                    state.close_action();
+                }
+            });
+        });
+
+    if !open {
+        state.close_action();
+    }
+}
+
+/// Shows the delete user confirmation modal.
+fn show_delete_user_modal(state: &mut InternalUsersState, api_base_url: &str, username: String, ui: &mut Ui) {
+    let mut open = true;
+
+    Window::new(format!("Delete User - {}", username))
+        .open(&mut open)
+        .collapsible(false)
+        .resizable(false)
+        .show(ui.ctx(), |ui| {
+            if let Some(error) = &state.action_error {
+                ui.colored_label(Color32::RED, format!("Error: {error}"));
+                ui.add_space(8.0);
+            }
+
+            if state.action_in_progress {
+                ui.label("Deleting user...");
+                ui.spinner();
+                return;
+            }
+
+            ui.colored_label(Color32::from_rgb(255, 165, 0), "⚠️ Warning");
+            ui.add_space(4.0);
+            ui.label(format!("Are you sure you want to delete user '{}'?", username));
+            ui.label("This action cannot be undone.");
+
+            ui.add_space(16.0);
+
+            ui.horizontal(|ui| {
+                if ui
+                    .button(RichText::new("Delete").color(Color32::RED))
+                    .clicked()
+                {
+                    state.set_action_in_progress();
+                    delete_user(api_base_url, &username, ui.ctx().clone());
+                }
+
+                if ui.button("Cancel").clicked() {
+                    state.close_action();
+                }
+            });
+        });
+
+    if !open {
+        state.close_action();
+    }
+}
+
+/// Shows the revoke OTP modal.
+fn show_revoke_otp_modal(state: &mut InternalUsersState, api_base_url: &str, username: String, ui: &mut Ui) {
+    let mut open = true;
+
+    Window::new(format!("Revoke OTP - {}", username))
+        .open(&mut open)
+        .collapsible(false)
+        .resizable(false)
+        .show(ui.ctx(), |ui| {
+            if let Some(error) = &state.action_error {
+                ui.colored_label(Color32::RED, format!("Error: {error}"));
+                ui.add_space(8.0);
+            }
+
+            if state.action_in_progress {
+                ui.label("Revoking OTP...");
+                ui.spinner();
+                return;
+            }
+
+            // Check if we have new QR code data (after revoke)
+            if let Some(otpauth_url) = &state.qr_code_data {
+                ui.colored_label(
+                    Color32::from_rgb(34, 139, 34),
+                    "✓ OTP revoked successfully!",
+                );
+                ui.add_space(8.0);
+                ui.label("The user must scan this new QR code:");
+                ui.add_space(4.0);
+
+                // Generate QR code texture if not cached
+                if state.qr_texture.is_none()
+                    && let Some(qr_image) = generate_qr_image(otpauth_url, 200)
+                {
+                    state.qr_texture = Some(ui.ctx().load_texture(
+                        "qr_code_revoke",
+                        qr_image,
+                        egui::TextureOptions::NEAREST,
+                    ));
+                }
+
+                // Display QR code as an image
+                egui::Frame::NONE
+                    .fill(Color32::WHITE)
+                    .inner_margin(egui::Margin::same(8))
+                    .corner_radius(4.0)
+                    .show(ui, |ui| {
+                        if let Some(texture) = &state.qr_texture {
+                            ui.image(texture);
+                        } else {
+                            ui.label(RichText::new(otpauth_url).monospace().small());
+                        }
+                    });
+
+                ui.add_space(8.0);
+                if ui.button("Close").clicked() {
+                    state.close_action();
+                }
+            } else {
+                ui.colored_label(Color32::from_rgb(255, 165, 0), "⚠️ Warning");
+                ui.add_space(4.0);
+                ui.label(format!("Are you sure you want to revoke OTP for user '{}'?", username));
+                ui.label("The user will need to re-scan a new QR code.");
+
+                ui.add_space(16.0);
+
+                ui.horizontal(|ui| {
+                    if ui
+                        .button(RichText::new("Revoke").color(Color32::from_rgb(255, 165, 0)))
+                        .clicked()
+                    {
+                        state.set_action_in_progress();
+                        revoke_otp(api_base_url, &username, ui.ctx().clone());
+                    }
+
+                    if ui.button("Cancel").clicked() {
+                        state.close_action();
+                    }
+                });
+            }
+        });
+
+    if !open {
+        state.close_action();
+    }
+}
+
 /// Fetch users from the internal API.
 fn fetch_users(api_base_url: &str, ctx: egui::Context) {
     let url = format!("{api_base_url}/internal/users");
@@ -432,6 +801,213 @@ fn fetch_users(api_base_url: &str, ctx: egui::Context) {
     });
 }
 
+/// Fetch user QR code from the internal API.
+fn fetch_user_qr_code(api_base_url: &str, username: &str, ctx: egui::Context) {
+    let url = format!("{api_base_url}/internal/users/{username}");
+    let request = ehttp::Request::get(&url);
+
+    ehttp::fetch(request, move |result| {
+        ctx.request_repaint();
+        match result {
+            Ok(response) => {
+                if response.status == 200 {
+                    if let Ok(user_response) =
+                        serde_json::from_slice::<GetUserResponse>(&response.bytes)
+                    {
+                        ctx.memory_mut(|mem| {
+                            mem.data.insert_temp(
+                                egui::Id::new("user_qr_code_response"),
+                                user_response.otpauth_url,
+                            );
+                        });
+                    } else {
+                        ctx.memory_mut(|mem| {
+                            mem.data.insert_temp(
+                                egui::Id::new("action_error"),
+                                "Failed to parse response".to_string(),
+                            );
+                        });
+                    }
+                } else {
+                    ctx.memory_mut(|mem| {
+                        mem.data.insert_temp(
+                            egui::Id::new("action_error"),
+                            format!("API returned status: {}", response.status),
+                        );
+                    });
+                }
+            }
+            Err(err) => {
+                ctx.memory_mut(|mem| {
+                    mem.data
+                        .insert_temp(egui::Id::new("action_error"), err.to_string());
+                });
+            }
+        }
+    });
+}
+
+/// Update username via the internal API.
+fn update_username(api_base_url: &str, old_username: &str, new_username: &str, ctx: egui::Context) {
+    let url = format!("{api_base_url}/internal/users/{old_username}");
+    let body = serde_json::json!({ "new_username": new_username }).to_string();
+    let request = ehttp::Request {
+        method: "PUT".to_string(),
+        url,
+        body: body.into_bytes(),
+        headers: ehttp::Headers::new(&[("Content-Type", "application/json")]),
+    };
+
+    ehttp::fetch(request, move |result| {
+        ctx.request_repaint();
+        match result {
+            Ok(response) => {
+                if response.status == 200 {
+                    if serde_json::from_slice::<UpdateUsernameResponse>(&response.bytes).is_ok() {
+                        ctx.memory_mut(|mem| {
+                            mem.data.insert_temp(
+                                egui::Id::new("action_success"),
+                                "username_updated".to_string(),
+                            );
+                        });
+                    } else {
+                        ctx.memory_mut(|mem| {
+                            mem.data.insert_temp(
+                                egui::Id::new("action_error"),
+                                "Failed to parse response".to_string(),
+                            );
+                        });
+                    }
+                } else {
+                    ctx.memory_mut(|mem| {
+                        mem.data.insert_temp(
+                            egui::Id::new("action_error"),
+                            format!("API returned status: {}", response.status),
+                        );
+                    });
+                }
+            }
+            Err(err) => {
+                ctx.memory_mut(|mem| {
+                    mem.data
+                        .insert_temp(egui::Id::new("action_error"), err.to_string());
+                });
+            }
+        }
+    });
+}
+
+/// Delete user via the internal API.
+fn delete_user(api_base_url: &str, username: &str, ctx: egui::Context) {
+    let url = format!("{api_base_url}/internal/users/{username}");
+    let request = ehttp::Request {
+        method: "DELETE".to_string(),
+        url,
+        body: Vec::new(),
+        headers: ehttp::Headers::default(),
+    };
+
+    ehttp::fetch(request, move |result| {
+        ctx.request_repaint();
+        match result {
+            Ok(response) => {
+                if response.status == 200 {
+                    if let Ok(delete_response) =
+                        serde_json::from_slice::<DeleteUserResponse>(&response.bytes)
+                    {
+                        if delete_response.deleted {
+                            ctx.memory_mut(|mem| {
+                                mem.data.insert_temp(
+                                    egui::Id::new("action_success"),
+                                    "user_deleted".to_string(),
+                                );
+                            });
+                        } else {
+                            ctx.memory_mut(|mem| {
+                                mem.data.insert_temp(
+                                    egui::Id::new("action_error"),
+                                    "User not found".to_string(),
+                                );
+                            });
+                        }
+                    } else {
+                        ctx.memory_mut(|mem| {
+                            mem.data.insert_temp(
+                                egui::Id::new("action_error"),
+                                "Failed to parse response".to_string(),
+                            );
+                        });
+                    }
+                } else {
+                    ctx.memory_mut(|mem| {
+                        mem.data.insert_temp(
+                            egui::Id::new("action_error"),
+                            format!("API returned status: {}", response.status),
+                        );
+                    });
+                }
+            }
+            Err(err) => {
+                ctx.memory_mut(|mem| {
+                    mem.data
+                        .insert_temp(egui::Id::new("action_error"), err.to_string());
+                });
+            }
+        }
+    });
+}
+
+/// Revoke OTP via the internal API.
+fn revoke_otp(api_base_url: &str, username: &str, ctx: egui::Context) {
+    let url = format!("{api_base_url}/internal/users/{username}/revoke");
+    let request = ehttp::Request {
+        method: "POST".to_string(),
+        url,
+        body: Vec::new(),
+        headers: ehttp::Headers::default(),
+    };
+
+    ehttp::fetch(request, move |result| {
+        ctx.request_repaint();
+        match result {
+            Ok(response) => {
+                if response.status == 200 {
+                    if let Ok(revoke_response) =
+                        serde_json::from_slice::<RevokeOtpResponse>(&response.bytes)
+                    {
+                        ctx.memory_mut(|mem| {
+                            mem.data.insert_temp(
+                                egui::Id::new("revoke_otp_response"),
+                                revoke_response.otpauth_url,
+                            );
+                        });
+                    } else {
+                        ctx.memory_mut(|mem| {
+                            mem.data.insert_temp(
+                                egui::Id::new("action_error"),
+                                "Failed to parse response".to_string(),
+                            );
+                        });
+                    }
+                } else {
+                    ctx.memory_mut(|mem| {
+                        mem.data.insert_temp(
+                            egui::Id::new("action_error"),
+                            format!("API returned status: {}", response.status),
+                        );
+                    });
+                }
+            }
+            Err(err) => {
+                ctx.memory_mut(|mem| {
+                    mem.data
+                        .insert_temp(egui::Id::new("action_error"), err.to_string());
+                });
+            }
+        }
+    });
+}
+
 /// Poll for async responses and update state.
 /// Call this in the update loop.
 pub fn poll_internal_users_responses(
@@ -462,6 +1038,61 @@ pub fn poll_internal_users_responses(
         ctx.memory_mut(|mem| {
             mem.data
                 .remove::<String>(egui::Id::new("internal_users_error"));
+        });
+    }
+
+    // Check for action error
+    if let Some(error) = ctx.memory(|mem| {
+        mem.data
+            .get_temp::<String>(egui::Id::new("action_error"))
+    }) {
+        state.set_action_error(error);
+        ctx.memory_mut(|mem| {
+            mem.data
+                .remove::<String>(egui::Id::new("action_error"));
+        });
+    }
+
+    // Check for action success (triggers refresh)
+    if let Some(action) = ctx.memory(|mem| {
+        mem.data
+            .get_temp::<String>(egui::Id::new("action_success"))
+    }) {
+        ctx.memory_mut(|mem| {
+            mem.data
+                .remove::<String>(egui::Id::new("action_success"));
+        });
+        // Close action modal and refresh users list
+        state.close_action();
+        if action == "user_deleted" || action == "username_updated" {
+            state.set_fetching();
+            // Note: We need the api_base_url here, but we don't have it in poll.
+            // For now, we'll just close the action. The user can manually refresh.
+            // A better approach would be to trigger refresh from the modal itself.
+        }
+    }
+
+    // Check for QR code response
+    if let Some(otpauth_url) = ctx.memory(|mem| {
+        mem.data
+            .get_temp::<String>(egui::Id::new("user_qr_code_response"))
+    }) {
+        state.set_qr_code_data(otpauth_url);
+        ctx.memory_mut(|mem| {
+            mem.data
+                .remove::<String>(egui::Id::new("user_qr_code_response"));
+        });
+    }
+
+    // Check for revoke OTP response
+    if let Some(otpauth_url) = ctx.memory(|mem| {
+        mem.data
+            .get_temp::<String>(egui::Id::new("revoke_otp_response"))
+    }) {
+        state.set_qr_code_data(otpauth_url);
+        ctx.memory_mut(|mem| {
+            mem.data
+                .remove::<String>(egui::Id::new("revoke_otp_response"));
         });
     }
 }

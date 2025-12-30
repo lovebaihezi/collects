@@ -148,6 +148,57 @@ pub trait UserStorage: Clone + Send + Sync + 'static {
     ///
     /// Returns a vector of all stored users.
     fn list_users(&self) -> impl Future<Output = Result<Vec<StoredUser>, Self::Error>> + Send;
+
+    /// Retrieves a user by username.
+    ///
+    /// # Arguments
+    ///
+    /// * `username` - The username to look up.
+    ///
+    /// # Returns
+    ///
+    /// Returns `Some(StoredUser)` if the user exists, `None` otherwise.
+    fn get_user(
+        &self,
+        username: &str,
+    ) -> impl Future<Output = Result<Option<StoredUser>, Self::Error>> + Send;
+
+    /// Updates the username of an existing user.
+    ///
+    /// # Arguments
+    ///
+    /// * `old_username` - The current username.
+    /// * `new_username` - The new username to set.
+    ///
+    /// # Returns
+    ///
+    /// Returns the updated `StoredUser` on success, or an error if:
+    /// - The old username doesn't exist
+    /// - The new username already exists
+    /// - The new username is invalid
+    fn update_username(
+        &self,
+        old_username: &str,
+        new_username: &str,
+    ) -> impl Future<Output = Result<StoredUser, Self::Error>> + Send;
+
+    /// Revokes the OTP secret for a user by generating a new one.
+    ///
+    /// # Arguments
+    ///
+    /// * `username` - The username of the user to revoke OTP for.
+    /// * `new_secret` - The new base32-encoded OTP secret.
+    ///
+    /// # Returns
+    ///
+    /// Returns the updated `StoredUser` on success, or an error if:
+    /// - The user doesn't exist
+    /// - The new secret is invalid
+    fn revoke_otp(
+        &self,
+        username: &str,
+        new_secret: &str,
+    ) -> impl Future<Output = Result<StoredUser, Self::Error>> + Send;
 }
 
 /// In-memory mock implementation of `UserStorage` for testing.
@@ -269,6 +320,64 @@ impl UserStorage for MockUserStorage {
     async fn list_users(&self) -> Result<Vec<StoredUser>, Self::Error> {
         let users = self.users.read().expect("lock poisoned");
         Ok(users.values().cloned().collect())
+    }
+
+    async fn get_user(&self, username: &str) -> Result<Option<StoredUser>, Self::Error> {
+        let users = self.users.read().expect("lock poisoned");
+        Ok(users.get(username).cloned())
+    }
+
+    async fn update_username(
+        &self,
+        old_username: &str,
+        new_username: &str,
+    ) -> Result<StoredUser, Self::Error> {
+        if new_username.is_empty() {
+            return Err(UserStorageError::InvalidInput(
+                "Username cannot be empty".to_string(),
+            ));
+        }
+
+        let mut users = self.users.write().expect("lock poisoned");
+
+        // Check if old user exists
+        let old_user = users
+            .get(old_username)
+            .cloned()
+            .ok_or_else(|| UserStorageError::UserNotFound(old_username.to_string()))?;
+
+        // Check if new username is already taken (unless it's the same)
+        if old_username != new_username && users.contains_key(new_username) {
+            return Err(UserStorageError::UserAlreadyExists(new_username.to_string()));
+        }
+
+        // Remove old entry and insert new one
+        users.remove(old_username);
+        let updated_user = StoredUser::new(new_username, &old_user.secret);
+        users.insert(new_username.to_string(), updated_user.clone());
+
+        Ok(updated_user)
+    }
+
+    async fn revoke_otp(&self, username: &str, new_secret: &str) -> Result<StoredUser, Self::Error> {
+        if new_secret.is_empty() {
+            return Err(UserStorageError::InvalidInput(
+                "Secret cannot be empty".to_string(),
+            ));
+        }
+
+        let mut users = self.users.write().expect("lock poisoned");
+
+        // Check if user exists
+        if !users.contains_key(username) {
+            return Err(UserStorageError::UserNotFound(username.to_string()));
+        }
+
+        // Update the secret
+        let updated_user = StoredUser::new(username, new_secret);
+        users.insert(username.to_string(), updated_user.clone());
+
+        Ok(updated_user)
     }
 }
 
@@ -409,6 +518,83 @@ impl UserStorage for PgUserStorage {
             .into_iter()
             .map(|(username, otp_secret)| StoredUser::new(username, otp_secret))
             .collect())
+    }
+
+    async fn get_user(&self, username: &str) -> Result<Option<StoredUser>, Self::Error> {
+        let result: Option<(String, String)> = sqlx::query_as(
+            r#"SELECT username, otp_secret FROM users WHERE username = $1 AND status = 'active'"#,
+        )
+        .bind(username)
+        .fetch_optional(&self.storage.pool)
+        .await
+        .map_err(|e| UserStorageError::StorageError(e.to_string()))?;
+
+        Ok(result.map(|(username, otp_secret)| StoredUser::new(username, otp_secret)))
+    }
+
+    async fn update_username(
+        &self,
+        old_username: &str,
+        new_username: &str,
+    ) -> Result<StoredUser, Self::Error> {
+        if new_username.is_empty() {
+            return Err(UserStorageError::InvalidInput(
+                "Username cannot be empty".to_string(),
+            ));
+        }
+
+        // Update the username and return the updated user
+        let result: Option<(String, String)> = sqlx::query_as(
+            r#"
+            UPDATE users
+            SET username = $2
+            WHERE username = $1 AND status = 'active'
+            RETURNING username, otp_secret
+            "#,
+        )
+        .bind(old_username)
+        .bind(new_username)
+        .fetch_optional(&self.storage.pool)
+        .await
+        .map_err(|e| {
+            // Check for unique constraint violation
+            let error_str = e.to_string();
+            if error_str.contains("duplicate key") || error_str.contains("unique constraint") {
+                return UserStorageError::UserAlreadyExists(new_username.to_string());
+            }
+            UserStorageError::StorageError(error_str)
+        })?;
+
+        result
+            .map(|(username, otp_secret)| StoredUser::new(username, otp_secret))
+            .ok_or_else(|| UserStorageError::UserNotFound(old_username.to_string()))
+    }
+
+    async fn revoke_otp(&self, username: &str, new_secret: &str) -> Result<StoredUser, Self::Error> {
+        if new_secret.is_empty() {
+            return Err(UserStorageError::InvalidInput(
+                "Secret cannot be empty".to_string(),
+            ));
+        }
+
+        // Update the OTP secret and return the updated user
+        let result: Option<(String, String)> = sqlx::query_as(
+            r#"
+            UPDATE users
+            SET otp_secret = $2
+            WHERE username = $1 AND status = 'active'
+            RETURNING username, otp_secret
+            "#,
+        )
+        .bind(username)
+        .bind(new_secret)
+        .fetch_optional(&self.storage.pool)
+        .await
+        .map_err(|e| UserStorageError::StorageError(e.to_string()))?;
+
+        result
+            .map(|(username, otp_secret)| StoredUser::new(username, otp_secret))
+            .ok_or_else(|| UserStorageError::UserNotFound(username.to_string()))
     }
 }
 

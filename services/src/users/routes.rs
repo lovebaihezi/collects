@@ -29,10 +29,10 @@
 
 use axum::{
     Json, Router,
-    extract::State,
+    extract::{Path, State},
     http::StatusCode,
     response::IntoResponse,
-    routing::{get, post},
+    routing::{delete, get, post, put},
 };
 use serde::{Deserialize, Serialize};
 
@@ -57,6 +57,53 @@ pub struct UserListItem {
 pub struct ListUsersResponse {
     /// List of users with their current OTP codes.
     pub users: Vec<UserListItem>,
+}
+
+/// Response for getting a single user with QR code info.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GetUserResponse {
+    /// The username.
+    pub username: String,
+    /// The current OTP code for this user.
+    pub current_otp: String,
+    /// The otpauth URL for QR code generation.
+    pub otpauth_url: String,
+}
+
+/// Request to update a username.
+#[derive(Debug, Deserialize)]
+pub struct UpdateUsernameRequest {
+    /// The new username.
+    pub new_username: String,
+}
+
+/// Response for updating a username.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UpdateUsernameResponse {
+    /// The old username.
+    pub old_username: String,
+    /// The new username.
+    pub new_username: String,
+}
+
+/// Response for revoking OTP (regenerating secret).
+#[derive(Debug, Serialize, Deserialize)]
+pub struct RevokeOtpResponse {
+    /// The username.
+    pub username: String,
+    /// The new secret key for OTP generation (base32 encoded).
+    pub secret: String,
+    /// The otpauth URL for QR code generation.
+    pub otpauth_url: String,
+}
+
+/// Response for deleting a user.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct DeleteUserResponse {
+    /// The username that was deleted.
+    pub username: String,
+    /// Whether the deletion was successful.
+    pub deleted: bool,
 }
 
 /// Error response for API endpoints.
@@ -141,6 +188,10 @@ where
     Router::new()
         .route("/users", post(create_user::<S, U>))
         .route("/users", get(list_users::<S, U>))
+        .route("/users/{username}", get(get_user::<S, U>))
+        .route("/users/{username}", put(update_username::<S, U>))
+        .route("/users/{username}", delete(delete_user::<S, U>))
+        .route("/users/{username}/revoke", post(revoke_otp::<S, U>))
 }
 
 /// Creates the router for authentication endpoints.
@@ -441,6 +492,289 @@ where
                 }),
             )
                 .into_response()
+        }
+    }
+}
+
+/// Handler for getting a single user with QR code information.
+///
+/// # Request
+///
+/// GET /internal/users/:username
+///
+/// # Response
+///
+/// ```json
+/// {
+///     "username": "john_doe",
+///     "current_otp": "123456",
+///     "otpauth_url": "otpauth://totp/Collects:john_doe?secret=..."
+/// }
+/// ```
+#[tracing::instrument(skip_all, fields(username = %username))]
+async fn get_user<S, U>(
+    State(state): State<AppState<S, U>>,
+    Path(username): Path<String>,
+) -> impl IntoResponse
+where
+    S: SqlStorage,
+    U: UserStorage,
+{
+    tracing::info!("Getting user details");
+
+    match state.user_storage.get_user(&username).await {
+        Ok(Some(user)) => {
+            // Generate current OTP and otpauth URL
+            match generate_current_otp(&user.secret) {
+                Ok(current_otp) => {
+                    // Generate otpauth URL using the same function used in create
+                    match generate_otp_secret_url(&user.username, &user.secret) {
+                        Ok(otpauth_url) => (
+                            StatusCode::OK,
+                            Json(GetUserResponse {
+                                username: user.username,
+                                current_otp,
+                                otpauth_url,
+                            }),
+                        )
+                            .into_response(),
+                        Err(e) => {
+                            tracing::error!("Failed to generate otpauth URL: {}", e);
+                            let (status, json): (StatusCode, Json<ErrorResponse>) = e.into();
+                            (status, json).into_response()
+                        }
+                    }
+                }
+                Err(e) => {
+                    tracing::error!("Failed to generate current OTP: {}", e);
+                    let (status, json): (StatusCode, Json<ErrorResponse>) = e.into();
+                    (status, json).into_response()
+                }
+            }
+        }
+        Ok(None) => {
+            tracing::warn!("User not found: {}", username);
+            let (status, json): (StatusCode, Json<ErrorResponse>) =
+                UserStorageError::UserNotFound(username).into();
+            (status, json).into_response()
+        }
+        Err(e) => {
+            tracing::error!("Failed to get user: {}", e);
+            let (status, json): (StatusCode, Json<ErrorResponse>) =
+                UserStorageError::StorageError(e.to_string()).into();
+            (status, json).into_response()
+        }
+    }
+}
+
+/// Helper to generate otpauth URL from existing secret.
+fn generate_otp_secret_url(username: &str, secret_base32: &str) -> Result<String, OtpError> {
+    use totp_rs::{Algorithm, Secret, TOTP};
+
+    let secret = Secret::Encoded(secret_base32.to_string());
+    let secret_bytes = secret
+        .to_bytes()
+        .map_err(|e| OtpError::SecretGeneration(e.to_string()))?;
+
+    let totp = TOTP::new(
+        Algorithm::SHA1,
+        6,  // OTP_DIGITS
+        1,  // OTP_SKEW
+        30, // OTP_STEP
+        secret_bytes,
+        Some(super::otp::ISSUER.to_string()),
+        username.to_string(),
+    )
+    .map_err(|e| OtpError::TotpCreation(e.to_string()))?;
+
+    Ok(totp.get_url())
+}
+
+/// Handler for updating a username.
+///
+/// # Request
+///
+/// PUT /internal/users/:username
+///
+/// ```json
+/// {
+///     "new_username": "new_john_doe"
+/// }
+/// ```
+///
+/// # Response
+///
+/// ```json
+/// {
+///     "old_username": "john_doe",
+///     "new_username": "new_john_doe"
+/// }
+/// ```
+#[tracing::instrument(skip_all, fields(username = %username))]
+async fn update_username<S, U>(
+    State(state): State<AppState<S, U>>,
+    Path(username): Path<String>,
+    Json(payload): Json<UpdateUsernameRequest>,
+) -> impl IntoResponse
+where
+    S: SqlStorage,
+    U: UserStorage,
+{
+    tracing::info!("Updating username to: {}", payload.new_username);
+
+    if payload.new_username.is_empty() {
+        let (status, json): (StatusCode, Json<ErrorResponse>) =
+            UserStorageError::InvalidInput("New username cannot be empty".to_string()).into();
+        return (status, json).into_response();
+    }
+
+    match state
+        .user_storage
+        .update_username(&username, &payload.new_username)
+        .await
+    {
+        Ok(_updated_user) => {
+            tracing::info!("Successfully updated username");
+            (
+                StatusCode::OK,
+                Json(UpdateUsernameResponse {
+                    old_username: username,
+                    new_username: payload.new_username,
+                }),
+            )
+                .into_response()
+        }
+        Err(e) => {
+            tracing::error!("Failed to update username: {}", e);
+            let (status, json): (StatusCode, Json<ErrorResponse>) =
+                UserStorageError::StorageError(e.to_string()).into();
+            (status, json).into_response()
+        }
+    }
+}
+
+/// Handler for deleting a user.
+///
+/// # Request
+///
+/// DELETE /internal/users/:username
+///
+/// # Response
+///
+/// ```json
+/// {
+///     "username": "john_doe",
+///     "deleted": true
+/// }
+/// ```
+#[tracing::instrument(skip_all, fields(username = %username))]
+async fn delete_user<S, U>(
+    State(state): State<AppState<S, U>>,
+    Path(username): Path<String>,
+) -> impl IntoResponse
+where
+    S: SqlStorage,
+    U: UserStorage,
+{
+    tracing::info!("Deleting user");
+
+    match state.user_storage.delete_user(&username).await {
+        Ok(deleted) => {
+            if deleted {
+                tracing::info!("Successfully deleted user");
+            } else {
+                tracing::warn!("User not found for deletion: {}", username);
+            }
+            (
+                StatusCode::OK,
+                Json(DeleteUserResponse {
+                    username,
+                    deleted,
+                }),
+            )
+                .into_response()
+        }
+        Err(e) => {
+            tracing::error!("Failed to delete user: {}", e);
+            let (status, json): (StatusCode, Json<ErrorResponse>) =
+                UserStorageError::StorageError(e.to_string()).into();
+            (status, json).into_response()
+        }
+    }
+}
+
+/// Handler for revoking a user's OTP (regenerating secret).
+///
+/// # Request
+///
+/// POST /internal/users/:username/revoke
+///
+/// # Response
+///
+/// ```json
+/// {
+///     "username": "john_doe",
+///     "secret": "BASE32ENCODEDSECRET",
+///     "otpauth_url": "otpauth://totp/Collects:john_doe?secret=..."
+/// }
+/// ```
+#[tracing::instrument(skip_all, fields(username = %username))]
+async fn revoke_otp<S, U>(
+    State(state): State<AppState<S, U>>,
+    Path(username): Path<String>,
+) -> impl IntoResponse
+where
+    S: SqlStorage,
+    U: UserStorage,
+{
+    tracing::info!("Revoking OTP for user");
+
+    // Check if user exists first
+    match state.user_storage.user_exists(&username).await {
+        Ok(false) => {
+            tracing::warn!("User not found: {}", username);
+            let (status, json): (StatusCode, Json<ErrorResponse>) =
+                UserStorageError::UserNotFound(username).into();
+            return (status, json).into_response();
+        }
+        Ok(true) => {}
+        Err(e) => {
+            tracing::error!("Failed to check user existence: {}", e);
+            let (status, json): (StatusCode, Json<ErrorResponse>) =
+                UserStorageError::StorageError(e.to_string()).into();
+            return (status, json).into_response();
+        }
+    }
+
+    // Generate new OTP secret
+    let (new_secret, otpauth_url) = match generate_otp_secret(&username) {
+        Ok(result) => result,
+        Err(err) => {
+            tracing::warn!("Failed to generate new OTP secret: {}", err);
+            let (status, json): (StatusCode, Json<ErrorResponse>) = err.into();
+            return (status, json).into_response();
+        }
+    };
+
+    // Update the user's OTP secret
+    match state.user_storage.revoke_otp(&username, &new_secret).await {
+        Ok(_updated_user) => {
+            tracing::info!("Successfully revoked OTP for user");
+            (
+                StatusCode::OK,
+                Json(RevokeOtpResponse {
+                    username,
+                    secret: new_secret,
+                    otpauth_url,
+                }),
+            )
+                .into_response()
+        }
+        Err(e) => {
+            tracing::error!("Failed to revoke OTP: {}", e);
+            let (status, json): (StatusCode, Json<ErrorResponse>) =
+                UserStorageError::StorageError(e.to_string()).into();
+            (status, json).into_response()
         }
     }
 }

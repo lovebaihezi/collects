@@ -46,4 +46,4 @@ mod login;
 pub use internal::{InternalUsersState, internal_users_panel, poll_internal_users_responses};
 
 pub use api_status::api_status;
-pub use login::login_widget;
+pub use login::{login_widget, show_signed_in_header};

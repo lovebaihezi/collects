@@ -79,22 +79,8 @@ fn show_authenticated_content(ui: &mut egui::Ui, state: &mut State) {
         .and_then(|c| c.username().map(String::from))
         .unwrap_or_default();
 
-    ui.with_layout(
-        egui::Layout::top_down(egui::Align::Center),
-        |ui| {
-            ui.add_space(20.0);
-            ui.heading("Collects App");
-            ui.add_space(40.0);
-
-            ui.label(
-                egui::RichText::new("Signed")
-                    .size(24.0)
-                    .color(egui::Color32::from_rgb(34, 139, 34)),
-            );
-            ui.add_space(8.0);
-            ui.label(format!("Welcome, {username}"));
-        },
-    );
+    // Show signed-in header (reusing the shared widget)
+    widgets::show_signed_in_header(ui, &username);
 
     // Show internal users panel for internal builds
     #[cfg(any(feature = "env_internal", feature = "env_test_internal"))]

@@ -3,18 +3,12 @@
 //! Displays a centered login form with username and OTP input fields,
 //! and shows "Signed" text after successful authentication.
 
+use crate::utils::colors::{COLOR_GREEN, COLOR_RED};
 use collects_business::{AuthCompute, AuthStatus, LoginCommand, LoginInput};
 use collects_states::StateCtx;
-use egui::{Align, Color32, Layout, Response, RichText, Ui};
-
-/// Green color for success status
-const COLOR_GREEN: Color32 = Color32::from_rgb(34, 139, 34);
-/// Red color for error status
-const COLOR_RED: Color32 = Color32::from_rgb(220, 53, 69);
+use egui::{Align, Layout, Response, RichText, Ui};
 
 /// Displays the login form or signed-in status based on authentication state.
-///
-/// Returns `true` if the user is authenticated, `false` otherwise.
 pub fn login_widget(state_ctx: &mut StateCtx, ui: &mut Ui) -> Response {
     // Get current auth status
     let auth_status = state_ctx
@@ -25,7 +19,7 @@ pub fn login_widget(state_ctx: &mut StateCtx, ui: &mut Ui) -> Response {
     match auth_status {
         AuthStatus::Authenticated { username, .. } => {
             // Show signed-in status
-            show_signed_in(ui, &username)
+            show_signed_in_header(ui, &username)
         }
         AuthStatus::Authenticating => {
             // Show loading state
@@ -43,7 +37,10 @@ pub fn login_widget(state_ctx: &mut StateCtx, ui: &mut Ui) -> Response {
 }
 
 /// Shows the signed-in status with the username.
-fn show_signed_in(ui: &mut Ui, username: &str) -> Response {
+///
+/// This can be used both by the login widget and by other parts of the app
+/// that need to display the signed-in header.
+pub fn show_signed_in_header(ui: &mut Ui, username: &str) -> Response {
     ui.with_layout(Layout::top_down(Align::Center), |ui| {
         ui.add_space(20.0);
         ui.heading("Collects App");

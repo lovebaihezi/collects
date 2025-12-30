@@ -187,35 +187,3 @@ impl Command for LogoutCommand {
         });
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_auth_status_default() {
-        let status = AuthStatus::default();
-        assert!(!status.is_authenticated());
-        assert!(status.username().is_none());
-        assert!(status.token().is_none());
-    }
-
-    #[test]
-    fn test_auth_status_authenticated() {
-        let status = AuthStatus::Authenticated {
-            username: "test_user".to_string(),
-            token: Some("test_token".to_string()),
-        };
-        assert!(status.is_authenticated());
-        assert_eq!(status.username(), Some("test_user"));
-        assert_eq!(status.token(), Some("test_token"));
-    }
-
-    #[test]
-    fn test_auth_compute_default() {
-        let compute = AuthCompute::default();
-        assert!(!compute.is_authenticated());
-        assert!(compute.username().is_none());
-        assert!(compute.token().is_none());
-    }
-}

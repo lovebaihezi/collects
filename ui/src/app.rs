@@ -1,4 +1,4 @@
-use crate::{state::State, widgets};
+use crate::{state::State, utils::clipboard, widgets};
 use chrono::{Timelike, Utc};
 use collects_states::Time;
 
@@ -17,6 +17,9 @@ impl CollectsApp {
 impl eframe::App for CollectsApp {
     /// Called each time the UI needs repainting, which may be many times per second.
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Handle paste shortcut (Ctrl+V / Cmd+V) for clipboard image
+        clipboard::handle_paste_shortcut(ctx);
+
         // Update Time state only when minute changes (chrono::Utc::now() is WASM-compatible)
         // This avoids triggering time-dependent computes (ApiStatus, InternalApiStatus) every frame
         let now = Utc::now();

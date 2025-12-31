@@ -1088,6 +1088,7 @@ dependencies = [
 name = "collects-ui"
 version = "0.1.1"
 dependencies = [
+ "arboard",
  "chrono",
  "collects-business",
  "collects-states",

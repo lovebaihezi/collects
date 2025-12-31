@@ -47,6 +47,7 @@ impl<'a> TestCtx<'a, CollectsApp> {
         }
     }
 
+    #[allow(unused)]
     pub async fn new_app_with_status(status_code: u16) -> Self {
         let (mock_server, state) = setup_test_state_with_status(status_code).await;
         let app = CollectsApp::new(state);

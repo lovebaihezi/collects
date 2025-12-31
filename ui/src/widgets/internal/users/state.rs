@@ -6,9 +6,10 @@ use egui::TextureHandle;
 use std::collections::HashMap;
 
 /// Action type for user management.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub enum UserAction {
     /// No action.
+    #[default]
     None,
     /// Show QR code for a user.
     ShowQrCode(String),
@@ -18,12 +19,6 @@ pub enum UserAction {
     DeleteUser(String),
     /// Revoke OTP for a user.
     RevokeOtp(String),
-}
-
-impl Default for UserAction {
-    fn default() -> Self {
-        Self::None
-    }
 }
 
 /// State for the internal users panel.

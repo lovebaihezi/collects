@@ -99,12 +99,9 @@ pub fn update_username(
 ) {
     let url = format!("{api_base_url}/internal/users/{old_username}");
     let body = serde_json::json!({ "new_username": new_username }).to_string();
-    let request = ehttp::Request {
-        method: "PUT".to_string(),
-        url,
-        body: body.into_bytes(),
-        headers: ehttp::Headers::new(&[("Content-Type", "application/json")]),
-    };
+    let mut request = ehttp::Request::post(&url, body.into_bytes());
+    request.method = "PUT".to_string();
+    request.headers.insert("Content-Type", "application/json");
 
     ehttp::fetch(request, move |result| {
         ctx.request_repaint();
@@ -148,12 +145,8 @@ pub fn update_username(
 /// Delete user via the internal API.
 pub fn delete_user(api_base_url: &str, username: &str, ctx: egui::Context) {
     let url = format!("{api_base_url}/internal/users/{username}");
-    let request = ehttp::Request {
-        method: "DELETE".to_string(),
-        url,
-        body: Vec::new(),
-        headers: ehttp::Headers::default(),
-    };
+    let mut request = ehttp::Request::get(&url);
+    request.method = "DELETE".to_string();
 
     ehttp::fetch(request, move |result| {
         ctx.request_repaint();
@@ -208,12 +201,7 @@ pub fn delete_user(api_base_url: &str, username: &str, ctx: egui::Context) {
 /// Revoke OTP via the internal API.
 pub fn revoke_otp(api_base_url: &str, username: &str, ctx: egui::Context) {
     let url = format!("{api_base_url}/internal/users/{username}/revoke");
-    let request = ehttp::Request {
-        method: "POST".to_string(),
-        url,
-        body: Vec::new(),
-        headers: ehttp::Headers::default(),
-    };
+    let request = ehttp::Request::post(&url, Vec::new());
 
     ehttp::fetch(request, move |result| {
         ctx.request_repaint();

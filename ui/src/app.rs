@@ -92,12 +92,7 @@ fn show_authenticated_content(ui: &mut egui::Ui, state: &mut State) {
             .state_mut::<BusinessConfig>()
             .api_url()
             .to_string();
-        widgets::internal_users_panel(
-            &mut state.internal_users,
-            &mut state.ctx,
-            &api_base_url,
-            ui,
-        );
+        widgets::internal_users_panel(&mut state.internal_users, &mut state.ctx, &api_base_url, ui);
     }
 
     ui.add_space(16.0);

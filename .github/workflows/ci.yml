@@ -112,6 +112,21 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libssl-dev libgtk-3-dev libwayland-dev
 
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Cache Bun
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.bun/install/cache
+            scripts/services/node_modules
+          key: ${{ runner.os }}-bun-services-${{ hashFiles('scripts/services/bun.lockb', 'scripts/services/bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-services-
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@master
         with:
@@ -124,6 +139,10 @@ jobs:
       - name: Cache Rust dependencies
         uses: swatinem/rust-cache@v2
 
+      - name: Install scripts dependencies (Bun)
+        working-directory: scripts
+        run: bun install --frozen-lockfile
+
       - name: Check Lint
         run: just check-lint
 
@@ -133,6 +152,21 @@ jobs:
     needs: install-deps
     steps:
       - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Cache Bun
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.bun/install/cache
+            scripts/services/node_modules
+          key: ${{ runner.os }}-bun-services-${{ hashFiles('scripts/services/bun.lockb', 'scripts/services/bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-services-
 
       - name: Setup Just
         uses: extractions/setup-just@v2
@@ -161,6 +195,21 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libssl-dev libgtk-3-dev libwayland-dev
 
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Cache Bun
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.bun/install/cache
+            scripts/services/node_modules
+          key: ${{ runner.os }}-bun-services-${{ hashFiles('scripts/services/bun.lockb', 'scripts/services/bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-services-
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@master
         with:
@@ -187,6 +236,21 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libssl-dev libgtk-3-dev libwayland-dev
 
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Cache Bun
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.bun/install/cache
+            scripts/services/node_modules
+          key: ${{ runner.os }}-bun-services-${{ hashFiles('scripts/services/bun.lockb', 'scripts/services/bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-services-
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@master
         with:
@@ -207,6 +271,21 @@ jobs:
     needs: [format, lint, typos]
     steps:
       - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Cache Bun
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.bun/install/cache
+            scripts/services/node_modules
+          key: ${{ runner.os }}-bun-services-${{ hashFiles('scripts/services/bun.lockb', 'scripts/services/bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-services-
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@master

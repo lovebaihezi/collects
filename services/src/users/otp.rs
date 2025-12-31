@@ -199,7 +199,9 @@ pub fn generate_current_otp(secret_base32: &str) -> Result<String, OtpError> {
 ///
 /// # Returns
 ///
-/// Returns the number of seconds (0-29) until the current code expires.
+/// Returns the number of seconds (1-30) until the current code expires.
+/// - 30 means a fresh code (just changed)
+/// - 1 means the code is about to expire
 pub fn get_time_remaining() -> u8 {
     use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -209,8 +211,12 @@ pub fn get_time_remaining() -> u8 {
         .as_secs();
 
     // Time remaining = step - (current_time mod step)
+    // At the start of a step (elapsed=0), this returns 30 seconds remaining
+    // At the end of a step (elapsed=29), this returns 1 second remaining
     let elapsed_in_step = now % OTP_STEP;
-    (OTP_STEP - elapsed_in_step) as u8
+    let remaining = OTP_STEP - elapsed_in_step;
+    // remaining is always 1-30: when elapsed=0, remaining=30; when elapsed=29, remaining=1
+    remaining as u8
 }
 
 /// Generates the current OTP code and time remaining until it expires.

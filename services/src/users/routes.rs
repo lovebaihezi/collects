@@ -1240,7 +1240,7 @@ mod tests {
             assert_eq!(user.current_otp.len(), 6);
             assert!(user.current_otp.chars().all(|c| c.is_ascii_digit()));
             assert!(
-                user.time_remaining >= 1 && user.time_remaining <= 30,
+                (1..=30).contains(&user.time_remaining),
                 "time_remaining should be between 1 and 30, got {}",
                 user.time_remaining
             );
@@ -1291,7 +1291,7 @@ mod tests {
         assert_eq!(response.username, "alice");
         assert_eq!(response.current_otp.len(), 6);
         assert!(
-            response.time_remaining >= 1 && response.time_remaining <= 30,
+            (1..=30).contains(&response.time_remaining),
             "time_remaining should be between 1 and 30, got {}",
             response.time_remaining
         );

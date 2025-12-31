@@ -371,7 +371,7 @@ mod tests {
 
         // Time remaining should always be between 1 and 30 seconds
         assert!(
-            time_remaining >= 1 && time_remaining <= 30,
+            (1..=30).contains(&time_remaining),
             "Time remaining should be between 1 and 30, got {}",
             time_remaining
         );
@@ -397,7 +397,7 @@ mod tests {
 
         // Verify time remaining is valid
         assert!(
-            time_remaining >= 1 && time_remaining <= 30,
+            (1..=30).contains(&time_remaining),
             "Time remaining should be between 1 and 30, got {}",
             time_remaining
         );

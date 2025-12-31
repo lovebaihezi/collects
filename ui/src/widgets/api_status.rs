@@ -1,16 +1,10 @@
+use crate::utils::colors::{COLOR_AMBER, COLOR_GREEN, COLOR_RED};
 use collects_business::{APIAvailability, ApiStatus};
 use collects_states::StateCtx;
 use egui::{Color32, Response, RichText, Ui};
 
 #[cfg(any(feature = "env_internal", feature = "env_test_internal"))]
 use collects_business::{InternalAPIAvailability, InternalApiStatus};
-
-/// Forest green color for healthy/available status
-const COLOR_GREEN: Color32 = Color32::from_rgb(34, 139, 34);
-/// Red color for error/unavailable status
-const COLOR_RED: Color32 = Color32::from_rgb(220, 53, 69);
-/// Amber color for checking/pending status
-const COLOR_AMBER: Color32 = Color32::from_rgb(255, 193, 7);
 
 fn format_tooltip(status: &str, version: Option<&str>) -> String {
     match version {

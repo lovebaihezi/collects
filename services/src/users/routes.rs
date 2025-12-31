@@ -38,7 +38,7 @@ use serde::{Deserialize, Serialize};
 
 use super::otp::{
     CreateUserRequest, CreateUserResponse, OtpError, VerifyOtpRequest, VerifyOtpResponse,
-    generate_current_otp, generate_otp_secret, verify_otp,
+    generate_current_otp_with_time, generate_otp_secret, verify_otp,
 };
 use super::storage::{UserStorage, UserStorageError};
 use crate::database::SqlStorage;
@@ -50,6 +50,8 @@ pub struct UserListItem {
     pub username: String,
     /// The current OTP code for this user.
     pub current_otp: String,
+    /// Seconds remaining until the OTP code expires (1-30).
+    pub time_remaining: u8,
 }
 
 /// Response for the list users endpoint.
@@ -66,6 +68,8 @@ pub struct GetUserResponse {
     pub username: String,
     /// The current OTP code for this user.
     pub current_otp: String,
+    /// Seconds remaining until the OTP code expires (1-30).
+    pub time_remaining: u8,
     /// The otpauth URL for QR code generation.
     pub otpauth_url: String,
 }
@@ -335,11 +339,12 @@ where
             let user_items: Vec<UserListItem> = users
                 .into_iter()
                 .filter_map(|user| {
-                    // Generate current OTP code for each user
-                    match generate_current_otp(&user.secret) {
-                        Ok(otp) => Some(UserListItem {
+                    // Generate current OTP code and time remaining for each user
+                    match generate_current_otp_with_time(&user.secret) {
+                        Ok((otp, time_remaining)) => Some(UserListItem {
                             username: user.username,
                             current_otp: otp,
+                            time_remaining,
                         }),
                         Err(e) => {
                             tracing::warn!(
@@ -508,6 +513,7 @@ where
 /// {
 ///     "username": "john_doe",
 ///     "current_otp": "123456",
+///     "time_remaining": 25,
 ///     "otpauth_url": "otpauth://totp/Collects:john_doe?secret=..."
 /// }
 /// ```
@@ -524,9 +530,9 @@ where
 
     match state.user_storage.get_user(&username).await {
         Ok(Some(user)) => {
-            // Generate current OTP and otpauth URL
-            match generate_current_otp(&user.secret) {
-                Ok(current_otp) => {
+            // Generate current OTP, time remaining, and otpauth URL
+            match generate_current_otp_with_time(&user.secret) {
+                Ok((current_otp, time_remaining)) => {
                     // Generate otpauth URL using the same function used in create
                     match generate_otp_secret_url(&user.username, &user.secret) {
                         Ok(otpauth_url) => (
@@ -534,6 +540,7 @@ where
                             Json(GetUserResponse {
                                 username: user.username,
                                 current_otp,
+                                time_remaining,
                                 otpauth_url,
                             }),
                         )
@@ -1228,10 +1235,15 @@ mod tests {
 
         assert_eq!(response.users.len(), 2);
 
-        // Check that all OTP codes are valid format (6 digits)
+        // Check that all OTP codes are valid format (6 digits) and time_remaining is valid
         for user in &response.users {
             assert_eq!(user.current_otp.len(), 6);
             assert!(user.current_otp.chars().all(|c| c.is_ascii_digit()));
+            assert!(
+                user.time_remaining >= 1 && user.time_remaining <= 30,
+                "time_remaining should be between 1 and 30, got {}",
+                user.time_remaining
+            );
         }
 
         // Check usernames
@@ -1278,6 +1290,11 @@ mod tests {
 
         assert_eq!(response.username, "alice");
         assert_eq!(response.current_otp.len(), 6);
+        assert!(
+            response.time_remaining >= 1 && response.time_remaining <= 30,
+            "time_remaining should be between 1 and 30, got {}",
+            response.time_remaining
+        );
         assert!(response.otpauth_url.contains("alice"));
         assert!(response.otpauth_url.starts_with("otpauth://totp/"));
     }

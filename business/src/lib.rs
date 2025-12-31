@@ -14,7 +14,9 @@ pub use create_user_compute::{
     CreateUserCommand, CreateUserCompute, CreateUserInput, CreateUserResult,
 };
 pub use internal::{
-    CreateUserRequest, CreateUserResponse, InternalUserItem, ListUsersResponse, is_internal_build,
+    CreateUserRequest, CreateUserResponse, DeleteUserResponse, GetUserResponse, InternalUserItem,
+    ListUsersResponse, RevokeOtpResponse, UpdateUsernameRequest, UpdateUsernameResponse,
+    is_internal_build,
 };
 pub use internal_api_status::{InternalAPIAvailability, InternalApiStatus};
 pub use login_state::{AuthCompute, AuthStatus, LoginCommand, LoginInput, LogoutCommand};

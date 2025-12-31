@@ -4,6 +4,6 @@
 //! - Users table with OTP codes
 //! - Create user modal with QR code
 
-mod internal_users;
+mod users;
 
-pub use internal_users::{InternalUsersState, internal_users_panel, poll_internal_users_responses};
+pub use users::{InternalUsersState, internal_users_panel, poll_internal_users_responses};

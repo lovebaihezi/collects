@@ -123,6 +123,65 @@ impl UserStorage for RecordingUserStorage {
             .cloned()
             .collect())
     }
+
+    async fn get_user(&self, username: &str) -> Result<Option<StoredUser>, Self::Error> {
+        Ok(self
+            .users
+            .read()
+            .expect("lock poisoned")
+            .get(username)
+            .cloned())
+    }
+
+    async fn update_username(
+        &self,
+        old_username: &str,
+        new_username: &str,
+    ) -> Result<StoredUser, Self::Error> {
+        if new_username.trim().is_empty() {
+            return Err(UserStorageError::InvalidInput(
+                "Username cannot be empty".to_string(),
+            ));
+        }
+
+        let mut map = self.users.write().expect("lock poisoned");
+        let old_user = map
+            .get(old_username)
+            .cloned()
+            .ok_or_else(|| UserStorageError::UserNotFound(old_username.to_string()))?;
+
+        if old_username != new_username && map.contains_key(new_username) {
+            return Err(UserStorageError::UserAlreadyExists(
+                new_username.to_string(),
+            ));
+        }
+
+        map.remove(old_username);
+        let updated_user = StoredUser::new(new_username, &old_user.secret);
+        map.insert(new_username.to_string(), updated_user.clone());
+        Ok(updated_user)
+    }
+
+    async fn revoke_otp(
+        &self,
+        username: &str,
+        new_secret: &str,
+    ) -> Result<StoredUser, Self::Error> {
+        if new_secret.trim().is_empty() {
+            return Err(UserStorageError::InvalidInput(
+                "Secret cannot be empty".to_string(),
+            ));
+        }
+
+        let mut map = self.users.write().expect("lock poisoned");
+        if !map.contains_key(username) {
+            return Err(UserStorageError::UserNotFound(username.to_string()));
+        }
+
+        let updated_user = StoredUser::new(username, new_secret);
+        map.insert(username.to_string(), updated_user.clone());
+        Ok(updated_user)
+    }
 }
 
 /// A deterministic JWKS resolver backed by an RSA public key we generate for the test.

@@ -48,6 +48,53 @@ pub struct CreateUserRequest {
     pub username: String,
 }
 
+/// Response from getting a single user with QR code info.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GetUserResponse {
+    /// The username.
+    pub username: String,
+    /// The current OTP code for this user.
+    pub current_otp: String,
+    /// The otpauth URL for QR code generation.
+    pub otpauth_url: String,
+}
+
+/// Request to update a username.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateUsernameRequest {
+    /// The new username.
+    pub new_username: String,
+}
+
+/// Response from updating a username.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateUsernameResponse {
+    /// The old username.
+    pub old_username: String,
+    /// The new username.
+    pub new_username: String,
+}
+
+/// Response from revoking OTP (regenerating secret).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RevokeOtpResponse {
+    /// The username.
+    pub username: String,
+    /// The new secret key for OTP generation (base32 encoded).
+    pub secret: String,
+    /// The otpauth URL for QR code generation.
+    pub otpauth_url: String,
+}
+
+/// Response from deleting a user.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeleteUserResponse {
+    /// The username that was deleted.
+    pub username: String,
+    /// Whether the deletion was successful.
+    pub deleted: bool,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

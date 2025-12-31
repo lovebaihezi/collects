@@ -9,5 +9,8 @@ pub mod otp;
 pub mod routes;
 pub mod storage;
 
-pub use routes::{AppState, ListUsersResponse, UserListItem, auth_routes, internal_routes};
+pub use routes::{
+    AppState, DeleteUserResponse, GetUserResponse, ListUsersResponse, RevokeOtpResponse,
+    UpdateUsernameRequest, UpdateUsernameResponse, UserListItem, auth_routes, internal_routes,
+};
 pub use storage::{MockUserStorage, PgUserStorage, StoredUser, UserStorage, UserStorageError};

@@ -199,6 +199,77 @@ ui/
     └── user_management_integration.rs
 ```
 
+## Release Methods
+
+This project has automated release pipelines for both the UI and services.
+
+### UI Release (Collects App)
+
+The UI app is released automatically when the version in `ui/Cargo.toml` changes.
+
+**Version Format:**
+- Use date-based versioning: `YYYYMMDD` (e.g., `20260101`)
+- Update the `version` field in `ui/Cargo.toml`
+
+**Release Triggers:**
+1. **Production Release**: Merge to `main` with version change in `ui/Cargo.toml`
+   - Creates a GitHub release with tag `v<version>`
+   - Deploys to production Cloudflare Worker
+   - Deploys to internal environment
+2. **Nightly Release**: Scheduled daily at midnight UTC
+   - Creates/updates `nightly` pre-release tag
+3. **PR Preview**: On pull requests
+   - Builds artifacts and uploads to PR
+   - Deploys preview to PR-specific Cloudflare Worker
+
+**Build Outputs:**
+- `Collects-linux-x86_64` - Linux native binary
+- `Collects-windows-x86_64.exe` - Windows native binary
+- `Collects-macos-aarch64` - macOS Apple Silicon binary
+- WASM build deployed to Cloudflare Workers
+
+**Manual Build Commands:**
+```bash
+# Build native release
+just ui::release
+
+# Package native binary
+just ui::package-native <output_name> [features]
+
+# Build and deploy web version
+just ui::wk-deploy [env]
+```
+
+### Services Release
+
+The services (backend API) are deployed to Google Cloud Run.
+
+**Deployment Environments:**
+- `prod` - Production environment
+- `internal` - Internal testing
+- `nightly` - Nightly builds
+- `test` - Test environment
+- `test-internal` - Internal test environment
+- `pr` - Pull request previews
+- `local` - Local development
+
+**Manual Deployment Commands:**
+```bash
+# Build release binary (static linked for Docker)
+just services::release
+
+# Build and push Docker image
+just docker-push <image_tag>
+
+# Deploy to Cloud Run
+just services::gcloud-deploy <env> <image_tag>
+```
+
+**Database Migrations:**
+- Run `just services::migrate <env>` to apply migrations
+- Run `just services::prepare <env>` to update SQLx offline cache
+- Always commit `.sqlx/` directory changes
+
 ## Useful Commands
 
 ```bash

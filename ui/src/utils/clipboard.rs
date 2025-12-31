@@ -55,13 +55,22 @@ fn read_and_log_clipboard_image() {
                 let height = image_data.height;
                 let bytes_len = image_data.bytes.len();
 
-                // Calculate expected size for RGBA format (4 bytes per pixel)
-                let expected_bytes = width * height * 4;
-                let format_info = if bytes_len == expected_bytes {
-                    "RGBA"
-                } else {
-                    "unknown"
-                };
+                // Detect format based on bytes per pixel using checked arithmetic
+                // to avoid overflow for very large images
+                let format_info = width
+                    .checked_mul(height)
+                    .and_then(|pixels| {
+                        // Check for RGBA (4 bytes per pixel)
+                        if pixels.checked_mul(4) == Some(bytes_len) {
+                            Some("RGBA")
+                        // Check for RGB (3 bytes per pixel)
+                        } else if pixels.checked_mul(3) == Some(bytes_len) {
+                            Some("RGB")
+                        } else {
+                            None
+                        }
+                    })
+                    .unwrap_or("unknown");
 
                 log::info!(
                     "Clipboard image pasted: width={width}, height={height}, \

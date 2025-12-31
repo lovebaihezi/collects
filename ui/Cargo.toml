@@ -39,10 +39,8 @@ getrandom = { version = "0.2", features = ["js"] }
 [dev-dependencies]
 kittest = "0.3"
 wiremock = "0.6"
-egui_kittest = { version = "0.33", features = ["snapshot", "eframe", "wgpu"] }
+egui_kittest = { version = "0.33", features = ["snapshot", "eframe"] }
 tokio = { workspace = true, features = ["full", "test-util"] }
-wgpu = "28"
-pollster = "0.4"
 
 [build-dependencies]
 ico = "0.3"

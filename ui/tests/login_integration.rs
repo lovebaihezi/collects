@@ -82,13 +82,16 @@ async fn test_login_form_vertical_centering() {
         harness.query_by_label_contains("Collects App").is_some(),
         "Heading should be visible"
     );
-    
+
     // Verify all interactive elements are still accessible after centering changes
     let username_field = harness.query_by_label_contains("Username");
     let otp_field = harness.query_by_label_contains("OTP Code");
     let login_button = harness.query_by_label_contains("Login");
-    
-    assert!(username_field.is_some(), "Username field should be accessible");
+
+    assert!(
+        username_field.is_some(),
+        "Username field should be accessible"
+    );
     assert!(otp_field.is_some(), "OTP field should be accessible");
     assert!(login_button.is_some(), "Login button should be accessible");
 }

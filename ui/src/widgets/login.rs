@@ -49,7 +49,7 @@ pub fn show_signed_in_header(ui: &mut Ui, username: &str) -> Response {
     ui.with_layout(Layout::top_down(Align::Center), |ui| {
         // Add vertical spacing to center the content
         ui.add_space(top_spacing);
-        
+
         ui.heading("Collects App");
         ui.add_space(40.0);
 
@@ -70,7 +70,7 @@ fn show_loading(ui: &mut Ui) -> Response {
     ui.with_layout(Layout::top_down(Align::Center), |ui| {
         // Add vertical spacing to center the content
         ui.add_space(top_spacing);
-        
+
         ui.heading("Collects App");
         ui.add_space(40.0);
 
@@ -99,7 +99,7 @@ fn show_login_form(state_ctx: &mut StateCtx, ui: &mut Ui, error: Option<&str>) -
         .with_layout(Layout::top_down(Align::Center), |ui| {
             // Add vertical spacing to center the form
             ui.add_space(top_spacing);
-            
+
             ui.heading("Collects App");
             ui.add_space(40.0);
 

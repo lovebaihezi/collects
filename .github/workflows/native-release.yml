@@ -2,9 +2,7 @@ name: Native Release
 
 on:
   push:
-    branches: ["main"]
     tags: ["v*"]
-  pull_request:
   schedule:
     - cron: "0 0 * * *"
   workflow_run:
@@ -20,30 +18,44 @@ jobs:
   ci-check:
     name: CI Check
     runs-on: ubuntu-latest
-    if: github.event_name == 'schedule' || startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') || github.event_name == 'push' || github.event_name == 'pull_request'
+    # Only run if CI succeeded, or if triggered by schedule/tag
+    if: github.event_name == 'schedule' || startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
     outputs:
       should_continue: ${{ steps.check.outputs.should_continue }}
+      original_event: ${{ steps.check.outputs.original_event }}
+      is_main_branch: ${{ steps.check.outputs.is_main_branch }}
+      head_sha: ${{ steps.check.outputs.head_sha }}
     steps:
       - name: Check CI Status
         id: check
         run: |
-          if [[ "${{ github.event_name }}" == "schedule" ]] || [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+          if [[ "${{ github.event_name }}" == "schedule" ]]; then
             echo "should_continue=true" >> $GITHUB_OUTPUT
+            echo "original_event=schedule" >> $GITHUB_OUTPUT
+            echo "is_main_branch=true" >> $GITHUB_OUTPUT
+            echo "head_sha=${{ github.sha }}" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            echo "should_continue=true" >> $GITHUB_OUTPUT
+            echo "original_event=push" >> $GITHUB_OUTPUT
+            echo "is_main_branch=true" >> $GITHUB_OUTPUT
+            echo "head_sha=${{ github.sha }}" >> $GITHUB_OUTPUT
           elif [[ "${{ github.event_name }}" == "workflow_run" ]]; then
-            if [[ "${{ github.event.workflow_run.conclusion }}" == "success" ]]; then
-              echo "should_continue=true" >> $GITHUB_OUTPUT
-            else
-              echo "should_continue=false" >> $GITHUB_OUTPUT
-            fi
-          else
             echo "should_continue=true" >> $GITHUB_OUTPUT
+            echo "original_event=${{ github.event.workflow_run.event }}" >> $GITHUB_OUTPUT
+            echo "head_sha=${{ github.event.workflow_run.head_sha }}" >> $GITHUB_OUTPUT
+            if [[ "${{ github.event.workflow_run.head_branch }}" == "main" ]]; then
+              echo "is_main_branch=true" >> $GITHUB_OUTPUT
+            else
+              echo "is_main_branch=false" >> $GITHUB_OUTPUT
+            fi
           fi
 
   check-version:
     name: Check UI Version Change
     runs-on: ubuntu-latest
     needs: ci-check
-    if: needs.ci-check.outputs.should_continue == 'true'
+    # Only check version for main branch pushes
+    if: needs.ci-check.outputs.should_continue == 'true' && needs.ci-check.outputs.is_main_branch == 'true' && needs.ci-check.outputs.original_event == 'push'
     outputs:
       version_changed: ${{ steps.check.outputs.version_changed }}
       current_version: ${{ steps.check.outputs.current_version }}
@@ -51,6 +63,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 2
+          ref: ${{ needs.ci-check.outputs.head_sha }}
 
       - name: Check if UI version changed
         id: check
@@ -62,7 +75,10 @@ jobs:
     name: Build Native
     runs-on: ${{ matrix.os }}
     needs: [ci-check, check-version]
-    if: needs.ci-check.outputs.should_continue == 'true'
+    if: |
+      always() &&
+      needs.ci-check.outputs.should_continue == 'true' &&
+      (needs.check-version.result == 'success' || needs.check-version.result == 'skipped')
     strategy:
       fail-fast: false
       matrix:
@@ -79,6 +95,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.ci-check.outputs.head_sha }}
 
       - name: Install System Dependencies (Linux)
         if: matrix.os == 'ubuntu-latest'
@@ -99,16 +117,20 @@ jobs:
         id: env
         shell: bash
         run: |
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+          ORIGINAL_EVENT="${{ needs.ci-check.outputs.original_event }}"
+          IS_MAIN="${{ needs.ci-check.outputs.is_main_branch }}"
+          VERSION_CHANGED="${{ needs.check-version.outputs.version_changed }}"
+          
+          if [[ "$ORIGINAL_EVENT" == "pull_request" ]]; then
             echo "FEATURES=env_pr" >> $GITHUB_ENV
-          elif [[ "${{ needs.check-version.outputs.version_changed }}" == "true" ]]; then
+          elif [[ "$IS_MAIN" == "true" && "$VERSION_CHANGED" == "true" ]]; then
             echo "FEATURES=" >> $GITHUB_ENV
-          elif [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" == "refs/heads/main" ]]; then
+          elif [[ "$IS_MAIN" == "true" && "$ORIGINAL_EVENT" == "push" ]]; then
             echo "FEATURES=env_test" >> $GITHUB_ENV
-          elif [[ "${{ github.event_name }}" == "schedule" ]]; then
+          elif [[ "$ORIGINAL_EVENT" == "schedule" ]]; then
             echo "FEATURES=env_nightly" >> $GITHUB_ENV
           else
-            echo "FEATURES=" >> $GITHUB_ENV
+            echo "FEATURES=env_pr" >> $GITHUB_ENV
           fi
 
       - name: Build and Package
@@ -116,14 +138,14 @@ jobs:
         run: just ui::package-native ${{ matrix.output_name }} ${{ env.FEATURES }}
 
       - name: Upload Artifact
-        if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+        if: needs.ci-check.outputs.original_event == 'pull_request' || (needs.ci-check.outputs.is_main_branch == 'true' && needs.ci-check.outputs.original_event == 'push')
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.output_name }}
           path: ui/target/release/${{ matrix.output_name }}
 
       - name: Create/Update Nightly Release
-        if: github.event_name == 'schedule'
+        if: needs.ci-check.outputs.original_event == 'schedule'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: nightly
@@ -142,7 +164,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Create Production Release
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.check-version.outputs.version_changed == 'true'
+        if: needs.ci-check.outputs.is_main_branch == 'true' && needs.ci-check.outputs.original_event == 'push' && needs.check-version.outputs.version_changed == 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ needs.check-version.outputs.current_version }}

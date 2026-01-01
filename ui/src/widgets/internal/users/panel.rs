@@ -56,13 +56,14 @@ pub fn internal_users_panel(
         // Users table
         ScrollArea::vertical().show(ui, |ui| {
             egui::Grid::new("users_table")
-                .num_columns(4)
+                .num_columns(5)
                 .striped(true)
                 .spacing([20.0, 8.0])
                 .show(ui, |ui| {
                     // Header row
                     ui.strong("Username");
                     ui.strong("OTP Code");
+                    ui.strong("Time Left");
                     ui.strong("OTP");
                     ui.strong("Actions");
                     ui.end_row();
@@ -77,6 +78,20 @@ pub fn internal_users_panel(
                         } else {
                             ui.label(RichText::new("••••••").monospace());
                         }
+
+                        // Time remaining indicator with color coding
+                        let time_color = if user.time_remaining <= 5 {
+                            Color32::RED // Critical: 5 seconds or less
+                        } else if user.time_remaining <= 10 {
+                            Color32::from_rgb(255, 165, 0) // Warning: 10 seconds or less
+                        } else {
+                            Color32::from_rgb(34, 139, 34) // Safe: more than 10 seconds
+                        };
+                        ui.label(
+                            RichText::new(format!("{}s", user.time_remaining))
+                                .monospace()
+                                .color(time_color),
+                        );
 
                         // Reveal/hide button
                         let button_text = if state.is_otp_revealed(&user.username) {

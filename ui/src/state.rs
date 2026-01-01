@@ -1,5 +1,6 @@
 use collects_business::ApiStatus;
 use collects_business::BusinessConfig;
+use collects_business::{AuthCompute, LoginCommand, LoginInput, LogoutCommand};
 #[cfg(any(feature = "env_internal", feature = "env_test_internal"))]
 use collects_business::{
     CFTokenCompute, CFTokenInput, CreateUserCommand, CreateUserCompute, CreateUserInput,
@@ -29,6 +30,12 @@ impl Default for State {
         ctx.add_state(Time::default());
         ctx.add_state(BusinessConfig::default());
         ctx.record_compute(ApiStatus::default());
+
+        // Add login states and commands
+        ctx.add_state(LoginInput::default());
+        ctx.record_compute(AuthCompute::default());
+        ctx.record_command(LoginCommand);
+        ctx.record_command(LogoutCommand);
 
         // Add internal states and computes for internal builds
         #[cfg(any(feature = "env_internal", feature = "env_test_internal"))]
@@ -60,6 +67,12 @@ impl State {
         ctx.add_state(Time::default());
         ctx.add_state(BusinessConfig::new(base_url));
         ctx.record_compute(ApiStatus::default());
+
+        // Add login states and commands
+        ctx.add_state(LoginInput::default());
+        ctx.record_compute(AuthCompute::default());
+        ctx.record_command(LoginCommand);
+        ctx.record_command(LogoutCommand);
 
         // Add internal states and computes for internal builds
         #[cfg(any(feature = "env_internal", feature = "env_test_internal"))]

@@ -191,6 +191,55 @@ pub fn generate_current_otp(secret_base32: &str) -> Result<String, OtpError> {
         .map_err(|e| OtpError::TotpCreation(e.to_string()))
 }
 
+/// Calculates the seconds remaining until the current OTP code expires.
+///
+/// OTP codes change every 30 seconds. This function returns the number of
+/// seconds until the next code change, which helps users know how much time
+/// they have to use the current code.
+///
+/// # Returns
+///
+/// Returns the number of seconds (1-30) until the current code expires.
+/// - 30 means a fresh code (just changed)
+/// - 1 means the code is about to expire
+pub fn get_time_remaining() -> u8 {
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+
+    // Time remaining = step - (current_time mod step)
+    // At the start of a step (elapsed=0), this returns 30 seconds remaining
+    // At the end of a step (elapsed=29), this returns 1 second remaining
+    let elapsed_in_step = now % OTP_STEP;
+    let remaining = OTP_STEP - elapsed_in_step;
+    // remaining is always 1-30: when elapsed=0, remaining=30; when elapsed=29, remaining=1
+    remaining as u8
+}
+
+/// Generates the current OTP code and time remaining until it expires.
+///
+/// This is useful for displaying OTP codes with a countdown timer in the UI.
+///
+/// # Arguments
+///
+/// * `secret_base32` - The base32 encoded secret
+///
+/// # Returns
+///
+/// Returns a tuple of (current_otp_code, seconds_remaining).
+///
+/// # Errors
+///
+/// Returns an error if the secret is invalid or code generation fails.
+pub fn generate_current_otp_with_time(secret_base32: &str) -> Result<(String, u8), OtpError> {
+    let code = generate_current_otp(secret_base32)?;
+    let time_remaining = get_time_remaining();
+    Ok((code, time_remaining))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -313,6 +362,44 @@ mod tests {
         assert_ne!(
             secret1, secret2,
             "Different users should get different secrets"
+        );
+    }
+
+    #[test]
+    fn test_get_time_remaining() {
+        let time_remaining = get_time_remaining();
+
+        // Time remaining should always be between 1 and 30 seconds
+        assert!(
+            (1..=30).contains(&time_remaining),
+            "Time remaining should be between 1 and 30, got {}",
+            time_remaining
+        );
+    }
+
+    #[test]
+    fn test_generate_current_otp_with_time() {
+        let username = "testuser";
+        let (secret, _) = generate_otp_secret(username).expect("Should generate secret");
+
+        let result = generate_current_otp_with_time(&secret);
+
+        assert!(result.is_ok(), "Should generate OTP with time");
+
+        let (code, time_remaining) = result.expect("Should have result");
+
+        // Verify code format
+        assert_eq!(code.len(), 6, "OTP code should be 6 digits");
+        assert!(
+            code.chars().all(|c| c.is_ascii_digit()),
+            "OTP code should be all digits"
+        );
+
+        // Verify time remaining is valid
+        assert!(
+            (1..=30).contains(&time_remaining),
+            "Time remaining should be between 1 and 30, got {}",
+            time_remaining
         );
     }
 }

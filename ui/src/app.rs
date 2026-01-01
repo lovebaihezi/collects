@@ -1,5 +1,6 @@
 use crate::{state::State, utils::clipboard, widgets};
 use chrono::{Timelike, Utc};
+use collects_business::AuthCompute;
 use collects_states::Time;
 
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
@@ -43,6 +44,13 @@ impl eframe::App for CollectsApp {
             ctx,
         );
 
+        // Check if user is authenticated
+        let is_authenticated = self
+            .state
+            .ctx
+            .cached::<AuthCompute>()
+            .is_some_and(|c| c.is_authenticated());
+
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
             egui::MenuBar::new().ui(ui, |ui| {
                 // API status dots (includes internal API for internal builds)
@@ -51,35 +59,47 @@ impl eframe::App for CollectsApp {
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            // The central panel the region left after adding TopPanel's and SidePanel's
-            ui.heading("Collects App");
-
-            // Show internal users panel for internal builds
-            #[cfg(any(feature = "env_internal", feature = "env_test_internal"))]
-            {
-                use collects_business::BusinessConfig;
-                ui.add_space(16.0);
-                let api_base_url = self
-                    .state
-                    .ctx
-                    .state_mut::<BusinessConfig>()
-                    .api_url()
-                    .to_string();
-                widgets::internal_users_panel(
-                    &mut self.state.internal_users,
-                    &mut self.state.ctx,
-                    &api_base_url,
-                    ui,
-                );
+            if is_authenticated {
+                // Show main app content when authenticated
+                show_authenticated_content(ui, &mut self.state);
+            } else {
+                // Show login form when not authenticated
+                widgets::login_widget(&mut self.state.ctx, ui);
             }
-
-            ui.add_space(16.0);
-            powered_by_egui_and_eframe(ui);
         });
 
         // Run background jobs
         self.state.ctx.run_all_dirty();
     }
+}
+
+/// Shows the main application content when user is authenticated.
+fn show_authenticated_content(ui: &mut egui::Ui, state: &mut State) {
+    // Get username for display
+    let username = state
+        .ctx
+        .cached::<AuthCompute>()
+        .and_then(|c| c.username().map(String::from))
+        .unwrap_or_default();
+
+    // Show signed-in header (reusing the shared widget)
+    widgets::show_signed_in_header(ui, &username);
+
+    // Show internal users panel for internal builds
+    #[cfg(any(feature = "env_internal", feature = "env_test_internal"))]
+    {
+        use collects_business::BusinessConfig;
+        ui.add_space(16.0);
+        let api_base_url = state
+            .ctx
+            .state_mut::<BusinessConfig>()
+            .api_url()
+            .to_string();
+        widgets::internal_users_panel(&mut state.internal_users, &mut state.ctx, &api_base_url, ui);
+    }
+
+    ui.add_space(16.0);
+    powered_by_egui_and_eframe(ui);
 }
 
 fn powered_by_egui_and_eframe(ui: &mut egui::Ui) {

@@ -58,6 +58,7 @@ async fn test_get_user_returns_qr_code_info() {
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
             "username": "testuser",
             "current_otp": "123456",
+            "time_remaining": 25,
             "otpauth_url": "otpauth://totp/Collects:testuser?secret=JBSWY3DPEHPK3PXP&issuer=Collects"
         })))
         .mount(ctx.mock_server())
@@ -79,6 +80,7 @@ async fn test_get_user_returns_qr_code_info() {
     let get_response: GetUserResponse = response.json().await.expect("Failed to parse response");
     assert_eq!(get_response.username, "testuser");
     assert_eq!(get_response.current_otp, "123456");
+    assert_eq!(get_response.time_remaining, 25);
     assert!(get_response.otpauth_url.contains("testuser"));
 }
 
@@ -374,6 +376,7 @@ async fn test_complete_user_management_flow() {
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
             "username": "flowuser",
             "current_otp": "123456",
+            "time_remaining": 25,
             "otpauth_url": "otpauth://totp/Collects:flowuser?secret=JBSWY3DPEHPK3PXP&issuer=Collects"
         })))
         .mount(ctx.mock_server())

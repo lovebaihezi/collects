@@ -4,6 +4,7 @@ pub mod config;
 pub mod create_user_compute;
 pub mod internal;
 pub mod internal_api_status;
+pub mod login_state;
 pub mod version_info;
 
 pub use api_status::{APIAvailability, ApiStatus};
@@ -18,3 +19,4 @@ pub use internal::{
     is_internal_build,
 };
 pub use internal_api_status::{InternalAPIAvailability, InternalApiStatus};
+pub use login_state::{AuthCompute, AuthStatus, LoginCommand, LoginInput, LogoutCommand};

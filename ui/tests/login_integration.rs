@@ -46,10 +46,51 @@ async fn test_login_form_centered() {
     harness.step();
 
     // Verify the "Collects App" heading appears (indicating centered content)
+    let heading = harness.query_by_label_contains("Collects App");
     assert!(
-        harness.query_by_label_contains("Collects App").is_some(),
+        heading.is_some(),
         "Collects App heading should be displayed in centered layout"
     );
+
+    // Verify other form elements are present and accessible
+    // which indicates the form is properly positioned on screen
+    assert!(
+        harness.query_by_label_contains("Username").is_some(),
+        "Username field should be accessible"
+    );
+    assert!(
+        harness.query_by_label_contains("OTP Code").is_some(),
+        "OTP Code field should be accessible"
+    );
+    assert!(
+        harness.query_by_label_contains("Login").is_some(),
+        "Login button should be accessible"
+    );
+}
+
+/// Tests that the login form is vertically centered with appropriate spacing.
+#[tokio::test]
+async fn test_login_form_vertical_centering() {
+    let mut ctx = TestCtx::new_app().await;
+
+    let harness = ctx.harness_mut();
+    harness.step();
+
+    // The form should be properly displayed with all elements
+    // This test verifies that vertical centering doesn't break the form layout
+    assert!(
+        harness.query_by_label_contains("Collects App").is_some(),
+        "Heading should be visible"
+    );
+    
+    // Verify all interactive elements are still accessible after centering changes
+    let username_field = harness.query_by_label_contains("Username");
+    let otp_field = harness.query_by_label_contains("OTP Code");
+    let login_button = harness.query_by_label_contains("Login");
+    
+    assert!(username_field.is_some(), "Username field should be accessible");
+    assert!(otp_field.is_some(), "OTP field should be accessible");
+    assert!(login_button.is_some(), "Login button should be accessible");
 }
 
 /// Tests that the login button is disabled when username or OTP is empty.

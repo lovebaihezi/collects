@@ -41,8 +41,15 @@ pub fn login_widget(state_ctx: &mut StateCtx, ui: &mut Ui) -> Response {
 /// This can be used both by the login widget and by other parts of the app
 /// that need to display the signed-in header.
 pub fn show_signed_in_header(ui: &mut Ui, username: &str) -> Response {
+    // Calculate vertical centering space
+    let available_height = ui.available_height();
+    let estimated_content_height = 150.0; // Approximate height of the content
+    let top_spacing = (available_height - estimated_content_height).max(0.0) / 2.0;
+
     ui.with_layout(Layout::top_down(Align::Center), |ui| {
-        ui.add_space(20.0);
+        // Add vertical spacing to center the content
+        ui.add_space(top_spacing);
+        
         ui.heading("Collects App");
         ui.add_space(40.0);
 
@@ -55,8 +62,15 @@ pub fn show_signed_in_header(ui: &mut Ui, username: &str) -> Response {
 
 /// Shows the loading state during authentication.
 fn show_loading(ui: &mut Ui) -> Response {
+    // Calculate vertical centering space
+    let available_height = ui.available_height();
+    let estimated_content_height = 150.0; // Approximate height of the content
+    let top_spacing = (available_height - estimated_content_height).max(0.0) / 2.0;
+
     ui.with_layout(Layout::top_down(Align::Center), |ui| {
-        ui.add_space(20.0);
+        // Add vertical spacing to center the content
+        ui.add_space(top_spacing);
+        
         ui.heading("Collects App");
         ui.add_space(40.0);
 
@@ -75,9 +89,17 @@ fn show_login_form(state_ctx: &mut StateCtx, ui: &mut Ui, error: Option<&str>) -
     let mut otp = login_input.otp.clone();
     let mut should_login = false;
 
+    // Calculate vertical centering space
+    // We want to push the form down so it's approximately centered vertically
+    let available_height = ui.available_height();
+    let estimated_form_height = 250.0; // Approximate height of the form
+    let top_spacing = (available_height - estimated_form_height).max(0.0) / 2.0;
+
     let response = ui
         .with_layout(Layout::top_down(Align::Center), |ui| {
-            ui.add_space(20.0);
+            // Add vertical spacing to center the form
+            ui.add_space(top_spacing);
+            
             ui.heading("Collects App");
             ui.add_space(40.0);
 

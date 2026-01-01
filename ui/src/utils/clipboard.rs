@@ -3,6 +3,40 @@
 //! This module provides functionality to handle Ctrl+V (Cmd+V on macOS) paste events
 //! and read image data from the clipboard on native platforms.
 //!
+//! # Platform-Specific Clipboard Behavior
+//!
+//! The clipboard implementation varies significantly across platforms. This module
+//! uses the `arboard` crate which provides a unified API over platform-specific backends:
+//!
+//! ## Windows
+//! - Uses the Win32 Clipboard API (`OpenClipboard`, `GetClipboardData`, etc.)
+//! - Supports CF_DIB and CF_DIBV5 formats for images
+//! - Images are typically in BGRA format, converted to RGBA by arboard
+//! - Clipboard access requires the calling thread to have a message queue
+//!
+//! ## macOS
+//! - Uses NSPasteboard (Cocoa framework)
+//! - Supports TIFF, PNG, and other standard image formats
+//! - The `modifiers.command` check maps to Cmd key (⌘) on macOS
+//! - Images are decoded from pasteboard data types like `public.tiff` or `public.png`
+//!
+//! ## Linux (X11)
+//! - Uses X11 selections (CLIPBOARD selection by default)
+//! - Communicates with the X server to retrieve clipboard data
+//! - Supports image/png, image/bmp and other MIME types
+//! - May require an active X11 connection; headless environments need Xvfb
+//!
+//! ## Linux (Wayland)
+//! - Uses wl-clipboard or native Wayland protocols via layer-shell
+//! - Clipboard data is obtained through the Wayland compositor
+//! - Similar MIME type support as X11
+//!
+//! ## Web (WASM) - Not Yet Supported
+//! - Would use the async Clipboard API (`navigator.clipboard`)
+//! - Requires HTTPS secure context
+//! - Requires user gesture (paste event) due to browser security restrictions
+//! - Reading images requires `clipboard-read` permission
+//!
 //! # Architecture
 //!
 //! The module uses a trait-based design for testability:
@@ -44,7 +78,13 @@ pub enum ClipboardError {
     AccessError(String),
 }
 
-/// Trait for clipboard image access, enabling mock implementations for testing
+/// Trait for clipboard image access, enabling mock implementations for testing.
+///
+/// This trait abstracts clipboard operations to allow:
+/// - Production use via `SystemClipboard` (platform-specific implementations)
+/// - Test mocking via custom implementations
+///
+/// See module-level documentation for platform-specific behavior details.
 pub trait ClipboardProvider {
     /// Attempts to get an image from the clipboard
     ///
@@ -55,13 +95,38 @@ pub trait ClipboardProvider {
     fn get_image(&self) -> Result<Option<ClipboardImage>, ClipboardError>;
 }
 
-/// System clipboard implementation using arboard crate
+/// System clipboard implementation using the `arboard` crate.
+///
+/// This struct provides cross-platform clipboard image access with the following
+/// platform-specific backends:
+///
+/// - **Windows**: Win32 Clipboard API (CF_DIB/CF_DIBV5 formats)
+/// - **macOS**: NSPasteboard (Cocoa, supports TIFF/PNG)
+/// - **Linux X11**: X11 selections via xcb
+/// - **Linux Wayland**: wl-clipboard protocols
+///
+/// The `arboard` crate handles format conversion (e.g., BGRA to RGBA on Windows)
+/// and provides a consistent `ImageData` struct across all platforms.
 #[cfg(not(target_arch = "wasm32"))]
 #[derive(Default)]
 pub struct SystemClipboard;
 
 #[cfg(not(target_arch = "wasm32"))]
 impl ClipboardProvider for SystemClipboard {
+    /// Retrieves an image from the system clipboard.
+    ///
+    /// # Platform Behavior
+    ///
+    /// - **Windows**: Reads CF_DIB or CF_DIBV5 data, converts BGRA to RGBA
+    /// - **macOS**: Reads from NSPasteboard, decodes TIFF/PNG data
+    /// - **Linux**: Reads image/png or image/bmp MIME types from X11/Wayland
+    ///
+    /// # Errors
+    ///
+    /// Returns `ClipboardError::AccessError` if:
+    /// - Clipboard is locked by another application
+    /// - No display server connection (Linux headless)
+    /// - Image data is corrupted or in unsupported format
     fn get_image(&self) -> Result<Option<ClipboardImage>, ClipboardError> {
         use arboard::Clipboard;
 

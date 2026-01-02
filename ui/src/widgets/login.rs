@@ -17,6 +17,9 @@ const STATUS_SCREEN_HEIGHT: f32 = 150.0;
 /// Fixed width for input fields to ensure proper centering
 const INPUT_FIELD_WIDTH: f32 = 200.0;
 
+/// Fixed width for labels in the login form
+const LABEL_WIDTH: f32 = 70.0;
+
 /// Calculate vertical spacing to center content on screen.
 ///
 /// Returns the amount of space to add at the top to vertically center
@@ -118,7 +121,7 @@ fn show_login_form(state_ctx: &mut StateCtx, ui: &mut Ui, error: Option<&str>) -
             }
 
             // Username input - use a sized horizontal group to ensure centering
-            let row_width = 70.0 + INPUT_FIELD_WIDTH + ui.spacing().item_spacing.x; // label width + input + spacing
+            let row_width = LABEL_WIDTH + INPUT_FIELD_WIDTH + ui.spacing().item_spacing.x;
             ui.allocate_ui_with_layout(
                 egui::vec2(row_width, ui.spacing().interact_size.y),
                 Layout::left_to_right(Align::Center),
@@ -187,6 +190,17 @@ mod login_widget_test {
 
     use crate::test_utils::TestCtx;
 
+    /// Default screen center X coordinate in egui_kittest (800.0 width / 2)
+    const TEST_SCREEN_CENTER_X: f32 = 400.0;
+
+    /// Tolerance for checking if input rows are centered
+    /// (larger because the label + input form a row)
+    const INPUT_CENTERING_TOLERANCE: f32 = 200.0;
+
+    /// Tolerance for checking if buttons are centered
+    /// (smaller because buttons should be exactly centered)
+    const BUTTON_CENTERING_TOLERANCE: f32 = 50.0;
+
     /// Tests that the username input field is horizontally centered.
     ///
     /// The input field should be centered relative to the screen width.
@@ -218,19 +232,15 @@ mod login_widget_test {
 
         let username_rect = username_rect.unwrap();
 
-        // The screen width is 800.0 by default in egui_kittest
-        let screen_center_x = 400.0;
-
         // Check that the username label's center is close to the screen center
         // We allow a tolerance since the label and input together form a row
         let label_center_x = username_rect.center().x;
 
-        // The label should be somewhat centered (within 200 pixels of center)
-        // This is a reasonable tolerance since the label + input row together should be centered
-        let distance_from_center = (label_center_x - screen_center_x).abs();
+        // The label should be somewhat centered (within tolerance)
+        let distance_from_center = (label_center_x - TEST_SCREEN_CENTER_X).abs();
         assert!(
-            distance_from_center < 200.0,
-            "Username label should be near center. Label center: {label_center_x}, screen center: {screen_center_x}, distance: {distance_from_center}"
+            distance_from_center < INPUT_CENTERING_TOLERANCE,
+            "Username label should be near center. Label center: {label_center_x}, screen center: {TEST_SCREEN_CENTER_X}, distance: {distance_from_center}"
         );
     }
 
@@ -251,14 +261,12 @@ mod login_widget_test {
 
         let otp_rect = otp_label.as_ref().map(|n| n.rect()).unwrap();
 
-        // The screen width is 800.0 by default in egui_kittest
-        let screen_center_x = 400.0;
         let label_center_x = otp_rect.center().x;
 
-        let distance_from_center = (label_center_x - screen_center_x).abs();
+        let distance_from_center = (label_center_x - TEST_SCREEN_CENTER_X).abs();
         assert!(
-            distance_from_center < 200.0,
-            "OTP label should be near center. Label center: {label_center_x}, screen center: {screen_center_x}, distance: {distance_from_center}"
+            distance_from_center < INPUT_CENTERING_TOLERANCE,
+            "OTP label should be near center. Label center: {label_center_x}, screen center: {TEST_SCREEN_CENTER_X}, distance: {distance_from_center}"
         );
     }
 
@@ -279,15 +287,13 @@ mod login_widget_test {
 
         let button_rect = login_button.as_ref().map(|n| n.rect()).unwrap();
 
-        // The screen width is 800.0 by default in egui_kittest
-        let screen_center_x = 400.0;
         let button_center_x = button_rect.center().x;
 
-        // The button should be very close to center (within 50 pixels)
-        let distance_from_center = (button_center_x - screen_center_x).abs();
+        // The button should be very close to center
+        let distance_from_center = (button_center_x - TEST_SCREEN_CENTER_X).abs();
         assert!(
-            distance_from_center < 50.0,
-            "Login button should be centered. Button center: {button_center_x}, screen center: {screen_center_x}, distance: {distance_from_center}"
+            distance_from_center < BUTTON_CENTERING_TOLERANCE,
+            "Login button should be centered. Button center: {button_center_x}, screen center: {TEST_SCREEN_CENTER_X}, distance: {distance_from_center}"
         );
     }
 }

@@ -208,7 +208,7 @@ This project has automated release pipelines for both the UI and services.
 The UI app is released automatically when the version in `ui/Cargo.toml` changes.
 
 **Version Format:**
-- Use date-based versioning: `YYYYMMDD` (e.g., `20260101`)
+- Use date-based versioning: `YYYY.M.D` (e.g., `2026.1.1`)
 - Update the `version` field in `ui/Cargo.toml`
 
 **Release Triggers:**

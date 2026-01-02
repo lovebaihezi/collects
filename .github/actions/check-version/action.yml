@@ -24,22 +24,18 @@ runs:
       run: |
         CARGO_TOML_PATH="${{ inputs.cargo-toml-path }}"
         
-        if [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" == "refs/heads/main" ]]; then
-          CURRENT_VERSION=$(grep '^version = ' "$CARGO_TOML_PATH" | head -1 | sed 's/version = [\"'\'']\([^\"'\'']*\)[\"'\'']/\1/')
-          PREVIOUS_VERSION=$(git show HEAD^:"$CARGO_TOML_PATH" 2>/dev/null | grep '^version = ' | head -1 | sed 's/version = [\"'\'']\([^\"'\'']*\)[\"'\'']/\1/' || echo "")
-          
-          echo "Current version: $CURRENT_VERSION"
-          echo "Previous version: $PREVIOUS_VERSION"
-          echo "current_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
-          echo "previous_version=$PREVIOUS_VERSION" >> $GITHUB_OUTPUT
-          
-          if [[ "$CURRENT_VERSION" != "$PREVIOUS_VERSION" && -n "$PREVIOUS_VERSION" ]]; then
-            echo "version_changed=true" >> $GITHUB_OUTPUT
-          else
-            echo "version_changed=false" >> $GITHUB_OUTPUT
-          fi
+        # This action expects to be called only when version checking is needed
+        # The caller should ensure we're on the correct ref (e.g., main branch for push events)
+        CURRENT_VERSION=$(grep '^version = ' "$CARGO_TOML_PATH" | head -1 | sed 's/version = [\"'\'']\([^\"'\'']*\)[\"'\'']/\1/')
+        PREVIOUS_VERSION=$(git show HEAD^:"$CARGO_TOML_PATH" 2>/dev/null | grep '^version = ' | head -1 | sed 's/version = [\"'\'']\([^\"'\'']*\)[\"'\'']/\1/' || echo "")
+        
+        echo "Current version: $CURRENT_VERSION"
+        echo "Previous version: $PREVIOUS_VERSION"
+        echo "current_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+        echo "previous_version=$PREVIOUS_VERSION" >> $GITHUB_OUTPUT
+        
+        if [[ "$CURRENT_VERSION" != "$PREVIOUS_VERSION" && -n "$PREVIOUS_VERSION" ]]; then
+          echo "version_changed=true" >> $GITHUB_OUTPUT
         else
           echo "version_changed=false" >> $GITHUB_OUTPUT
-          echo "current_version=" >> $GITHUB_OUTPUT
-          echo "previous_version=" >> $GITHUB_OUTPUT
         fi

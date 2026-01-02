@@ -29,6 +29,7 @@ env_logger = "0.11.8"
 mimalloc = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 reqwest = { workspace = true, default-features = true }
+arboard = "3.6"
 
 # web:
 [target.'cfg(target_arch = "wasm32")'.dependencies]

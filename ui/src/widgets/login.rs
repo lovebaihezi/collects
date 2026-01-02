@@ -8,6 +8,21 @@ use collects_business::{AuthCompute, AuthStatus, LoginCommand, LoginInput};
 use collects_states::StateCtx;
 use egui::{Align, Layout, Response, RichText, Ui};
 
+/// Estimated height of the login form (heading + fields + button + spacing)
+const LOGIN_FORM_HEIGHT: f32 = 250.0;
+
+/// Estimated height of status screens (signed-in header, loading state)
+const STATUS_SCREEN_HEIGHT: f32 = 150.0;
+
+/// Calculate vertical spacing to center content on screen.
+///
+/// Returns the amount of space to add at the top to vertically center
+/// content with the given estimated height.
+fn calculate_vertical_centering(ui: &Ui, estimated_content_height: f32) -> f32 {
+    let available_height = ui.available_height();
+    (available_height - estimated_content_height).max(0.0) / 2.0
+}
+
 /// Displays the login form or signed-in status based on authentication state.
 pub fn login_widget(state_ctx: &mut StateCtx, ui: &mut Ui) -> Response {
     // Get current auth status
@@ -41,8 +56,12 @@ pub fn login_widget(state_ctx: &mut StateCtx, ui: &mut Ui) -> Response {
 /// This can be used both by the login widget and by other parts of the app
 /// that need to display the signed-in header.
 pub fn show_signed_in_header(ui: &mut Ui, username: &str) -> Response {
+    let top_spacing = calculate_vertical_centering(ui, STATUS_SCREEN_HEIGHT);
+
     ui.with_layout(Layout::top_down(Align::Center), |ui| {
-        ui.add_space(20.0);
+        // Add vertical spacing to center the content
+        ui.add_space(top_spacing);
+
         ui.heading("Collects App");
         ui.add_space(40.0);
 
@@ -55,8 +74,12 @@ pub fn show_signed_in_header(ui: &mut Ui, username: &str) -> Response {
 
 /// Shows the loading state during authentication.
 fn show_loading(ui: &mut Ui) -> Response {
+    let top_spacing = calculate_vertical_centering(ui, STATUS_SCREEN_HEIGHT);
+
     ui.with_layout(Layout::top_down(Align::Center), |ui| {
-        ui.add_space(20.0);
+        // Add vertical spacing to center the content
+        ui.add_space(top_spacing);
+
         ui.heading("Collects App");
         ui.add_space(40.0);
 
@@ -75,9 +98,13 @@ fn show_login_form(state_ctx: &mut StateCtx, ui: &mut Ui, error: Option<&str>) -
     let mut otp = login_input.otp.clone();
     let mut should_login = false;
 
+    let top_spacing = calculate_vertical_centering(ui, LOGIN_FORM_HEIGHT);
+
     let response = ui
         .with_layout(Layout::top_down(Align::Center), |ui| {
-            ui.add_space(20.0);
+            // Add vertical spacing to center the form
+            ui.add_space(top_spacing);
+
             ui.heading("Collects App");
             ui.add_space(40.0);
 

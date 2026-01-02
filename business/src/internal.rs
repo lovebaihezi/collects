@@ -21,6 +21,8 @@ pub struct InternalUserItem {
     pub username: String,
     /// The current OTP code for this user.
     pub current_otp: String,
+    /// Seconds remaining until the OTP code expires (1-30).
+    pub time_remaining: u8,
 }
 
 /// Response from listing internal users.
@@ -55,6 +57,8 @@ pub struct GetUserResponse {
     pub username: String,
     /// The current OTP code for this user.
     pub current_otp: String,
+    /// Seconds remaining until the OTP code expires (1-30).
+    pub time_remaining: u8,
     /// The otpauth URL for QR code generation.
     pub otpauth_url: String,
 }

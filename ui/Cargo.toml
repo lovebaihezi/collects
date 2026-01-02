@@ -1,6 +1,6 @@
 [package]
 name = "collects-ui"
-version = "2026.1.1"
+version = "0.20260101.0"
 authors = ["BoWen Chai <chaibowen.i@gmail.com>"]
 edition = "2024"
 license = "MIT"

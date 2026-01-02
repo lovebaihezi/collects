@@ -1086,7 +1086,7 @@ dependencies = [
 
 [[package]]
 name = "collects-ui"
-version = "2026.1.1"
+version = "0.20260101.0"
 dependencies = [
  "arboard",
  "chrono",

@@ -184,7 +184,10 @@ fn show_login_form(state_ctx: &mut StateCtx, ui: &mut Ui, error: Option<&str>) -
     response
 }
 
+/// Tests for login form positioning (only for non-internal builds).
+/// Internal builds use Zero Trust authentication and skip the login form.
 #[cfg(test)]
+#[cfg(not(any(feature = "env_internal", feature = "env_test_internal")))]
 mod login_widget_test {
     use kittest::Queryable;
 
@@ -294,6 +297,112 @@ mod login_widget_test {
         assert!(
             distance_from_center < BUTTON_CENTERING_TOLERANCE,
             "Login button should be centered. Button center: {button_center_x}, screen center: {TEST_SCREEN_CENTER_X}, distance: {distance_from_center}"
+        );
+    }
+}
+
+/// Tests for Zero Trust authentication behavior.
+#[cfg(test)]
+mod login_widget_zero_trust_tests {
+    use super::*;
+    use collects_business::AuthStatus;
+    use collects_states::StateCtx;
+    use egui_kittest::Harness;
+    use kittest::Queryable;
+
+    /// Helper to create a StateCtx with authentication status.
+    fn create_state_ctx_with_auth(status: AuthStatus) -> StateCtx {
+        let mut ctx = StateCtx::new();
+        ctx.add_state(LoginInput::default());
+        ctx.record_compute(AuthCompute { status });
+        ctx
+    }
+
+    #[test]
+    fn test_login_widget_shows_form_when_not_authenticated() {
+        let ctx = create_state_ctx_with_auth(AuthStatus::NotAuthenticated);
+
+        let harness = Harness::new_ui_state(
+            |ui, state_ctx| {
+                login_widget(state_ctx, ui);
+            },
+            ctx,
+        );
+
+        // The login form should show username and OTP fields
+        assert!(
+            harness.query_by_label_contains("Username").is_some(),
+            "Username field should be visible when not authenticated"
+        );
+        assert!(
+            harness.query_by_label_contains("OTP Code").is_some(),
+            "OTP Code field should be visible when not authenticated"
+        );
+        assert!(
+            harness.query_by_label_contains("Login").is_some(),
+            "Login button should be visible when not authenticated"
+        );
+    }
+
+    #[test]
+    fn test_login_widget_shows_signed_in_when_authenticated() {
+        let ctx = create_state_ctx_with_auth(AuthStatus::Authenticated {
+            username: "Test User".to_string(),
+            token: None,
+        });
+
+        let harness = Harness::new_ui_state(
+            |ui, state_ctx| {
+                login_widget(state_ctx, ui);
+            },
+            ctx,
+        );
+
+        // The signed-in status should show the username
+        assert!(
+            harness.query_by_label_contains("Welcome").is_some(),
+            "Welcome message should be visible when authenticated"
+        );
+        assert!(
+            harness.query_by_label_contains("Signed").is_some(),
+            "Signed status should be visible when authenticated"
+        );
+        // Login form elements should NOT be visible
+        assert!(
+            harness.query_by_label_contains("OTP Code").is_none(),
+            "OTP Code field should NOT be visible when authenticated"
+        );
+    }
+
+    #[test]
+    fn test_login_widget_zero_trust_authenticated_skips_login_form() {
+        // Simulates the Zero Trust authentication scenario where users
+        // are already authenticated via Cloudflare Access
+        let auth_compute = AuthCompute::zero_trust_authenticated();
+        let mut ctx = StateCtx::new();
+        ctx.add_state(LoginInput::default());
+        ctx.record_compute(auth_compute);
+
+        let harness = Harness::new_ui_state(
+            |ui, state_ctx| {
+                login_widget(state_ctx, ui);
+            },
+            ctx,
+        );
+
+        // Should show signed-in status for Zero Trust user
+        assert!(
+            harness.query_by_label_contains("Welcome").is_some(),
+            "Welcome message should be visible for Zero Trust authenticated user"
+        );
+        assert!(
+            harness.query_by_label_contains("Zero Trust User").is_some(),
+            "Zero Trust User name should be displayed"
+        );
+        // Login form elements should NOT be visible
+        assert!(
+            harness.query_by_label_contains("OTP Code").is_none(),
+            "Login form should NOT be visible for Zero Trust authenticated user"
         );
     }
 }

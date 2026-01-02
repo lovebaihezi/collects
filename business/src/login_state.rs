@@ -95,6 +95,19 @@ impl AuthCompute {
     pub fn token(&self) -> Option<&str> {
         self.status.token()
     }
+
+    /// Create an authenticated `AuthCompute` for Zero Trust environments.
+    ///
+    /// In internal builds, users are authenticated via Cloudflare Zero Trust,
+    /// so we skip the login page and treat them as authenticated.
+    pub fn zero_trust_authenticated() -> Self {
+        Self {
+            status: AuthStatus::Authenticated {
+                username: "Zero Trust User".to_string(),
+                token: None,
+            },
+        }
+    }
 }
 
 impl Compute for AuthCompute {
@@ -185,5 +198,49 @@ impl Command for LogoutCommand {
         updater.set(AuthCompute {
             status: AuthStatus::NotAuthenticated,
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_zero_trust_authenticated_creates_authenticated_status() {
+        let auth = AuthCompute::zero_trust_authenticated();
+        
+        assert!(auth.is_authenticated(), "Zero Trust auth should be authenticated");
+        assert_eq!(auth.username(), Some("Zero Trust User"));
+        assert_eq!(auth.token(), None, "Zero Trust auth has no token (handled by CF)");
+    }
+
+    #[test]
+    fn test_auth_compute_default_is_not_authenticated() {
+        let auth = AuthCompute::default();
+        
+        assert!(!auth.is_authenticated(), "Default auth should not be authenticated");
+        assert_eq!(auth.username(), None);
+        assert_eq!(auth.token(), None);
+    }
+
+    #[test]
+    fn test_auth_status_authenticated() {
+        let status = AuthStatus::Authenticated {
+            username: "test_user".to_string(),
+            token: Some("test_token".to_string()),
+        };
+        
+        assert!(status.is_authenticated());
+        assert_eq!(status.username(), Some("test_user"));
+        assert_eq!(status.token(), Some("test_token"));
+    }
+
+    #[test]
+    fn test_auth_status_not_authenticated() {
+        let status = AuthStatus::NotAuthenticated;
+        
+        assert!(!status.is_authenticated());
+        assert_eq!(status.username(), None);
+        assert_eq!(status.token(), None);
     }
 }

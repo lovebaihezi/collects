@@ -33,14 +33,14 @@ impl Default for State {
 
         // Add login states and commands
         ctx.add_state(LoginInput::default());
-        
+
         // For internal builds, use Zero Trust authentication (skip login page)
         // For other builds, use default (not authenticated)
         #[cfg(any(feature = "env_internal", feature = "env_test_internal"))]
         ctx.record_compute(AuthCompute::zero_trust_authenticated());
         #[cfg(not(any(feature = "env_internal", feature = "env_test_internal")))]
         ctx.record_compute(AuthCompute::default());
-        
+
         ctx.record_command(LoginCommand);
         ctx.record_command(LogoutCommand);
 
@@ -77,14 +77,14 @@ impl State {
 
         // Add login states and commands
         ctx.add_state(LoginInput::default());
-        
+
         // For internal builds, use Zero Trust authentication (skip login page)
         // For other builds, use default (not authenticated)
         #[cfg(any(feature = "env_internal", feature = "env_test_internal"))]
         ctx.record_compute(AuthCompute::zero_trust_authenticated());
         #[cfg(not(any(feature = "env_internal", feature = "env_test_internal")))]
         ctx.record_compute(AuthCompute::default());
-        
+
         ctx.record_command(LoginCommand);
         ctx.record_command(LogoutCommand);
 

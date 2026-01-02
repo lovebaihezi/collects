@@ -208,17 +208,27 @@ mod tests {
     #[test]
     fn test_zero_trust_authenticated_creates_authenticated_status() {
         let auth = AuthCompute::zero_trust_authenticated();
-        
-        assert!(auth.is_authenticated(), "Zero Trust auth should be authenticated");
+
+        assert!(
+            auth.is_authenticated(),
+            "Zero Trust auth should be authenticated"
+        );
         assert_eq!(auth.username(), Some("Zero Trust User"));
-        assert_eq!(auth.token(), None, "Zero Trust auth has no token (handled by CF)");
+        assert_eq!(
+            auth.token(),
+            None,
+            "Zero Trust auth has no token (handled by CF)"
+        );
     }
 
     #[test]
     fn test_auth_compute_default_is_not_authenticated() {
         let auth = AuthCompute::default();
-        
-        assert!(!auth.is_authenticated(), "Default auth should not be authenticated");
+
+        assert!(
+            !auth.is_authenticated(),
+            "Default auth should not be authenticated"
+        );
         assert_eq!(auth.username(), None);
         assert_eq!(auth.token(), None);
     }
@@ -229,7 +239,7 @@ mod tests {
             username: "test_user".to_string(),
             token: Some("test_token".to_string()),
         };
-        
+
         assert!(status.is_authenticated());
         assert_eq!(status.username(), Some("test_user"));
         assert_eq!(status.token(), Some("test_token"));
@@ -238,7 +248,7 @@ mod tests {
     #[test]
     fn test_auth_status_not_authenticated() {
         let status = AuthStatus::NotAuthenticated;
-        
+
         assert!(!status.is_authenticated());
         assert_eq!(status.username(), None);
         assert_eq!(status.token(), None);

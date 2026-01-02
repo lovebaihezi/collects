@@ -182,7 +182,7 @@ mod login_widget_tests {
     #[test]
     fn test_login_widget_shows_form_when_not_authenticated() {
         let ctx = create_state_ctx_with_auth(AuthStatus::NotAuthenticated);
-        
+
         let harness = Harness::new_ui_state(
             |ui, state_ctx| {
                 login_widget(state_ctx, ui);
@@ -211,7 +211,7 @@ mod login_widget_tests {
             username: "Test User".to_string(),
             token: None,
         });
-        
+
         let harness = Harness::new_ui_state(
             |ui, state_ctx| {
                 login_widget(state_ctx, ui);
@@ -243,7 +243,7 @@ mod login_widget_tests {
         let mut ctx = StateCtx::new();
         ctx.add_state(LoginInput::default());
         ctx.record_compute(auth_compute);
-        
+
         let harness = Harness::new_ui_state(
             |ui, state_ctx| {
                 login_widget(state_ctx, ui);

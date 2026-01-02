@@ -14,6 +14,9 @@ const LOGIN_FORM_HEIGHT: f32 = 250.0;
 /// Estimated height of status screens (signed-in header, loading state)
 const STATUS_SCREEN_HEIGHT: f32 = 150.0;
 
+/// Fixed width for input fields to ensure proper centering
+const INPUT_FIELD_WIDTH: f32 = 200.0;
+
 /// Calculate vertical spacing to center content on screen.
 ///
 /// Returns the amount of space to add at the top to vertically center
@@ -114,24 +117,39 @@ fn show_login_form(state_ctx: &mut StateCtx, ui: &mut Ui, error: Option<&str>) -
                 ui.add_space(8.0);
             }
 
-            // Username input
-            ui.horizontal(|ui| {
-                ui.label("Username:");
-                ui.text_edit_singleline(&mut username);
-            });
+            // Username input - use a sized horizontal group to ensure centering
+            let row_width = 70.0 + INPUT_FIELD_WIDTH + ui.spacing().item_spacing.x; // label width + input + spacing
+            ui.allocate_ui_with_layout(
+                egui::vec2(row_width, ui.spacing().interact_size.y),
+                Layout::left_to_right(Align::Center),
+                |ui| {
+                    ui.label("Username:");
+                    ui.add(
+                        egui::TextEdit::singleline(&mut username).desired_width(INPUT_FIELD_WIDTH),
+                    );
+                },
+            );
 
             ui.add_space(8.0);
 
-            // OTP input
-            ui.horizontal(|ui| {
-                ui.label("OTP Code:");
-                let otp_response = ui.text_edit_singleline(&mut otp);
+            // OTP input - use a sized horizontal group to ensure centering
+            let otp_response = ui
+                .allocate_ui_with_layout(
+                    egui::vec2(row_width, ui.spacing().interact_size.y),
+                    Layout::left_to_right(Align::Center),
+                    |ui| {
+                        ui.label("OTP Code:");
+                        ui.add(
+                            egui::TextEdit::singleline(&mut otp).desired_width(INPUT_FIELD_WIDTH),
+                        )
+                    },
+                )
+                .inner;
 
-                // Check for Enter key press
-                if otp_response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-                    should_login = true;
-                }
-            });
+            // Check for Enter key press
+            if otp_response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                should_login = true;
+            }
 
             ui.add_space(16.0);
 
@@ -161,4 +179,115 @@ fn show_login_form(state_ctx: &mut StateCtx, ui: &mut Ui, error: Option<&str>) -
     }
 
     response
+}
+
+#[cfg(test)]
+mod login_widget_test {
+    use kittest::Queryable;
+
+    use crate::test_utils::TestCtx;
+
+    /// Tests that the username input field is horizontally centered.
+    ///
+    /// The input field should be centered relative to the screen width.
+    /// This test verifies that the center of the username row is close to
+    /// the horizontal center of the available area.
+    #[tokio::test]
+    async fn test_username_input_is_centered() {
+        let mut ctx = TestCtx::new(|ui, state| {
+            super::login_widget(&mut state.ctx, ui);
+        })
+        .await;
+
+        let harness = ctx.harness_mut();
+        harness.step();
+
+        // Find the username label
+        let username_label = harness.query_by_label_contains("Username");
+        assert!(
+            username_label.is_some(),
+            "Username label should be displayed"
+        );
+
+        // Get the rect of the username label
+        let username_rect = username_label.as_ref().map(|n| n.rect());
+        assert!(
+            username_rect.is_some(),
+            "Username label should have a bounding rect"
+        );
+
+        let username_rect = username_rect.unwrap();
+
+        // The screen width is 800.0 by default in egui_kittest
+        let screen_center_x = 400.0;
+
+        // Check that the username label's center is close to the screen center
+        // We allow a tolerance since the label and input together form a row
+        let label_center_x = username_rect.center().x;
+
+        // The label should be somewhat centered (within 200 pixels of center)
+        // This is a reasonable tolerance since the label + input row together should be centered
+        let distance_from_center = (label_center_x - screen_center_x).abs();
+        assert!(
+            distance_from_center < 200.0,
+            "Username label should be near center. Label center: {label_center_x}, screen center: {screen_center_x}, distance: {distance_from_center}"
+        );
+    }
+
+    /// Tests that the OTP input field is horizontally centered.
+    #[tokio::test]
+    async fn test_otp_input_is_centered() {
+        let mut ctx = TestCtx::new(|ui, state| {
+            super::login_widget(&mut state.ctx, ui);
+        })
+        .await;
+
+        let harness = ctx.harness_mut();
+        harness.step();
+
+        // Find the OTP label
+        let otp_label = harness.query_by_label_contains("OTP Code");
+        assert!(otp_label.is_some(), "OTP Code label should be displayed");
+
+        let otp_rect = otp_label.as_ref().map(|n| n.rect()).unwrap();
+
+        // The screen width is 800.0 by default in egui_kittest
+        let screen_center_x = 400.0;
+        let label_center_x = otp_rect.center().x;
+
+        let distance_from_center = (label_center_x - screen_center_x).abs();
+        assert!(
+            distance_from_center < 200.0,
+            "OTP label should be near center. Label center: {label_center_x}, screen center: {screen_center_x}, distance: {distance_from_center}"
+        );
+    }
+
+    /// Tests that the Login button is horizontally centered.
+    #[tokio::test]
+    async fn test_login_button_is_centered() {
+        let mut ctx = TestCtx::new(|ui, state| {
+            super::login_widget(&mut state.ctx, ui);
+        })
+        .await;
+
+        let harness = ctx.harness_mut();
+        harness.step();
+
+        // Find the Login button
+        let login_button = harness.query_by_label_contains("Login");
+        assert!(login_button.is_some(), "Login button should be displayed");
+
+        let button_rect = login_button.as_ref().map(|n| n.rect()).unwrap();
+
+        // The screen width is 800.0 by default in egui_kittest
+        let screen_center_x = 400.0;
+        let button_center_x = button_rect.center().x;
+
+        // The button should be very close to center (within 50 pixels)
+        let distance_from_center = (button_center_x - screen_center_x).abs();
+        assert!(
+            distance_from_center < 50.0,
+            "Login button should be centered. Button center: {button_center_x}, screen center: {screen_center_x}, distance: {distance_from_center}"
+        );
+    }
 }

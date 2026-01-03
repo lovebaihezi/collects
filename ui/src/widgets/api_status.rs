@@ -18,7 +18,7 @@ fn ui_version() -> &'static str {
 
 fn format_tooltip(status: &str, service_version: Option<&str>) -> String {
     let ui_ver = ui_version();
-    
+
     match service_version {
         Some(v) => format!("UI: {ui_ver}\nService: {status}:{v}"),
         None => format!("UI: {ui_ver}\nService: {status}"),
@@ -32,7 +32,7 @@ fn status_dot(ui: &mut Ui, tooltip_text: String, dot_color: Color32) -> Response
         egui::vec2(STATUS_DOT_RADIUS * 2.0, STATUS_DOT_RADIUS * 2.0),
         egui::Sense::hover(),
     );
-    
+
     // Draw the circle
     let center = rect.center();
     ui.painter().circle(
@@ -41,7 +41,7 @@ fn status_dot(ui: &mut Ui, tooltip_text: String, dot_color: Color32) -> Response
         dot_color,
         egui::Stroke::NONE,
     );
-    
+
     response.on_hover_text(tooltip_text)
 }
 

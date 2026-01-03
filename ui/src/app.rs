@@ -40,11 +40,7 @@ impl eframe::App for CollectsApp {
 
         // Poll for async responses (internal builds only)
         #[cfg(any(feature = "env_internal", feature = "env_test_internal"))]
-        widgets::poll_internal_users_responses(
-            &mut self.state.internal_users,
-            &self.state.ctx,
-            ctx,
-        );
+        widgets::poll_internal_users_responses(&mut self.state.ctx, ctx);
 
         // Update route based on authentication state
         self.update_route();

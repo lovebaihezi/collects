@@ -2,7 +2,9 @@
 
 use chrono::{DateTime, Utc};
 use collects_business::InternalUserItem;
+use collects_states::State;
 use egui::TextureHandle;
+use std::any::Any;
 use std::collections::HashMap;
 
 /// Action type for user management.
@@ -22,6 +24,8 @@ pub enum UserAction {
 }
 
 /// State for the internal users panel.
+///
+/// This state is stored in `StateCtx` and can be accessed via `state_mut::<InternalUsersState>()`.
 #[derive(Default)]
 pub struct InternalUsersState {
     /// List of users fetched from the API.
@@ -50,6 +54,32 @@ pub struct InternalUsersState {
     pub(crate) action_error: Option<String>,
     /// QR code data for display (otpauth URL).
     pub(crate) qr_code_data: Option<String>,
+}
+
+impl std::fmt::Debug for InternalUsersState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("InternalUsersState")
+            .field("users", &self.users)
+            .field("revealed_otps", &self.revealed_otps)
+            .field("is_fetching", &self.is_fetching)
+            .field("error", &self.error)
+            .field("last_fetch", &self.last_fetch)
+            .field("create_modal_open", &self.create_modal_open)
+            .field("new_username", &self.new_username)
+            .field("qr_texture", &self.qr_texture.is_some())
+            .field("current_action", &self.current_action)
+            .field("edit_username_input", &self.edit_username_input)
+            .field("action_in_progress", &self.action_in_progress)
+            .field("action_error", &self.action_error)
+            .field("qr_code_data", &self.qr_code_data)
+            .finish()
+    }
+}
+
+impl State for InternalUsersState {
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
 }
 
 impl InternalUsersState {

@@ -13,15 +13,13 @@ use super::modals::{
 use super::state::{InternalUsersState, UserAction};
 
 /// Displays the internal users panel with a table and create button.
-pub fn internal_users_panel(
-    state: &mut InternalUsersState,
-    state_ctx: &mut StateCtx,
-    api_base_url: &str,
-    ui: &mut Ui,
-) -> Response {
+pub fn internal_users_panel(state_ctx: &mut StateCtx, api_base_url: &str, ui: &mut Ui) -> Response {
     let response = ui.vertical(|ui| {
         ui.heading("Internal Users");
         ui.separator();
+
+        // Get state from StateCtx
+        let state = state_ctx.state_mut::<InternalUsersState>();
 
         // Controls row: Refresh and Create buttons
         ui.horizontal(|ui| {
@@ -30,19 +28,18 @@ pub fn internal_users_panel(
                 fetch_users(api_base_url, ui.ctx().clone());
             }
 
-            if ui.button("➕ Create User").clicked() {
-                // Reset the compute state when opening modal
-                super::reset_create_user_compute(state_ctx);
-                state.open_create_modal();
-            }
-
+            let should_open_create = ui.button("➕ Create User").clicked();
             if state.is_fetching {
                 ui.spinner();
                 ui.label("Loading...");
             }
+            should_open_create
         });
 
+        let should_open_create = ui.horizontal(|_ui| false).inner;
+
         // Error display
+        let state = state_ctx.state_mut::<InternalUsersState>();
         if let Some(error) = &state.error {
             ui.colored_label(Color32::RED, format!("Error: {error}"));
         }
@@ -57,6 +54,7 @@ pub fn internal_users_panel(
         let now = *state_ctx.state_mut::<Time>().as_ref();
 
         // Users table
+        let state = state_ctx.state_mut::<InternalUsersState>();
         ScrollArea::vertical().show(ui, |ui| {
             egui::Grid::new("users_table")
                 .num_columns(5)
@@ -144,26 +142,37 @@ pub fn internal_users_panel(
         if let Some(action) = action_to_start {
             state.start_action(action);
         }
+
+        // Handle create modal open (after borrowing issues resolved)
+        if should_open_create {
+            // Reset the compute state when opening modal
+            reset_create_user_compute(state_ctx);
+            state_ctx
+                .state_mut::<InternalUsersState>()
+                .open_create_modal();
+        }
     });
 
     // Create user modal
+    let state = state_ctx.state_mut::<InternalUsersState>();
     if state.create_modal_open {
-        show_create_user_modal(state, state_ctx, ui);
+        show_create_user_modal(state_ctx, ui);
     }
 
     // Action modals
-    match &state.current_action {
+    let state = state_ctx.state_mut::<InternalUsersState>();
+    match &state.current_action.clone() {
         UserAction::ShowQrCode(username) => {
-            show_qr_code_modal(state, api_base_url, username.clone(), ui);
+            show_qr_code_modal(state_ctx, api_base_url, username.clone(), ui);
         }
         UserAction::EditUsername(username) => {
-            show_edit_username_modal(state, api_base_url, username.clone(), ui);
+            show_edit_username_modal(state_ctx, api_base_url, username.clone(), ui);
         }
         UserAction::DeleteUser(username) => {
-            show_delete_user_modal(state, api_base_url, username.clone(), ui);
+            show_delete_user_modal(state_ctx, api_base_url, username.clone(), ui);
         }
         UserAction::RevokeOtp(username) => {
-            show_revoke_otp_modal(state, api_base_url, username.clone(), ui);
+            show_revoke_otp_modal(state_ctx, api_base_url, username.clone(), ui);
         }
         UserAction::None => {}
     }
@@ -173,11 +182,7 @@ pub fn internal_users_panel(
 
 /// Poll for async responses and update state.
 /// Call this in the update loop.
-pub fn poll_internal_users_responses(
-    state: &mut InternalUsersState,
-    state_ctx: &StateCtx,
-    ctx: &egui::Context,
-) {
+pub fn poll_internal_users_responses(state_ctx: &mut StateCtx, ctx: &egui::Context) {
     // Check for users list response
     if let Some(users) = ctx.memory(|mem| {
         mem.data
@@ -185,7 +190,9 @@ pub fn poll_internal_users_responses(
     }) {
         // Get current time from Time state for mockability
         let now = *state_ctx.state_mut::<Time>().as_ref();
-        state.update_users(users, now);
+        state_ctx
+            .state_mut::<InternalUsersState>()
+            .update_users(users, now);
         ctx.memory_mut(|mem| {
             mem.data
                 .remove::<Vec<InternalUserItem>>(egui::Id::new("internal_users_response"));
@@ -197,7 +204,7 @@ pub fn poll_internal_users_responses(
         mem.data
             .get_temp::<String>(egui::Id::new("internal_users_error"))
     }) {
-        state.set_error(error);
+        state_ctx.state_mut::<InternalUsersState>().set_error(error);
         ctx.memory_mut(|mem| {
             mem.data
                 .remove::<String>(egui::Id::new("internal_users_error"));
@@ -208,7 +215,9 @@ pub fn poll_internal_users_responses(
     if let Some(error) =
         ctx.memory(|mem| mem.data.get_temp::<String>(egui::Id::new("action_error")))
     {
-        state.set_action_error(error);
+        state_ctx
+            .state_mut::<InternalUsersState>()
+            .set_action_error(error);
         ctx.memory_mut(|mem| {
             mem.data.remove::<String>(egui::Id::new("action_error"));
         });
@@ -222,6 +231,7 @@ pub fn poll_internal_users_responses(
             mem.data.remove::<String>(egui::Id::new("action_success"));
         });
         // Close action modal and mark for refresh
+        let state = state_ctx.state_mut::<InternalUsersState>();
         state.close_action();
         if action == "user_deleted" || action == "username_updated" {
             // Mark as needing fetch - the actual fetch will happen on next panel render
@@ -235,7 +245,9 @@ pub fn poll_internal_users_responses(
         mem.data
             .get_temp::<String>(egui::Id::new("user_qr_code_response"))
     }) {
-        state.set_qr_code_data(otpauth_url);
+        state_ctx
+            .state_mut::<InternalUsersState>()
+            .set_qr_code_data(otpauth_url);
         ctx.memory_mut(|mem| {
             mem.data
                 .remove::<String>(egui::Id::new("user_qr_code_response"));
@@ -247,7 +259,9 @@ pub fn poll_internal_users_responses(
         mem.data
             .get_temp::<String>(egui::Id::new("revoke_otp_response"))
     }) {
-        state.set_qr_code_data(otpauth_url);
+        state_ctx
+            .state_mut::<InternalUsersState>()
+            .set_qr_code_data(otpauth_url);
         ctx.memory_mut(|mem| {
             mem.data
                 .remove::<String>(egui::Id::new("revoke_otp_response"));

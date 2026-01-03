@@ -9,7 +9,7 @@ use chrono::Duration;
 use collects_business::{BusinessConfig, InternalUserItem};
 use collects_states::Time;
 use collects_ui::state::State;
-use collects_ui::widgets::internal_users_panel;
+use collects_ui::widgets::{InternalUsersState, internal_users_panel};
 use egui_kittest::Harness;
 use kittest::Queryable;
 use wiremock::matchers::{method, path};
@@ -103,7 +103,7 @@ async fn test_otp_time_remaining_updates_with_time() {
                 .state_mut::<BusinessConfig>()
                 .api_url()
                 .to_string();
-            internal_users_panel(&mut state.internal_users, &mut state.ctx, &api_base_url, ui);
+            internal_users_panel(&mut state.ctx, &api_base_url, ui);
         },
         vec![test_user.clone()],
     )
@@ -115,7 +115,8 @@ async fn test_otp_time_remaining_updates_with_time() {
     let now = get_current_time(harness);
     harness
         .state_mut()
-        .internal_users
+        .ctx
+        .state_mut::<InternalUsersState>()
         .update_users(vec![test_user], now);
 
     // Render the widget
@@ -154,7 +155,7 @@ async fn test_otp_time_remaining_wraps_after_30_seconds() {
                 .state_mut::<BusinessConfig>()
                 .api_url()
                 .to_string();
-            internal_users_panel(&mut state.internal_users, &mut state.ctx, &api_base_url, ui);
+            internal_users_panel(&mut state.ctx, &api_base_url, ui);
         },
         vec![test_user.clone()],
     )
@@ -166,7 +167,8 @@ async fn test_otp_time_remaining_wraps_after_30_seconds() {
     let now = get_current_time(harness);
     harness
         .state_mut()
-        .internal_users
+        .ctx
+        .state_mut::<InternalUsersState>()
         .update_users(vec![test_user], now);
 
     // Render the widget
@@ -205,7 +207,7 @@ async fn test_otp_time_remaining_color_changes() {
                 .state_mut::<BusinessConfig>()
                 .api_url()
                 .to_string();
-            internal_users_panel(&mut state.internal_users, &mut state.ctx, &api_base_url, ui);
+            internal_users_panel(&mut state.ctx, &api_base_url, ui);
         },
         vec![test_user.clone()],
     )
@@ -217,7 +219,8 @@ async fn test_otp_time_remaining_color_changes() {
     let now = get_current_time(harness);
     harness
         .state_mut()
-        .internal_users
+        .ctx
+        .state_mut::<InternalUsersState>()
         .update_users(vec![test_user], now);
 
     // Render the widget

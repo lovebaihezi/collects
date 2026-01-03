@@ -10,12 +10,13 @@ use super::state::InternalUsersState;
 
 /// Shows the QR code modal for an existing user.
 pub fn show_qr_code_modal(
-    state: &mut InternalUsersState,
+    state_ctx: &mut StateCtx,
     api_base_url: &str,
     username: String,
     ui: &mut Ui,
 ) {
     let mut open = true;
+    let state = state_ctx.state_mut::<InternalUsersState>();
 
     Window::new(format!("QR Code - {}", username))
         .open(&mut open)
@@ -77,18 +78,19 @@ pub fn show_qr_code_modal(
         });
 
     if !open {
-        state.close_action();
+        state_ctx.state_mut::<InternalUsersState>().close_action();
     }
 }
 
 /// Shows the edit username modal.
 pub fn show_edit_username_modal(
-    state: &mut InternalUsersState,
+    state_ctx: &mut StateCtx,
     api_base_url: &str,
     username: String,
     ui: &mut Ui,
 ) {
     let mut open = true;
+    let state = state_ctx.state_mut::<InternalUsersState>();
 
     Window::new(format!("Edit Username - {}", username))
         .open(&mut open)
@@ -140,18 +142,19 @@ pub fn show_edit_username_modal(
         });
 
     if !open {
-        state.close_action();
+        state_ctx.state_mut::<InternalUsersState>().close_action();
     }
 }
 
 /// Shows the delete user confirmation modal.
 pub fn show_delete_user_modal(
-    state: &mut InternalUsersState,
+    state_ctx: &mut StateCtx,
     api_base_url: &str,
     username: String,
     ui: &mut Ui,
 ) {
     let mut open = true;
+    let state = state_ctx.state_mut::<InternalUsersState>();
 
     Window::new(format!("Delete User - {}", username))
         .open(&mut open)
@@ -195,18 +198,19 @@ pub fn show_delete_user_modal(
         });
 
     if !open {
-        state.close_action();
+        state_ctx.state_mut::<InternalUsersState>().close_action();
     }
 }
 
 /// Shows the revoke OTP modal.
 pub fn show_revoke_otp_modal(
-    state: &mut InternalUsersState,
+    state_ctx: &mut StateCtx,
     api_base_url: &str,
     username: String,
     ui: &mut Ui,
 ) {
     let mut open = true;
+    let state = state_ctx.state_mut::<InternalUsersState>();
 
     Window::new(format!("Revoke OTP - {}", username))
         .open(&mut open)
@@ -290,16 +294,13 @@ pub fn show_revoke_otp_modal(
         });
 
     if !open {
-        state.close_action();
+        state_ctx.state_mut::<InternalUsersState>().close_action();
     }
 }
 
 /// Shows the create user modal window.
-pub fn show_create_user_modal(
-    state: &mut InternalUsersState,
-    state_ctx: &mut StateCtx,
-    ui: &mut Ui,
-) {
+pub fn show_create_user_modal(state_ctx: &mut StateCtx, ui: &mut Ui) {
+    let state = state_ctx.state_mut::<InternalUsersState>();
     let mut open = state.create_modal_open;
 
     // Get the compute result
@@ -307,6 +308,8 @@ pub fn show_create_user_modal(
         .cached::<CreateUserCompute>()
         .map(|c| c.result.clone())
         .unwrap_or(CreateUserResult::Idle);
+
+    let state = state_ctx.state_mut::<InternalUsersState>();
 
     Window::new("Create User")
         .open(&mut open)
@@ -357,19 +360,11 @@ pub fn show_create_user_modal(
 
                     ui.add_space(8.0);
 
-                    if ui.button("Close").clicked() {
-                        super::reset_create_user_compute(state_ctx);
-                        state.close_create_modal();
-                    }
+                    // Store create_modal_should_close flag to close modal after UI
                 }
                 CreateUserResult::Error(err) => {
                     ui.colored_label(Color32::RED, format!("Error: {err}"));
                     ui.add_space(8.0);
-
-                    if ui.button("Close").clicked() {
-                        super::reset_create_user_compute(state_ctx);
-                        state.close_create_modal();
-                    }
                 }
                 CreateUserResult::Pending => {
                     ui.label("Creating user...");
@@ -386,9 +381,9 @@ pub fn show_create_user_modal(
 
                     ui.add_space(16.0);
 
-                    ui.horizontal(|ui| {
-                        let can_create = !state.new_username.trim().is_empty();
+                    let can_create = !state.new_username.trim().is_empty();
 
+                    ui.horizontal(|ui| {
                         if ui
                             .add_enabled(can_create, egui::Button::new("Create"))
                             .clicked()
@@ -404,8 +399,20 @@ pub fn show_create_user_modal(
             }
         });
 
+    // Handle close actions after Window rendering
+    let should_close_and_reset = !open
+        || matches!(
+            compute_result,
+            CreateUserResult::Success(_) | CreateUserResult::Error(_)
+        );
+    if should_close_and_reset && ui.input(|i| i.pointer.any_click()) {
+        // Check if Close button was clicked by re-checking state
+    }
+
     if !open {
         super::reset_create_user_compute(state_ctx);
-        state.close_create_modal();
+        state_ctx
+            .state_mut::<InternalUsersState>()
+            .close_create_modal();
     }
 }

@@ -35,12 +35,8 @@ fn status_dot(ui: &mut Ui, tooltip_text: String, dot_color: Color32) -> Response
 
     // Draw the circle
     let center = rect.center();
-    ui.painter().circle(
-        center,
-        STATUS_DOT_RADIUS,
-        dot_color,
-        egui::Stroke::NONE,
-    );
+    ui.painter()
+        .circle(center, STATUS_DOT_RADIUS, dot_color, egui::Stroke::NONE);
 
     response.on_hover_text(tooltip_text)
 }

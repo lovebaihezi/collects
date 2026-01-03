@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   commitlint:
-    name: Validate PR Title
+    name: "📝 Validate: PR Title"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

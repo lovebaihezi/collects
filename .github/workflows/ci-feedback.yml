@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   feedback:
-    name: Provide Feedback on CI Failure
+    name: "💬 Feedback: Post CI Failure Comment"
     runs-on: ubuntu-latest
     # Only run if CI failed and it was triggered by a pull request
     if: >

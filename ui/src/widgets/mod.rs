@@ -40,10 +40,12 @@
 //! - Services integration tests already validate Zero Trust gating; add an end-to-end internal
 //!   flow test when we have a stable token acquisition story (manual or PKCE).
 mod api_status;
+mod footer;
 mod internal;
 mod login;
 
 pub use internal::{InternalUsersState, internal_users_panel, poll_internal_users_responses};
 
 pub use api_status::api_status;
+pub use footer::powered_by_egui_and_eframe;
 pub use login::{login_widget, show_signed_in_header};

@@ -6,21 +6,30 @@ use egui::{Color32, Response, Ui};
 #[cfg(any(feature = "env_internal", feature = "env_test_internal"))]
 use collects_business::{InternalAPIAvailability, InternalApiStatus};
 
+/// Radius of the status indicator circle (in pixels)
+const STATUS_DOT_RADIUS: f32 = 5.0;
+
+/// Cached UI version string to avoid repeated computation
+fn ui_version() -> &'static str {
+    use std::sync::OnceLock;
+    static UI_VERSION: OnceLock<String> = OnceLock::new();
+    UI_VERSION.get_or_init(collects_business::version_info::format_env_version)
+}
+
 fn format_tooltip(status: &str, service_version: Option<&str>) -> String {
-    let ui_version = collects_business::version_info::format_env_version();
+    let ui_ver = ui_version();
     
     match service_version {
-        Some(v) => format!("UI: {ui_version}\nService: {status}:{v}"),
-        None => format!("UI: {ui_version}\nService: {status}"),
+        Some(v) => format!("UI: {ui_ver}\nService: {status}:{v}"),
+        None => format!("UI: {ui_ver}\nService: {status}"),
     }
 }
 
 /// Renders a single status dot with tooltip using a drawn circle
 fn status_dot(ui: &mut Ui, tooltip_text: String, dot_color: Color32) -> Response {
     // Allocate space for the circle
-    let radius = 5.0;
     let (rect, response) = ui.allocate_exact_size(
-        egui::vec2(radius * 2.0, radius * 2.0),
+        egui::vec2(STATUS_DOT_RADIUS * 2.0, STATUS_DOT_RADIUS * 2.0),
         egui::Sense::hover(),
     );
     
@@ -28,7 +37,7 @@ fn status_dot(ui: &mut Ui, tooltip_text: String, dot_color: Color32) -> Response
     let center = rect.center();
     ui.painter().circle(
         center,
-        radius,
+        STATUS_DOT_RADIUS,
         dot_color,
         egui::Stroke::NONE,
     );
@@ -55,18 +64,18 @@ fn get_api_status_info(state_ctx: &StateCtx) -> (String, Color32) {
 /// Get the internal API status dot info (tooltip and color)
 #[cfg(any(feature = "env_internal", feature = "env_test_internal"))]
 fn get_internal_api_status_info(state_ctx: &StateCtx) -> (String, Color32) {
-    let ui_version = collects_business::version_info::format_env_version();
+    let ui_ver = ui_version();
     match state_ctx
         .cached::<InternalApiStatus>()
         .map(|v| v.api_availability())
     {
         Some(InternalAPIAvailability::Available(_)) => {
-            (format!("UI: {ui_version}\nInternal: healthy"), COLOR_GREEN)
+            (format!("UI: {ui_ver}\nInternal: healthy"), COLOR_GREEN)
         }
         Some(InternalAPIAvailability::Unavailable((_, err))) => {
-            (format!("UI: {ui_version}\nInternal: {err}"), COLOR_RED)
+            (format!("UI: {ui_ver}\nInternal: {err}"), COLOR_RED)
         }
-        _ => (format!("UI: {ui_version}\nInternal: checking"), COLOR_AMBER),
+        _ => (format!("UI: {ui_ver}\nInternal: checking"), COLOR_AMBER),
     }
 }
 

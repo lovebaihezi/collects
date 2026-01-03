@@ -24,3 +24,37 @@ impl State for Route {
         self
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_route_default_is_login() {
+        let route = Route::default();
+        assert_eq!(route, Route::Login);
+    }
+
+    #[test]
+    fn test_route_clone() {
+        let route = Route::Home;
+        let cloned = route.clone();
+        assert_eq!(cloned, Route::Home);
+    }
+
+    #[test]
+    fn test_route_equality() {
+        assert_eq!(Route::Login, Route::Login);
+        assert_eq!(Route::Home, Route::Home);
+        assert_ne!(Route::Login, Route::Home);
+    }
+
+    #[cfg(any(feature = "env_internal", feature = "env_test_internal"))]
+    #[test]
+    fn test_internal_route() {
+        let route = Route::Internal;
+        assert_eq!(route, Route::Internal);
+        assert_ne!(route, Route::Home);
+        assert_ne!(route, Route::Login);
+    }
+}

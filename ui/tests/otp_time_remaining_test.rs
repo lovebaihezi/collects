@@ -113,17 +113,17 @@ async fn test_otp_time_remaining_updates_with_time() {
 
     // Initialize internal users state with test data
     let now = get_current_time(harness);
-    harness.state_mut().internal_users.update_users(vec![test_user], now);
+    harness
+        .state_mut()
+        .internal_users
+        .update_users(vec![test_user], now);
 
     // Render the widget
     harness.step();
 
     // Verify initial time remaining is displayed (should show 25s)
     let time_label = harness.query_by_label_contains("25s");
-    assert!(
-        time_label.is_some(),
-        "Should display 25s initially"
-    );
+    assert!(time_label.is_some(), "Should display 25s initially");
 
     // Advance time by 10 seconds
     advance_time_by_seconds(harness, 10);
@@ -164,17 +164,17 @@ async fn test_otp_time_remaining_wraps_after_30_seconds() {
 
     // Initialize internal users state with test data
     let now = get_current_time(harness);
-    harness.state_mut().internal_users.update_users(vec![test_user], now);
+    harness
+        .state_mut()
+        .internal_users
+        .update_users(vec![test_user], now);
 
     // Render the widget
     harness.step();
 
     // Verify initial time remaining is displayed
     let time_label = harness.query_by_label_contains("10s");
-    assert!(
-        time_label.is_some(),
-        "Should display 10s initially"
-    );
+    assert!(time_label.is_some(), "Should display 10s initially");
 
     // Advance time by 15 seconds (should wrap to 25s since 10-15 = -5, wraps to 25)
     advance_time_by_seconds(harness, 15);
@@ -215,7 +215,10 @@ async fn test_otp_time_remaining_color_changes() {
 
     // Initialize internal users state with test data
     let now = get_current_time(harness);
-    harness.state_mut().internal_users.update_users(vec![test_user], now);
+    harness
+        .state_mut()
+        .internal_users
+        .update_users(vec![test_user], now);
 
     // Render the widget
     harness.step();

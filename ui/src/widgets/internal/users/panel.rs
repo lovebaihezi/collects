@@ -83,7 +83,8 @@ pub fn internal_users_panel(
                         }
 
                         // Calculate real-time time remaining based on elapsed time since fetch
-                        let time_remaining = state.calculate_time_remaining(user.time_remaining, now);
+                        let time_remaining =
+                            state.calculate_time_remaining(user.time_remaining, now);
 
                         // Time remaining indicator with color coding
                         let time_color = if time_remaining <= 5 {

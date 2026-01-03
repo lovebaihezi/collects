@@ -1111,6 +1111,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+ "ustr",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",

@@ -6,6 +6,7 @@ use collects_states::State;
 use egui::TextureHandle;
 use std::any::Any;
 use std::collections::HashMap;
+use ustr::Ustr;
 
 /// Action type for user management.
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -14,13 +15,13 @@ pub enum UserAction {
     #[default]
     None,
     /// Show QR code for a user.
-    ShowQrCode(String),
+    ShowQrCode(Ustr),
     /// Edit username.
-    EditUsername(String),
+    EditUsername(Ustr),
     /// Delete user (with confirmation).
-    DeleteUser(String),
+    DeleteUser(Ustr),
     /// Revoke OTP for a user.
-    RevokeOtp(String),
+    RevokeOtp(Ustr),
 }
 
 /// State for the internal users panel.
@@ -31,7 +32,7 @@ pub struct InternalUsersState {
     /// List of users fetched from the API.
     pub(crate) users: Vec<InternalUserItem>,
     /// Map to track which users have their OTP revealed.
-    pub(crate) revealed_otps: HashMap<String, bool>,
+    pub(crate) revealed_otps: HashMap<Ustr, bool>,
     /// Whether currently fetching users.
     pub(crate) is_fetching: bool,
     /// Error message if fetch failed.
@@ -90,16 +91,15 @@ impl InternalUsersState {
 
     /// Toggle OTP visibility for a user.
     pub fn toggle_otp_visibility(&mut self, username: &str) {
-        let revealed = self
-            .revealed_otps
-            .entry(username.to_string())
-            .or_insert(false);
+        let key = Ustr::from(username);
+        let revealed = self.revealed_otps.entry(key).or_insert(false);
         *revealed = !*revealed;
     }
 
     /// Check if OTP is revealed for a user.
     pub fn is_otp_revealed(&self, username: &str) -> bool {
-        self.revealed_otps.get(username).copied().unwrap_or(false)
+        let key = Ustr::from(username);
+        self.revealed_otps.get(&key).copied().unwrap_or(false)
     }
 
     /// Update users from API response.
@@ -147,7 +147,7 @@ impl InternalUsersState {
 
         // Initialize edit username input if editing
         if let UserAction::EditUsername(username) = &action {
-            self.edit_username_input = username.clone();
+            self.edit_username_input = username.to_string();
         }
     }
 

@@ -4,6 +4,7 @@ use collects_business::{CreateUserCommand, CreateUserCompute, CreateUserInput, I
 use collects_states::{StateCtx, Time};
 use egui::{Color32, Response, RichText, ScrollArea, Ui};
 use std::any::TypeId;
+use ustr::Ustr;
 
 use super::api::fetch_users;
 use super::modals::{
@@ -47,7 +48,7 @@ pub fn internal_users_panel(state_ctx: &mut StateCtx, api_base_url: &str, ui: &m
         ui.add_space(8.0);
 
         // Collect actions (avoiding borrow issues)
-        let mut username_to_toggle: Option<String> = None;
+        let mut username_to_toggle: Option<Ustr> = None;
         let mut action_to_start: Option<UserAction> = None;
 
         // Get current time for calculating real-time OTP time remaining
@@ -105,26 +106,23 @@ pub fn internal_users_panel(state_ctx: &mut StateCtx, api_base_url: &str, ui: &m
                             "Reveal"
                         };
                         if ui.button(button_text).clicked() {
-                            username_to_toggle = Some(user.username.clone());
+                            username_to_toggle = Some(Ustr::from(&user.username));
                         }
 
                         // Action buttons
                         ui.horizontal(|ui| {
+                            let username = Ustr::from(&user.username);
                             if ui.button("📱 QR").on_hover_text("Show QR Code").clicked() {
-                                action_to_start =
-                                    Some(UserAction::ShowQrCode(user.username.clone()));
+                                action_to_start = Some(UserAction::ShowQrCode(username));
                             }
                             if ui.button("✏️").on_hover_text("Edit Username").clicked() {
-                                action_to_start =
-                                    Some(UserAction::EditUsername(user.username.clone()));
+                                action_to_start = Some(UserAction::EditUsername(username));
                             }
                             if ui.button("🔄").on_hover_text("Revoke OTP").clicked() {
-                                action_to_start =
-                                    Some(UserAction::RevokeOtp(user.username.clone()));
+                                action_to_start = Some(UserAction::RevokeOtp(username));
                             }
                             if ui.button("🗑️").on_hover_text("Delete User").clicked() {
-                                action_to_start =
-                                    Some(UserAction::DeleteUser(user.username.clone()));
+                                action_to_start = Some(UserAction::DeleteUser(username));
                             }
                         });
 
@@ -163,16 +161,16 @@ pub fn internal_users_panel(state_ctx: &mut StateCtx, api_base_url: &str, ui: &m
     let state = state_ctx.state_mut::<InternalUsersState>();
     match &state.current_action.clone() {
         UserAction::ShowQrCode(username) => {
-            show_qr_code_modal(state_ctx, api_base_url, username.clone(), ui);
+            show_qr_code_modal(state_ctx, api_base_url, *username, ui);
         }
         UserAction::EditUsername(username) => {
-            show_edit_username_modal(state_ctx, api_base_url, username.clone(), ui);
+            show_edit_username_modal(state_ctx, api_base_url, *username, ui);
         }
         UserAction::DeleteUser(username) => {
-            show_delete_user_modal(state_ctx, api_base_url, username.clone(), ui);
+            show_delete_user_modal(state_ctx, api_base_url, *username, ui);
         }
         UserAction::RevokeOtp(username) => {
-            show_revoke_otp_modal(state_ctx, api_base_url, username.clone(), ui);
+            show_revoke_otp_modal(state_ctx, api_base_url, *username, ui);
         }
         UserAction::None => {}
     }

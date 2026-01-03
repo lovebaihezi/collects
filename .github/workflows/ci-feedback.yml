@@ -1,0 +1,42 @@
+name: CI Failure Feedback
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types:
+      - completed
+
+permissions:
+  contents: read
+  pull-requests: write
+  actions: read
+
+jobs:
+  feedback:
+    name: Provide Feedback on CI Failure
+    runs-on: ubuntu-latest
+    # Only run if CI failed and it was triggered by a pull request
+    if: >
+      github.event.workflow_run.conclusion == 'failure' &&
+      github.event.workflow_run.event == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install Scripts Dependencies
+        working-directory: scripts
+        run: bun install
+
+      - name: Run CI Feedback
+        working-directory: scripts
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          WORKFLOW_RUN_ID: ${{ github.event.workflow_run.id }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          WORKFLOW_RUN_URL: ${{ github.event.workflow_run.html_url }}
+        run: bun run main.ts ci-feedback
+

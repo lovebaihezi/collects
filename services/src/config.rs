@@ -1,3 +1,4 @@
+use collects_business::version_info::RuntimeEnv;
 use serde::Deserialize;
 use std::env::vars;
 use std::fmt::Display;
@@ -19,6 +20,20 @@ pub enum Env {
     Pr,
     #[serde(rename = "nightly")]
     Nightly,
+}
+
+impl From<&Env> for RuntimeEnv {
+    fn from(env: &Env) -> Self {
+        match env {
+            Env::Local => RuntimeEnv::Local,
+            Env::Prod => RuntimeEnv::Prod,
+            Env::Internal => RuntimeEnv::Internal,
+            Env::Test => RuntimeEnv::Test,
+            Env::TestInternal => RuntimeEnv::TestInternal,
+            Env::Pr => RuntimeEnv::Pr,
+            Env::Nightly => RuntimeEnv::Nightly,
+        }
+    }
 }
 
 #[cfg(test)]

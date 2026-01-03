@@ -274,6 +274,37 @@ ui/
     └── user_management_integration.rs
 ```
 
+## Version Display Format
+
+Both UI and services **MUST** use a consistent version display format: `{env}:{info}`
+
+### Environment-Specific Formats
+
+| Environment | Format | Example |
+|-------------|--------|---------|
+| PR | `pr:{number}` | `pr:123` |
+| Nightly | `nightly:{date}` | `nightly:2026-01-03` |
+| Internal | `internal:{commit}` | `internal:abc1234` |
+| Test-Internal | `test-internal:{commit}` | `test-internal:abc1234` |
+| Test/Main | `main:{commit}` | `main:abc1234` |
+| Production | `stable:{version}` | `stable:2026.1.2` |
+
+### Implementation Details
+
+- **UI**: Uses `collects_business::version_info::format_env_version()` function
+- **Services**: Uses `format_version_header()` function in `services/src/lib.rs`
+- Both rely on build-time environment variables:
+  - `BUILD_COMMIT`: Short git commit hash
+  - `BUILD_DATE`: Build timestamp (RFC3339 format)
+  - `CARGO_PKG_VERSION`: Package version from Cargo.toml
+  - `PR_NUMBER`: PR number (only for PR builds)
+  - `SERVICE_ENV`: Environment name (services only)
+
+### Where Version is Displayed
+
+- **UI**: Shows in API status tooltip as "UI: {env}:{info}"
+- **Services**: Returns in `x-service-version` HTTP header
+
 ## Release Methods
 
 This project has automated release pipelines for both the UI and services.

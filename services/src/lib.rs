@@ -9,6 +9,7 @@ use axum::{
     response::IntoResponse,
     routing::{any, get},
 };
+use collects_business::version_info::{RuntimeEnv, format_version_for_runtime_env};
 use opentelemetry::{global, propagation::Extractor};
 use tower_http::trace::TraceLayer;
 use tracing_opentelemetry::OpenTelemetrySpanExt;
@@ -22,9 +23,6 @@ pub mod internal;
 pub mod storage;
 pub mod telemetry;
 pub mod users;
-
-const SERVICE_VERSION: &str = env!("CARGO_PKG_VERSION");
-const BUILD_COMMIT: &str = env!("BUILD_COMMIT");
 
 struct HeaderExtractor<'a>(&'a axum::http::HeaderMap);
 
@@ -104,7 +102,8 @@ where
         HeaderValue::from_str(&env_value).expect("environment header is valid ASCII"),
     );
 
-    let version_value = format!("{SERVICE_VERSION}+{BUILD_COMMIT}");
+    let runtime_env: RuntimeEnv = config.environment().into();
+    let version_value = format_version_for_runtime_env(runtime_env);
     response.headers_mut().insert(
         HeaderName::from_static("x-service-version"),
         HeaderValue::from_str(&version_value).expect("version header is valid ASCII"),
@@ -185,7 +184,8 @@ mod tests {
             .headers()
             .get("x-service-version")
             .and_then(|v| v.to_str().ok());
-        let expected_version = format!("{SERVICE_VERSION}+{BUILD_COMMIT}");
+        // Local environment uses "main:{commit}" format - using shared function
+        let expected_version = format_version_for_runtime_env(RuntimeEnv::Local);
         assert_eq!(version_header, Some(expected_version.as_str()));
     }
 
@@ -209,5 +209,23 @@ mod tests {
             .unwrap();
 
         assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
+    }
+
+    #[test]
+    fn test_env_to_runtime_env_conversion() {
+        // Test that all Env variants convert correctly to RuntimeEnv
+        assert_eq!(RuntimeEnv::from(&config::Env::Local), RuntimeEnv::Local);
+        assert_eq!(RuntimeEnv::from(&config::Env::Prod), RuntimeEnv::Prod);
+        assert_eq!(
+            RuntimeEnv::from(&config::Env::Internal),
+            RuntimeEnv::Internal
+        );
+        assert_eq!(RuntimeEnv::from(&config::Env::Test), RuntimeEnv::Test);
+        assert_eq!(
+            RuntimeEnv::from(&config::Env::TestInternal),
+            RuntimeEnv::TestInternal
+        );
+        assert_eq!(RuntimeEnv::from(&config::Env::Pr), RuntimeEnv::Pr);
+        assert_eq!(RuntimeEnv::from(&config::Env::Nightly), RuntimeEnv::Nightly);
     }
 }

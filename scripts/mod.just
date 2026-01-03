@@ -35,3 +35,8 @@ init-db token project_id: install
 # Usage: just scripts::check-pr-title "feat: add new feature"
 check-pr-title title: install
     bun run main.ts check-pr-title "{{title}}"
+
+# Post CI failure feedback to PR (for GitHub Actions)
+# Requires environment variables: GITHUB_TOKEN, WORKFLOW_RUN_ID, HEAD_SHA, WORKFLOW_RUN_URL
+ci-feedback: install
+    bun run main.ts ci-feedback

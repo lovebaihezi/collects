@@ -8,6 +8,7 @@ import {
   type BuildSetupOptions,
 } from "./services/gcloud.ts";
 import { runVersionCheck } from "./gh-actions/version-check.ts";
+import { runCIFeedbackCLI } from "./gh-actions/ci-feedback.ts";
 import {
   getCargoFeature,
   getDatabaseSecret,
@@ -127,6 +128,12 @@ cli
     runPrTitleCheck(title);
   });
 
+cli
+  .command("ci-feedback", "Post CI failure feedback to PR (for GitHub Actions)")
+  .action(() => {
+    runCIFeedbackCLI();
+  });
+
 cli.command("", "Show help").action(() => {
   const helpText = `
 # Services Helper Script
@@ -240,6 +247,29 @@ Validates PR title format against conventional commits specification.
 **Example:**
 \`\`\`bash
 just scripts::check-pr-title "feat: add user authentication"
+\`\`\`
+
+### \`ci-feedback\`
+
+Posts CI failure feedback to the PR. This command is designed to be called from GitHub Actions.
+
+**What it does:**
+1. Reads workflow run information from environment variables.
+2. Collects failed job logs and extracts relevant error lines.
+3. Counts previous failures per job (stops at 3 to prevent loops).
+4. Posts a structured comment on the PR mentioning @copilot for analysis.
+
+**Required Environment Variables:**
+- \`GITHUB_TOKEN\` - GitHub token with write access to PRs
+- \`GITHUB_REPOSITORY_OWNER\` - Repository owner
+- \`GITHUB_REPOSITORY\` - Full repository name (owner/repo)
+- \`WORKFLOW_RUN_ID\` - The workflow run ID
+- \`HEAD_SHA\` - The commit SHA
+- \`WORKFLOW_RUN_URL\` - URL to the workflow run
+
+**Example:**
+\`\`\`bash
+GITHUB_TOKEN=xxx WORKFLOW_RUN_ID=123 ... bun run main.ts ci-feedback
 \`\`\`
 
 ---

@@ -4,7 +4,7 @@
 
 use collects_business::{CreateUserCommand, CreateUserCompute, CreateUserInput, InternalUserItem};
 use collects_states::{StateCtx, Time};
-use egui::{Color32, Frame, Margin, Response, RichText, ScrollArea, Stroke, Ui};
+use egui::{Color32, Frame, InnerResponse, Margin, Response, RichText, ScrollArea, Stroke, Ui};
 use std::any::TypeId;
 
 use super::api::fetch_users;
@@ -19,6 +19,21 @@ const TABLE_BORDER_COLOR: Color32 = Color32::from_rgb(200, 200, 200);
 
 /// Header background color for Typora-like table style (light gray)
 const HEADER_BG_COLOR: Color32 = Color32::from_rgb(245, 245, 245);
+
+/// Helper to create a Typora-style header cell with background.
+fn header_cell<R>(ui: &mut Ui, add_contents: impl FnOnce(&mut Ui) -> R) -> InnerResponse<R> {
+    Frame::NONE
+        .fill(HEADER_BG_COLOR)
+        .inner_margin(Margin::symmetric(8, 8))
+        .show(ui, add_contents)
+}
+
+/// Helper to create a Typora-style data cell with padding.
+fn data_cell<R>(ui: &mut Ui, add_contents: impl FnOnce(&mut Ui) -> R) -> InnerResponse<R> {
+    Frame::NONE
+        .inner_margin(Margin::symmetric(8, 6))
+        .show(ui, add_contents)
+}
 
 /// Displays the internal users panel with a Typora-like table style.
 pub fn internal_users_panel(
@@ -71,135 +86,86 @@ pub fn internal_users_panel(
                         .min_col_width(60.0)
                         .show(ui, |ui| {
                             // Header row with background
-                            Frame::NONE
-                                .fill(HEADER_BG_COLOR)
-                                .inner_margin(Margin::symmetric(8, 8))
-                                .show(ui, |ui| {
-                                    ui.strong("Username");
-                                });
-                            Frame::NONE
-                                .fill(HEADER_BG_COLOR)
-                                .inner_margin(Margin::symmetric(8, 8))
-                                .show(ui, |ui| {
-                                    ui.strong("OTP Code");
-                                });
-                            Frame::NONE
-                                .fill(HEADER_BG_COLOR)
-                                .inner_margin(Margin::symmetric(8, 8))
-                                .show(ui, |ui| {
-                                    ui.strong("Time Left");
-                                });
-                            Frame::NONE
-                                .fill(HEADER_BG_COLOR)
-                                .inner_margin(Margin::symmetric(8, 8))
-                                .show(ui, |ui| {
-                                    ui.strong("OTP");
-                                });
-                            Frame::NONE
-                                .fill(HEADER_BG_COLOR)
-                                .inner_margin(Margin::symmetric(8, 8))
-                                .show(ui, |ui| {
-                                    ui.strong("Actions");
-                                });
+                            header_cell(ui, |ui| { ui.strong("Username"); });
+                            header_cell(ui, |ui| { ui.strong("OTP Code"); });
+                            header_cell(ui, |ui| { ui.strong("Time Left"); });
+                            header_cell(ui, |ui| { ui.strong("OTP"); });
+                            header_cell(ui, |ui| { ui.strong("Actions"); });
                             ui.end_row();
 
                             // User rows with cell padding
                             for user in &state.users {
-                                Frame::NONE
-                                    .inner_margin(Margin::symmetric(8, 6))
-                                    .show(ui, |ui| {
-                                        ui.label(&user.username);
-                                    });
+                                data_cell(ui, |ui| {
+                                    ui.label(&user.username);
+                                });
 
                                 // OTP code with reveal/hide
-                                Frame::NONE
-                                    .inner_margin(Margin::symmetric(8, 6))
-                                    .show(ui, |ui| {
-                                        if state.is_otp_revealed(&user.username) {
-                                            ui.label(
-                                                RichText::new(&user.current_otp).monospace(),
-                                            );
-                                        } else {
-                                            ui.label(RichText::new("••••••").monospace());
-                                        }
-                                    });
+                                data_cell(ui, |ui| {
+                                    if state.is_otp_revealed(&user.username) {
+                                        ui.label(RichText::new(&user.current_otp).monospace());
+                                    } else {
+                                        ui.label(RichText::new("••••••").monospace());
+                                    }
+                                });
 
                                 // Time remaining indicator with color coding
-                                Frame::NONE
-                                    .inner_margin(Margin::symmetric(8, 6))
-                                    .show(ui, |ui| {
-                                        let time_color = if user.time_remaining <= 5 {
-                                            Color32::RED // Critical: 5 seconds or less
-                                        } else if user.time_remaining <= 10 {
-                                            Color32::from_rgb(255, 165, 0) // Warning: 10 seconds or less
-                                        } else {
-                                            Color32::from_rgb(34, 139, 34) // Safe: more than 10 seconds
-                                        };
-                                        ui.label(
-                                            RichText::new(format!("{}s", user.time_remaining))
-                                                .monospace()
-                                                .color(time_color),
-                                        );
-                                    });
+                                data_cell(ui, |ui| {
+                                    let time_color = if user.time_remaining <= 5 {
+                                        Color32::RED // Critical: 5 seconds or less
+                                    } else if user.time_remaining <= 10 {
+                                        Color32::from_rgb(255, 165, 0) // Warning: 10 seconds or less
+                                    } else {
+                                        Color32::from_rgb(34, 139, 34) // Safe: more than 10 seconds
+                                    };
+                                    ui.label(
+                                        RichText::new(format!("{}s", user.time_remaining))
+                                            .monospace()
+                                            .color(time_color),
+                                    );
+                                });
 
                                 // Reveal/hide button
-                                Frame::NONE
-                                    .inner_margin(Margin::symmetric(8, 6))
-                                    .show(ui, |ui| {
-                                        let button_text =
-                                            if state.is_otp_revealed(&user.username) {
-                                                "Hide"
-                                            } else {
-                                                "Reveal"
-                                            };
-                                        if ui.button(button_text).clicked() {
-                                            username_to_toggle = Some(user.username.clone());
-                                        }
-                                    });
+                                data_cell(ui, |ui| {
+                                    let button_text = if state.is_otp_revealed(&user.username) {
+                                        "Hide"
+                                    } else {
+                                        "Reveal"
+                                    };
+                                    if ui.button(button_text).clicked() {
+                                        username_to_toggle = Some(user.username.clone());
+                                    }
+                                });
 
                                 // Action buttons
-                                Frame::NONE
-                                    .inner_margin(Margin::symmetric(8, 6))
-                                    .show(ui, |ui| {
-                                        ui.horizontal(|ui| {
-                                            if ui
-                                                .button("📱 QR")
-                                                .on_hover_text("Show QR Code")
-                                                .clicked()
-                                            {
-                                                action_to_start = Some(UserAction::ShowQrCode(
-                                                    user.username.clone(),
-                                                ));
-                                            }
-                                            if ui
-                                                .button("✏️")
-                                                .on_hover_text("Edit Username")
-                                                .clicked()
-                                            {
-                                                action_to_start = Some(UserAction::EditUsername(
-                                                    user.username.clone(),
-                                                ));
-                                            }
-                                            if ui
-                                                .button("🔄")
-                                                .on_hover_text("Revoke OTP")
-                                                .clicked()
-                                            {
-                                                action_to_start = Some(UserAction::RevokeOtp(
-                                                    user.username.clone(),
-                                                ));
-                                            }
-                                            if ui
-                                                .button("🗑️")
-                                                .on_hover_text("Delete User")
-                                                .clicked()
-                                            {
-                                                action_to_start = Some(UserAction::DeleteUser(
-                                                    user.username.clone(),
-                                                ));
-                                            }
-                                        });
+                                data_cell(ui, |ui| {
+                                    ui.horizontal(|ui| {
+                                        if ui
+                                            .button("📱 QR")
+                                            .on_hover_text("Show QR Code")
+                                            .clicked()
+                                        {
+                                            action_to_start =
+                                                Some(UserAction::ShowQrCode(user.username.clone()));
+                                        }
+                                        if ui
+                                            .button("✏️")
+                                            .on_hover_text("Edit Username")
+                                            .clicked()
+                                        {
+                                            action_to_start = Some(UserAction::EditUsername(
+                                                user.username.clone(),
+                                            ));
+                                        }
+                                        if ui.button("🔄").on_hover_text("Revoke OTP").clicked() {
+                                            action_to_start =
+                                                Some(UserAction::RevokeOtp(user.username.clone()));
+                                        }
+                                        if ui.button("🗑️").on_hover_text("Delete User").clicked() {
+                                            action_to_start =
+                                                Some(UserAction::DeleteUser(user.username.clone()));
+                                        }
                                     });
+                                });
 
                                 ui.end_row();
                             }

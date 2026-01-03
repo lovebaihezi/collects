@@ -9,6 +9,7 @@ use axum::{
     response::IntoResponse,
     routing::{any, get},
 };
+use collects_business::version_info::{RuntimeEnv, format_version_for_runtime_env};
 use opentelemetry::{global, propagation::Extractor};
 use tower_http::trace::TraceLayer;
 use tracing_opentelemetry::OpenTelemetrySpanExt;
@@ -22,42 +23,6 @@ pub mod internal;
 pub mod storage;
 pub mod telemetry;
 pub mod users;
-
-const SERVICE_VERSION: &str = env!("CARGO_PKG_VERSION");
-const BUILD_COMMIT: &str = env!("BUILD_COMMIT");
-const BUILD_DATE: &str = env!("BUILD_DATE");
-
-/// Format version header following the UI version display pattern.
-///
-/// Format: `{env}:{info}` where:
-/// - PR: `pr:{pr_number}` (number from PR_NUMBER env var)
-/// - Nightly: `nightly:{date}` (first 10 chars of build date)
-/// - Internal: `internal:{commit}`
-/// - Test-Internal: `test-internal:{commit}`
-/// - Test/Local: `main:{commit}`
-/// - Prod: `stable:{version}`
-pub fn format_version_header(env: &config::Env) -> String {
-    match env {
-        config::Env::Pr => {
-            let pr_number = option_env!("PR_NUMBER").unwrap_or("unknown");
-            format!("pr:{}", pr_number)
-        }
-        config::Env::Nightly => {
-            // Extract just the date portion (first 10 chars) from RFC3339 format
-            // BUILD_DATE is RFC3339 formatted (e.g., "2026-01-03T12:00:00+00:00") which is ASCII
-            let date = if BUILD_DATE.len() >= 10 && BUILD_DATE.is_ascii() {
-                &BUILD_DATE[..10]
-            } else {
-                BUILD_DATE
-            };
-            format!("nightly:{}", date)
-        }
-        config::Env::Internal => format!("internal:{}", BUILD_COMMIT),
-        config::Env::TestInternal => format!("test-internal:{}", BUILD_COMMIT),
-        config::Env::Test | config::Env::Local => format!("main:{}", BUILD_COMMIT),
-        config::Env::Prod => format!("stable:{}", SERVICE_VERSION),
-    }
-}
 
 struct HeaderExtractor<'a>(&'a axum::http::HeaderMap);
 
@@ -137,7 +102,8 @@ where
         HeaderValue::from_str(&env_value).expect("environment header is valid ASCII"),
     );
 
-    let version_value = format_version_header(config.environment());
+    let runtime_env: RuntimeEnv = config.environment().into();
+    let version_value = format_version_for_runtime_env(runtime_env);
     response.headers_mut().insert(
         HeaderName::from_static("x-service-version"),
         HeaderValue::from_str(&version_value).expect("version header is valid ASCII"),
@@ -218,8 +184,8 @@ mod tests {
             .headers()
             .get("x-service-version")
             .and_then(|v| v.to_str().ok());
-        // Local environment uses "main:{commit}" format
-        let expected_version = format!("main:{}", BUILD_COMMIT);
+        // Local environment uses "main:{commit}" format - using shared function
+        let expected_version = format_version_for_runtime_env(RuntimeEnv::Local);
         assert_eq!(version_header, Some(expected_version.as_str()));
     }
 
@@ -246,52 +212,20 @@ mod tests {
     }
 
     #[test]
-    fn test_format_version_header_local() {
-        let version = format_version_header(&config::Env::Local);
-        assert!(version.starts_with("main:"));
-        assert!(version.contains(BUILD_COMMIT));
-    }
-
-    #[test]
-    fn test_format_version_header_test() {
-        let version = format_version_header(&config::Env::Test);
-        assert!(version.starts_with("main:"));
-        assert!(version.contains(BUILD_COMMIT));
-    }
-
-    #[test]
-    fn test_format_version_header_prod() {
-        let version = format_version_header(&config::Env::Prod);
-        assert!(version.starts_with("stable:"));
-        assert!(version.contains(SERVICE_VERSION));
-    }
-
-    #[test]
-    fn test_format_version_header_internal() {
-        let version = format_version_header(&config::Env::Internal);
-        assert!(version.starts_with("internal:"));
-        assert!(version.contains(BUILD_COMMIT));
-    }
-
-    #[test]
-    fn test_format_version_header_test_internal() {
-        let version = format_version_header(&config::Env::TestInternal);
-        assert!(version.starts_with("test-internal:"));
-        assert!(version.contains(BUILD_COMMIT));
-    }
-
-    #[test]
-    fn test_format_version_header_nightly() {
-        let version = format_version_header(&config::Env::Nightly);
-        assert!(version.starts_with("nightly:"));
-        // Should contain date portion (10 chars like "2026-01-03")
-        let date_part = version.strip_prefix("nightly:").unwrap();
-        assert!(date_part.len() >= 10);
-    }
-
-    #[test]
-    fn test_format_version_header_pr() {
-        let version = format_version_header(&config::Env::Pr);
-        assert!(version.starts_with("pr:"));
+    fn test_env_to_runtime_env_conversion() {
+        // Test that all Env variants convert correctly to RuntimeEnv
+        assert_eq!(RuntimeEnv::from(&config::Env::Local), RuntimeEnv::Local);
+        assert_eq!(RuntimeEnv::from(&config::Env::Prod), RuntimeEnv::Prod);
+        assert_eq!(
+            RuntimeEnv::from(&config::Env::Internal),
+            RuntimeEnv::Internal
+        );
+        assert_eq!(RuntimeEnv::from(&config::Env::Test), RuntimeEnv::Test);
+        assert_eq!(
+            RuntimeEnv::from(&config::Env::TestInternal),
+            RuntimeEnv::TestInternal
+        );
+        assert_eq!(RuntimeEnv::from(&config::Env::Pr), RuntimeEnv::Pr);
+        assert_eq!(RuntimeEnv::from(&config::Env::Nightly), RuntimeEnv::Nightly);
     }
 }

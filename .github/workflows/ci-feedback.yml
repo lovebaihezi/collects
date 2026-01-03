@@ -62,8 +62,8 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            const prNumber = ${{ steps.pr-info.outputs.pr_number }};
-            const runId = ${{ steps.pr-info.outputs.run_id }};
+            const prNumber = parseInt('${{ steps.pr-info.outputs.pr_number }}', 10);
+            const runId = parseInt('${{ steps.pr-info.outputs.run_id }}', 10);
             const headSha = '${{ steps.pr-info.outputs.head_sha }}';
             
             // Get all jobs for the workflow run
@@ -84,15 +84,19 @@ jobs:
             const summaries = [];
             for (const job of failedJobs) {
               try {
-                // Get job logs
-                const { data: logs } = await github.rest.actions.downloadJobLogsForWorkflowRun({
+                // Get job logs - returns binary data, need to convert to string
+                const response = await github.rest.actions.downloadJobLogsForWorkflowRun({
                   owner: context.repo.owner,
                   repo: context.repo.repo,
                   job_id: job.id
                 });
                 
+                // Convert to string - response.data is the log content
+                const logs = typeof response.data === 'string' ? response.data : response.data.toString();
+                
                 // Extract relevant error lines
                 const logLines = logs.split('\n');
+                const seenLines = new Set();
                 const errorLines = [];
                 const relevantPatterns = [/error/i, /failed/i, /failure/i, /exception/i, /panic/i];
                 
@@ -104,7 +108,8 @@ jobs:
                     const start = Math.max(0, i - 2);
                     const end = Math.min(logLines.length, i + 3);
                     for (let j = start; j < end; j++) {
-                      if (!errorLines.includes(logLines[j])) {
+                      if (!seenLines.has(logLines[j])) {
+                        seenLines.add(logLines[j]);
                         errorLines.push(logLines[j]);
                       }
                     }
@@ -144,8 +149,9 @@ jobs:
             
             // Find CI feedback comments from this workflow
             const feedbackComments = comments.filter(comment => 
+              comment.body && 
               comment.body.includes('<!-- CI-FEEDBACK-BOT -->') &&
-              comment.user.type === 'Bot'
+              comment.user && comment.user.type === 'Bot'
             );
             
             // Count failures per job from previous comments
@@ -155,8 +161,11 @@ jobs:
               const jobMatches = comment.body.match(/### ❌ Job: `([^`]+)`/g);
               if (jobMatches) {
                 for (const match of jobMatches) {
-                  const jobName = match.match(/### ❌ Job: `([^`]+)`/)[1];
-                  jobFailureCounts[jobName] = (jobFailureCounts[jobName] || 0) + 1;
+                  const innerMatch = match.match(/### ❌ Job: `([^`]+)`/);
+                  if (innerMatch && innerMatch[1]) {
+                    const jobName = innerMatch[1];
+                    jobFailureCounts[jobName] = (jobFailureCounts[jobName] || 0) + 1;
+                  }
                 }
               }
             }

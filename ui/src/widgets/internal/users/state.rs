@@ -90,9 +90,8 @@ impl InternalUsersState {
     }
 
     /// Toggle OTP visibility for a user.
-    pub fn toggle_otp_visibility(&mut self, username: &str) {
-        let key = Ustr::from(username);
-        let revealed = self.revealed_otps.entry(key).or_insert(false);
+    pub fn toggle_otp_visibility(&mut self, username: Ustr) {
+        let revealed = self.revealed_otps.entry(username).or_insert(false);
         *revealed = !*revealed;
     }
 

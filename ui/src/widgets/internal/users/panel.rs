@@ -133,7 +133,7 @@ pub fn internal_users_panel(state_ctx: &mut StateCtx, api_base_url: &str, ui: &m
 
         // Apply toggle action after table iteration
         if let Some(username) = username_to_toggle {
-            state.toggle_otp_visibility(&username);
+            state.toggle_otp_visibility(username);
         }
 
         // Start action if requested

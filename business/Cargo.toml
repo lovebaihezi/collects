@@ -20,13 +20,14 @@ zerocopy = { workspace = true }
 zerocopy-derive = { workspace = true }
 
 collects-states = { path = "../states" }
+collects-utils = { path = "../utils" }
 
 [build-dependencies]
 chrono = "0.4.42"
 
 [features]
-env_test = []
-env_test_internal = []
-env_pr = []
-env_internal = []
-env_nightly = []
+env_test = ["collects-utils/env_test"]
+env_test_internal = ["collects-utils/env_test_internal"]
+env_pr = ["collects-utils/env_pr"]
+env_internal = ["collects-utils/env_internal"]
+env_nightly = ["collects-utils/env_nightly"]

@@ -9,7 +9,7 @@ use axum::{
     response::IntoResponse,
     routing::{any, get},
 };
-use collects_business::version_info::{RuntimeEnv, format_version_for_runtime_env};
+use collects_utils::version_info::{RuntimeEnv, format_version_for_runtime_env};
 use opentelemetry::{global, propagation::Extractor};
 use tower_http::trace::TraceLayer;
 use tracing_opentelemetry::OpenTelemetrySpanExt;

@@ -355,7 +355,7 @@ mod internal_users_panel_tests {
         ]
     }
 
-    // ========== Element Existence Tests ==========
+    // Element Existence Tests
 
     #[test]
     fn test_table_header_elements_exist() {
@@ -441,7 +441,7 @@ mod internal_users_panel_tests {
         );
     }
 
-    // ========== Content Correctness Tests ==========
+    // Content Correctness Tests
 
     #[test]
     fn test_otp_is_hidden_by_default() {
@@ -555,7 +555,7 @@ mod internal_users_panel_tests {
         );
     }
 
-    // ========== User Interaction Tests ==========
+    // User Interaction Tests
 
     #[test]
     fn test_reveal_button_toggles_otp_visibility() {
@@ -737,7 +737,7 @@ mod internal_users_panel_tests {
         let mut state_ctx = create_test_state_ctx();
         let mut users_state = InternalUsersState::new();
 
-        // No users added
+        // Test with empty user list - no users added to state
 
         let harness = Harness::new_ui_state(
             |ui, (state, state_ctx)| {

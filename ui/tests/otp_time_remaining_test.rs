@@ -17,6 +17,7 @@ use wiremock::{Mock, MockServer, ResponseTemplate};
 
 /// Test context for OTP time remaining tests.
 struct OtpTestCtx<'a> {
+    /// Mock server must be retained to keep HTTP endpoints alive during tests.
     #[allow(dead_code)]
     mock_server: MockServer,
     harness: Harness<'a, State>,
@@ -63,11 +64,26 @@ async fn setup_otp_test<'a>(
     }
 }
 
-/// Helper to advance time by specified seconds using the Time state.
+/// Advances the mock time by the specified number of seconds.
+///
+/// This modifies the `Time` state in the harness, allowing tests to simulate
+/// time passing without waiting for real time. Used to test OTP countdown behavior.
+///
+/// # Arguments
+///
+/// * `harness` - The test harness containing the app state
+/// * `seconds` - Number of seconds to advance (can be negative for time travel backward)
 fn advance_time_by_seconds(harness: &mut Harness<'_, State>, seconds: i64) {
     harness.state_mut().ctx.update::<Time>(|t| {
         *t.as_mut() = *t.as_ref() + Duration::seconds(seconds);
     });
+}
+
+/// Gets the current mocked time from the harness.
+///
+/// Returns the `DateTime<Utc>` value stored in the `Time` state.
+fn get_current_time(harness: &Harness<'_, State>) -> chrono::DateTime<chrono::Utc> {
+    *harness.state().ctx.state_mut::<Time>().as_ref()
 }
 
 /// Test that OTP time remaining updates when time advances.
@@ -96,7 +112,7 @@ async fn test_otp_time_remaining_updates_with_time() {
     let harness = ctx.harness_mut();
 
     // Initialize internal users state with test data
-    let now = *harness.state().ctx.state_mut::<Time>().as_ref();
+    let now = get_current_time(harness);
     harness.state_mut().internal_users.update_users(vec![test_user], now);
 
     // Render the widget
@@ -147,7 +163,7 @@ async fn test_otp_time_remaining_wraps_after_30_seconds() {
     let harness = ctx.harness_mut();
 
     // Initialize internal users state with test data
-    let now = *harness.state().ctx.state_mut::<Time>().as_ref();
+    let now = get_current_time(harness);
     harness.state_mut().internal_users.update_users(vec![test_user], now);
 
     // Render the widget
@@ -198,7 +214,7 @@ async fn test_otp_time_remaining_color_changes() {
     let harness = ctx.harness_mut();
 
     // Initialize internal users state with test data
-    let now = *harness.state().ctx.state_mut::<Time>().as_ref();
+    let now = get_current_time(harness);
     harness.state_mut().internal_users.update_users(vec![test_user], now);
 
     // Render the widget

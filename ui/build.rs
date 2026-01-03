@@ -24,6 +24,11 @@ fn get_icon_variant() -> &'static str {
     "original"
 }
 
+/// Calculates luminance from RGB values using standard formula: Y = 0.299*R + 0.587*G + 0.114*B
+fn rgb_to_luminance(r: u8, g: u8, b: u8) -> u8 {
+    (0.299 * r as f32 + 0.587 * g as f32 + 0.114 * b as f32) as u8
+}
+
 /// Converts an RGBA image to grayscale while preserving alpha.
 fn to_grayscale(img: &ImageBuffer<Rgba<u8>, Vec<u8>>) -> ImageBuffer<Rgba<u8>, Vec<u8>> {
     let (width, height) = img.dimensions();
@@ -31,8 +36,7 @@ fn to_grayscale(img: &ImageBuffer<Rgba<u8>, Vec<u8>>) -> ImageBuffer<Rgba<u8>, V
 
     for (x, y, pixel) in img.enumerate_pixels() {
         let [r, g, b, a] = pixel.0;
-        // Standard luminance formula: Y = 0.299*R + 0.587*G + 0.114*B
-        let gray = (0.299 * r as f32 + 0.587 * g as f32 + 0.114 * b as f32) as u8;
+        let gray = rgb_to_luminance(r, g, b);
         output.put_pixel(x, y, Rgba([gray, gray, gray, a]));
     }
 
@@ -46,10 +50,7 @@ fn to_inverted_grayscale(img: &ImageBuffer<Rgba<u8>, Vec<u8>>) -> ImageBuffer<Rg
 
     for (x, y, pixel) in img.enumerate_pixels() {
         let [r, g, b, a] = pixel.0;
-        // Standard luminance formula: Y = 0.299*R + 0.587*G + 0.114*B
-        let gray = (0.299 * r as f32 + 0.587 * g as f32 + 0.114 * b as f32) as u8;
-        // Invert the grayscale value
-        let inverted = 255 - gray;
+        let inverted = 255 - rgb_to_luminance(r, g, b);
         output.put_pixel(x, y, Rgba([inverted, inverted, inverted, a]));
     }
 
@@ -99,11 +100,9 @@ fn main() {
         let mut ico_writer = BufWriter::new(ico_file);
 
         let mut icon_dir = ico::IconDir::new(ico::ResourceType::Icon);
-        let icon_image = ico::IconImage::from_rgba_data(
-            processed_img.width(),
-            processed_img.height(),
-            processed_img.clone().into_raw(),
-        );
+        // Capture dimensions before consuming the image
+        let (width, height) = processed_img.dimensions();
+        let icon_image = ico::IconImage::from_rgba_data(width, height, processed_img.into_raw());
         icon_dir
             .add_entry(ico::IconDirEntry::encode(&icon_image).expect("Failed to encode icon"));
         icon_dir

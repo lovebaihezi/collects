@@ -14,6 +14,8 @@ use tower_http::trace::TraceLayer;
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 pub mod auth;
+pub mod collect_files;
+pub mod collects;
 pub mod config;
 pub mod database;
 pub mod internal;

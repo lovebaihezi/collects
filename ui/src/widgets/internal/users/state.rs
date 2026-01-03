@@ -148,4 +148,164 @@ impl InternalUsersState {
         self.qr_code_data = Some(otpauth_url);
         self.action_in_progress = false;
     }
+
+    /// Calculate real-time time remaining for a user's OTP code.
+    ///
+    /// OTP codes operate on a 30-second cycle. This method calculates the actual
+    /// seconds remaining based on:
+    /// - The original `time_remaining` value from when data was fetched
+    /// - The elapsed time since the last fetch
+    ///
+    /// # Arguments
+    ///
+    /// * `original_time_remaining` - The time remaining value from the fetched user data (1-30)
+    /// * `now` - The current time (from Time state for mockability)
+    ///
+    /// # Returns
+    ///
+    /// The real-time seconds remaining (1-30), automatically wrapping through OTP cycles.
+    pub fn calculate_time_remaining(&self, original_time_remaining: u8, now: DateTime<Utc>) -> u8 {
+        const OTP_CYCLE_SECONDS: i64 = 30;
+
+        let Some(last_fetch) = self.last_fetch else {
+            // If no fetch time recorded, return original value
+            return original_time_remaining;
+        };
+
+        let elapsed_seconds = now.signed_duration_since(last_fetch).num_seconds();
+
+        if elapsed_seconds < 0 {
+            // Time went backwards (clock skew), return original value
+            return original_time_remaining;
+        }
+
+        // Calculate the new time remaining
+        // original_time_remaining was the seconds until code change at last_fetch
+        // After elapsed_seconds, we need to compute new position in the 30-second cycle
+        let original = original_time_remaining as i64;
+        let remaining = original - (elapsed_seconds % OTP_CYCLE_SECONDS);
+
+        // Handle wrap-around: if remaining <= 0, we've passed into new cycle(s)
+        let adjusted = if remaining <= 0 {
+            remaining + OTP_CYCLE_SECONDS
+        } else {
+            remaining
+        };
+
+        // Clamp to valid range (1-30)
+        adjusted.clamp(1, OTP_CYCLE_SECONDS) as u8
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::Duration;
+
+    /// Creates a state with last_fetch set to the given time.
+    fn state_with_last_fetch(last_fetch: DateTime<Utc>) -> InternalUsersState {
+        let mut state = InternalUsersState::new();
+        state.last_fetch = Some(last_fetch);
+        state
+    }
+
+    #[test]
+    fn test_calculate_time_remaining_no_elapsed_time() {
+        let now = Utc::now();
+        let state = state_with_last_fetch(now);
+
+        // If no time has elapsed, time remaining should be unchanged
+        assert_eq!(state.calculate_time_remaining(30, now), 30);
+        assert_eq!(state.calculate_time_remaining(15, now), 15);
+        assert_eq!(state.calculate_time_remaining(1, now), 1);
+    }
+
+    #[test]
+    fn test_calculate_time_remaining_5_seconds_elapsed() {
+        let now = Utc::now();
+        let fetch_time = now - Duration::seconds(5);
+        let state = state_with_last_fetch(fetch_time);
+
+        // 30 - 5 = 25
+        assert_eq!(state.calculate_time_remaining(30, now), 25);
+        // 15 - 5 = 10
+        assert_eq!(state.calculate_time_remaining(15, now), 10);
+        // 10 - 5 = 5
+        assert_eq!(state.calculate_time_remaining(10, now), 5);
+    }
+
+    #[test]
+    fn test_calculate_time_remaining_wrap_around() {
+        let now = Utc::now();
+        let fetch_time = now - Duration::seconds(10);
+        let state = state_with_last_fetch(fetch_time);
+
+        // 5 - 10 = -5, which wraps to 25 (30 + (-5))
+        assert_eq!(state.calculate_time_remaining(5, now), 25);
+
+        // 1 - 10 = -9, which wraps to 21 (30 + (-9))
+        assert_eq!(state.calculate_time_remaining(1, now), 21);
+    }
+
+    #[test]
+    fn test_calculate_time_remaining_full_cycle() {
+        let now = Utc::now();
+        let fetch_time = now - Duration::seconds(30);
+        let state = state_with_last_fetch(fetch_time);
+
+        // After exactly one full cycle (30 seconds), time remaining should be same
+        assert_eq!(state.calculate_time_remaining(30, now), 30);
+        assert_eq!(state.calculate_time_remaining(15, now), 15);
+    }
+
+    #[test]
+    fn test_calculate_time_remaining_multiple_cycles() {
+        let now = Utc::now();
+        let fetch_time = now - Duration::seconds(65); // 2 full cycles + 5 seconds
+        let state = state_with_last_fetch(fetch_time);
+
+        // 65 % 30 = 5 seconds elapsed in current cycle
+        // 30 - 5 = 25
+        assert_eq!(state.calculate_time_remaining(30, now), 25);
+        // 15 - 5 = 10
+        assert_eq!(state.calculate_time_remaining(15, now), 10);
+    }
+
+    #[test]
+    fn test_calculate_time_remaining_no_last_fetch() {
+        let state = InternalUsersState::new();
+        let now = Utc::now();
+
+        // Without last_fetch, should return original value
+        assert_eq!(state.calculate_time_remaining(30, now), 30);
+        assert_eq!(state.calculate_time_remaining(15, now), 15);
+    }
+
+    #[test]
+    fn test_calculate_time_remaining_clock_skew() {
+        let now = Utc::now();
+        let future_fetch_time = now + Duration::seconds(10);
+        let state = state_with_last_fetch(future_fetch_time);
+
+        // If last_fetch is in the future (clock skew), should return original value
+        assert_eq!(state.calculate_time_remaining(30, now), 30);
+        assert_eq!(state.calculate_time_remaining(15, now), 15);
+    }
+
+    #[test]
+    fn test_calculate_time_remaining_exactly_at_boundary() {
+        let now = Utc::now();
+
+        // Test when original is 30 and we're at exact boundary
+        let fetch_time = now - Duration::seconds(30);
+        let state = state_with_last_fetch(fetch_time);
+        // 30 - (30 % 30) = 30 - 0 = 30
+        assert_eq!(state.calculate_time_remaining(30, now), 30);
+
+        // Test when original is 1 and 1 second has passed
+        let fetch_time = now - Duration::seconds(1);
+        let state = state_with_last_fetch(fetch_time);
+        // 1 - 1 = 0, which should wrap to 30
+        assert_eq!(state.calculate_time_remaining(1, now), 30);
+    }
 }

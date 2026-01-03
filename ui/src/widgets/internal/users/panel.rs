@@ -53,6 +53,9 @@ pub fn internal_users_panel(
         let mut username_to_toggle: Option<String> = None;
         let mut action_to_start: Option<UserAction> = None;
 
+        // Get current time for calculating real-time OTP time remaining
+        let now = *state_ctx.state_mut::<Time>().as_ref();
+
         // Users table
         ScrollArea::vertical().show(ui, |ui| {
             egui::Grid::new("users_table")
@@ -79,16 +82,19 @@ pub fn internal_users_panel(
                             ui.label(RichText::new("••••••").monospace());
                         }
 
+                        // Calculate real-time time remaining based on elapsed time since fetch
+                        let time_remaining = state.calculate_time_remaining(user.time_remaining, now);
+
                         // Time remaining indicator with color coding
-                        let time_color = if user.time_remaining <= 5 {
+                        let time_color = if time_remaining <= 5 {
                             Color32::RED // Critical: 5 seconds or less
-                        } else if user.time_remaining <= 10 {
+                        } else if time_remaining <= 10 {
                             Color32::from_rgb(255, 165, 0) // Warning: 10 seconds or less
                         } else {
                             Color32::from_rgb(34, 139, 34) // Safe: more than 10 seconds
                         };
                         ui.label(
-                            RichText::new(format!("{}s", user.time_remaining))
+                            RichText::new(format!("{}s", time_remaining))
                                 .monospace()
                                 .color(time_color),
                         );

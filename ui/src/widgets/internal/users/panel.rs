@@ -19,6 +19,12 @@ pub fn internal_users_panel(
     api_base_url: &str,
     ui: &mut Ui,
 ) -> Response {
+    // Auto-fetch users on first render if not already fetching and no data loaded yet
+    if state.last_fetch.is_none() && !state.is_fetching {
+        state.set_fetching();
+        fetch_users(api_base_url, ui.ctx().clone());
+    }
+
     let response = ui.vertical(|ui| {
         ui.heading("Internal Users");
         ui.separator();

@@ -240,8 +240,11 @@ jobs:
           echo "Running migrations for test-internal environment..."
           just services::migrate test-internal
 
-  build-and-deploy:
-    name: "Deploy: Services to Cloud Run"
+  # ============================================
+  # Build: Docker Image
+  # ============================================
+  build-docker:
+    name: "Build: Services Docker Image"
     runs-on: ubuntu-latest
     needs:
       [ci-check, check-version, check-migrations, determine-environment, run-migrations]
@@ -306,38 +309,274 @@ jobs:
           echo "Checking sqlx offline cache..."
           just services::prepare-check ${{ needs.determine-environment.outputs.env }}
 
-      - name: "Build and Push Docker Image (${{ needs.determine-environment.outputs.tag }})"
+      - name: Build and Push Docker Image
         env:
           SQLX_OFFLINE: "true"
         run: |
           just docker-push ${{ needs.determine-environment.outputs.tag }}
 
-      - name: "Deploy Services to PR Environment"
-        if: needs.determine-environment.outputs.env == 'pr'
-        run: |
-          just services::gcloud-deploy pr ${{ needs.determine-environment.outputs.tag }}
+  # ============================================
+  # Deploy: PR Environment
+  # ============================================
+  deploy-pr:
+    name: "Deploy: Services to PR"
+    runs-on: ubuntu-latest
+    needs: [ci-check, determine-environment, build-docker]
+    if: |
+      always() &&
+      needs.build-docker.result == 'success' &&
+      needs.determine-environment.outputs.env == 'pr'
+    permissions:
+      contents: read
+      id-token: write
 
-      - name: "Deploy Services to Test Environment"
-        if: needs.determine-environment.outputs.env == 'test'
-        run: |
-          just services::gcloud-deploy test ${{ needs.determine-environment.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.ci-check.outputs.head_sha }}
 
-      - name: "Deploy Services to Production Environment"
-        if: needs.determine-environment.outputs.env == 'prod'
-        run: |
-          just services::gcloud-deploy prod ${{ needs.determine-environment.outputs.tag }}
+      - name: Setup Just
+        uses: extractions/setup-just@v2
 
-      - name: "Deploy Services to Nightly Environment"
-        if: needs.determine-environment.outputs.env == 'nightly'
-        run: |
-          just services::gcloud-deploy nightly ${{ needs.determine-environment.outputs.tag }}
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
 
-      - name: "Deploy Services to Internal Environment"
-        if: needs.determine-environment.outputs.deploy_internal == 'true' && needs.determine-environment.outputs.env == 'prod'
-        run: |
-          just services::gcloud-deploy internal ${{ needs.determine-environment.outputs.tag }}
+      - name: Install Scripts Dependencies
+        working-directory: scripts
+        run: bun install --frozen-lockfile
 
-      - name: "Deploy Services to Test-Internal Environment"
-        if: needs.determine-environment.outputs.deploy_internal == 'true' && needs.determine-environment.outputs.env == 'test'
-        run: |
-          just services::gcloud-deploy test-internal ${{ needs.determine-environment.outputs.tag }}
+      - name: Google Auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: "projects/145756646168/locations/global/workloadIdentityPools/github-actions-pool/providers/github-provider"
+          service_account: "github-actions-sa@braided-case-416903.iam.gserviceaccount.com"
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy Services to PR Environment
+        run: just services::gcloud-deploy pr ${{ needs.determine-environment.outputs.tag }}
+
+  # ============================================
+  # Deploy: Test Environment
+  # ============================================
+  deploy-test:
+    name: "Deploy: Services to Test"
+    runs-on: ubuntu-latest
+    needs: [ci-check, determine-environment, build-docker]
+    if: |
+      always() &&
+      needs.build-docker.result == 'success' &&
+      needs.determine-environment.outputs.env == 'test'
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.ci-check.outputs.head_sha }}
+
+      - name: Setup Just
+        uses: extractions/setup-just@v2
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install Scripts Dependencies
+        working-directory: scripts
+        run: bun install --frozen-lockfile
+
+      - name: Google Auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: "projects/145756646168/locations/global/workloadIdentityPools/github-actions-pool/providers/github-provider"
+          service_account: "github-actions-sa@braided-case-416903.iam.gserviceaccount.com"
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy Services to Test Environment
+        run: just services::gcloud-deploy test ${{ needs.determine-environment.outputs.tag }}
+
+  # ============================================
+  # Deploy: Test-Internal Environment
+  # ============================================
+  deploy-test-internal:
+    name: "Deploy: Services to Test-Internal"
+    runs-on: ubuntu-latest
+    needs: [ci-check, determine-environment, build-docker]
+    if: |
+      always() &&
+      needs.build-docker.result == 'success' &&
+      needs.determine-environment.outputs.deploy_internal == 'true' &&
+      needs.determine-environment.outputs.env == 'test'
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.ci-check.outputs.head_sha }}
+
+      - name: Setup Just
+        uses: extractions/setup-just@v2
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install Scripts Dependencies
+        working-directory: scripts
+        run: bun install --frozen-lockfile
+
+      - name: Google Auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: "projects/145756646168/locations/global/workloadIdentityPools/github-actions-pool/providers/github-provider"
+          service_account: "github-actions-sa@braided-case-416903.iam.gserviceaccount.com"
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy Services to Test-Internal Environment
+        run: just services::gcloud-deploy test-internal ${{ needs.determine-environment.outputs.tag }}
+
+  # ============================================
+  # Deploy: Production Environment
+  # ============================================
+  deploy-prod:
+    name: "Deploy: Services to Production"
+    runs-on: ubuntu-latest
+    needs: [ci-check, determine-environment, build-docker]
+    if: |
+      always() &&
+      needs.build-docker.result == 'success' &&
+      needs.determine-environment.outputs.env == 'prod'
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.ci-check.outputs.head_sha }}
+
+      - name: Setup Just
+        uses: extractions/setup-just@v2
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install Scripts Dependencies
+        working-directory: scripts
+        run: bun install --frozen-lockfile
+
+      - name: Google Auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: "projects/145756646168/locations/global/workloadIdentityPools/github-actions-pool/providers/github-provider"
+          service_account: "github-actions-sa@braided-case-416903.iam.gserviceaccount.com"
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy Services to Production Environment
+        run: just services::gcloud-deploy prod ${{ needs.determine-environment.outputs.tag }}
+
+  # ============================================
+  # Deploy: Internal Environment
+  # ============================================
+  deploy-internal:
+    name: "Deploy: Services to Internal"
+    runs-on: ubuntu-latest
+    needs: [ci-check, determine-environment, build-docker]
+    if: |
+      always() &&
+      needs.build-docker.result == 'success' &&
+      needs.determine-environment.outputs.deploy_internal == 'true' &&
+      needs.determine-environment.outputs.env == 'prod'
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.ci-check.outputs.head_sha }}
+
+      - name: Setup Just
+        uses: extractions/setup-just@v2
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install Scripts Dependencies
+        working-directory: scripts
+        run: bun install --frozen-lockfile
+
+      - name: Google Auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: "projects/145756646168/locations/global/workloadIdentityPools/github-actions-pool/providers/github-provider"
+          service_account: "github-actions-sa@braided-case-416903.iam.gserviceaccount.com"
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy Services to Internal Environment
+        run: just services::gcloud-deploy internal ${{ needs.determine-environment.outputs.tag }}
+
+  # ============================================
+  # Deploy: Nightly Environment
+  # ============================================
+  deploy-nightly:
+    name: "Deploy: Services to Nightly"
+    runs-on: ubuntu-latest
+    needs: [ci-check, determine-environment, build-docker]
+    if: |
+      always() &&
+      needs.build-docker.result == 'success' &&
+      needs.determine-environment.outputs.env == 'nightly'
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.ci-check.outputs.head_sha }}
+
+      - name: Setup Just
+        uses: extractions/setup-just@v2
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install Scripts Dependencies
+        working-directory: scripts
+        run: bun install --frozen-lockfile
+
+      - name: Google Auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: "projects/145756646168/locations/global/workloadIdentityPools/github-actions-pool/providers/github-provider"
+          service_account: "github-actions-sa@braided-case-416903.iam.gserviceaccount.com"
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy Services to Nightly Environment
+        run: just services::gcloud-deploy nightly ${{ needs.determine-environment.outputs.tag }}

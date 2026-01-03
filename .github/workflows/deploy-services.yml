@@ -204,24 +204,41 @@ jobs:
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
 
-      - name: Run Migrations for Primary Environment
+      - name: "🗃️ Run Migrations for PR Environment"
+        if: needs.determine-environment.outputs.env == 'pr'
         run: |
-          echo "Running migrations for ${{ needs.determine-environment.outputs.env }} environment..."
-          just services::migrate ${{ needs.determine-environment.outputs.env }}
+          echo "Running migrations for pr environment..."
+          just services::migrate pr
 
-      - name: Run Migrations for Internal Environment
-        if: needs.determine-environment.outputs.deploy_internal == 'true'
+      - name: "🗃️ Run Migrations for Test Environment"
+        if: needs.determine-environment.outputs.env == 'test'
         run: |
-          # Determine internal environment based on primary environment:
-          # - prod deploy -> internal environment (production branch)
-          # - test deploy -> test-internal environment (development branch)
-          if [[ "${{ needs.determine-environment.outputs.env }}" == "prod" ]]; then
-            INTERNAL_ENV="internal"
-          else
-            INTERNAL_ENV="test-internal"
-          fi
-          echo "Running migrations for ${INTERNAL_ENV} environment..."
-          just services::migrate ${INTERNAL_ENV}
+          echo "Running migrations for test environment..."
+          just services::migrate test
+
+      - name: "🗃️ Run Migrations for Production Environment"
+        if: needs.determine-environment.outputs.env == 'prod'
+        run: |
+          echo "Running migrations for prod environment..."
+          just services::migrate prod
+
+      - name: "🗃️ Run Migrations for Nightly Environment"
+        if: needs.determine-environment.outputs.env == 'nightly'
+        run: |
+          echo "Running migrations for nightly environment..."
+          just services::migrate nightly
+
+      - name: "🗃️ Run Migrations for Internal Environment"
+        if: needs.determine-environment.outputs.deploy_internal == 'true' && needs.determine-environment.outputs.env == 'prod'
+        run: |
+          echo "Running migrations for internal environment..."
+          just services::migrate internal
+
+      - name: "🗃️ Run Migrations for Test-Internal Environment"
+        if: needs.determine-environment.outputs.deploy_internal == 'true' && needs.determine-environment.outputs.env == 'test'
+        run: |
+          echo "Running migrations for test-internal environment..."
+          just services::migrate test-internal
 
   build-and-deploy:
     name: "🚀 Deploy: Services to Cloud Run"
@@ -289,25 +306,38 @@ jobs:
           echo "Checking sqlx offline cache..."
           just services::prepare-check ${{ needs.determine-environment.outputs.env }}
 
-      - name: Build and Push Docker Image
+      - name: "🐳 Build and Push Docker Image (${{ needs.determine-environment.outputs.tag }})"
         env:
           SQLX_OFFLINE: "true"
         run: |
           just docker-push ${{ needs.determine-environment.outputs.tag }}
 
-      - name: Deploy to Cloud Run
+      - name: "🚀 Deploy Services to PR Environment"
+        if: needs.determine-environment.outputs.env == 'pr'
         run: |
-          just services::gcloud-deploy ${{ needs.determine-environment.outputs.env }} ${{ needs.determine-environment.outputs.tag }}
+          just services::gcloud-deploy pr ${{ needs.determine-environment.outputs.tag }}
 
-      - name: Deploy to Internal Environment
-        if: needs.determine-environment.outputs.deploy_internal == 'true'
+      - name: "🚀 Deploy Services to Test Environment"
+        if: needs.determine-environment.outputs.env == 'test'
         run: |
-          # Determine internal environment based on primary environment:
-          # - prod deploy -> internal environment (production branch)
-          # - test deploy -> test-internal environment (development branch)
-          if [[ "${{ needs.determine-environment.outputs.env }}" == "prod" ]]; then
-            INTERNAL_ENV="internal"
-          else
-            INTERNAL_ENV="test-internal"
-          fi
-          just services::gcloud-deploy ${INTERNAL_ENV} ${{ needs.determine-environment.outputs.tag }}
+          just services::gcloud-deploy test ${{ needs.determine-environment.outputs.tag }}
+
+      - name: "🚀 Deploy Services to Production Environment"
+        if: needs.determine-environment.outputs.env == 'prod'
+        run: |
+          just services::gcloud-deploy prod ${{ needs.determine-environment.outputs.tag }}
+
+      - name: "🚀 Deploy Services to Nightly Environment"
+        if: needs.determine-environment.outputs.env == 'nightly'
+        run: |
+          just services::gcloud-deploy nightly ${{ needs.determine-environment.outputs.tag }}
+
+      - name: "🚀 Deploy Services to Internal Environment"
+        if: needs.determine-environment.outputs.deploy_internal == 'true' && needs.determine-environment.outputs.env == 'prod'
+        run: |
+          just services::gcloud-deploy internal ${{ needs.determine-environment.outputs.tag }}
+
+      - name: "🚀 Deploy Services to Test-Internal Environment"
+        if: needs.determine-environment.outputs.deploy_internal == 'true' && needs.determine-environment.outputs.env == 'test'
+        run: |
+          just services::gcloud-deploy test-internal ${{ needs.determine-environment.outputs.tag }}

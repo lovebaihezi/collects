@@ -30,7 +30,7 @@ pub fn internal_page(state: &mut State, ui: &mut Ui) -> Response {
         ui.add_space(16.0);
 
         // Show internal users panel centered
-        widgets::internal_users_panel(&mut state.internal_users, &mut state.ctx, &api_base_url, ui);
+        widgets::internal_users_panel(&mut state.ctx, &api_base_url, ui);
 
         ui.add_space(16.0);
         widgets::powered_by_egui_and_eframe(ui);

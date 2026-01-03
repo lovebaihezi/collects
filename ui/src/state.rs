@@ -18,10 +18,6 @@ pub struct State {
     // We need to store the persistent state
     #[serde(skip)]
     pub ctx: StateCtx,
-    /// Internal users state (only for internal builds)
-    #[cfg(any(feature = "env_internal", feature = "env_test_internal"))]
-    #[serde(skip)]
-    pub internal_users: InternalUsersState,
 }
 
 impl Default for State {
@@ -59,13 +55,12 @@ impl Default for State {
             ctx.record_compute(InternalApiStatus::default());
             ctx.record_compute(CreateUserCompute::default());
             ctx.record_command(CreateUserCommand::default());
+
+            // Internal users state
+            ctx.add_state(InternalUsersState::new());
         }
 
-        Self {
-            ctx,
-            #[cfg(any(feature = "env_internal", feature = "env_test_internal"))]
-            internal_users: InternalUsersState::new(),
-        }
+        Self { ctx }
     }
 }
 
@@ -104,12 +99,11 @@ impl State {
             ctx.record_compute(InternalApiStatus::default());
             ctx.record_compute(CreateUserCompute::default());
             ctx.record_command(CreateUserCommand::default());
+
+            // Internal users state
+            ctx.add_state(InternalUsersState::new());
         }
 
-        Self {
-            ctx,
-            #[cfg(any(feature = "env_internal", feature = "env_test_internal"))]
-            internal_users: InternalUsersState::new(),
-        }
+        Self { ctx }
     }
 }

@@ -44,7 +44,8 @@ pub fn format_version_header(env: &config::Env) -> String {
         }
         config::Env::Nightly => {
             // Extract just the date portion (first 10 chars) from RFC3339 format
-            let date = if BUILD_DATE.len() >= 10 {
+            // BUILD_DATE is RFC3339 formatted (e.g., "2026-01-03T12:00:00+00:00") which is ASCII
+            let date = if BUILD_DATE.len() >= 10 && BUILD_DATE.is_ascii() {
                 &BUILD_DATE[..10]
             } else {
                 BUILD_DATE

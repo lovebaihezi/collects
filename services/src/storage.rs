@@ -501,6 +501,33 @@ impl CFFileStorage {
             mock: None,
         }
     }
+
+    /// Creates an OpenDAL operator for R2 operations.
+    ///
+    /// This helper method creates a new operator for each call. In a production
+    /// environment with high throughput, consider caching the operator or using
+    /// a connection pool. However, OpenDAL operators are lightweight and this
+    /// approach ensures fresh connections and proper error handling.
+    #[cfg(not(test))]
+    fn create_operator(&self) -> Result<opendal::Operator, FileStorageError> {
+        let config = self.config.as_ref().ok_or_else(|| {
+            FileStorageError::ConnectionError("No configuration provided".to_string())
+        })?;
+
+        let builder = opendal::services::S3::default()
+            .bucket(&config.bucket)
+            .region("auto")
+            .access_key_id(&config.access_key_id)
+            .secret_access_key(&config.secret_access_key)
+            .endpoint(&format!(
+                "https://{}.r2.cloudflarestorage.com",
+                config.account_id
+            ));
+
+        opendal::Operator::new(builder)
+            .map(|op| op.finish())
+            .map_err(|e| FileStorageError::StorageError(e.to_string()))
+    }
 }
 
 impl Default for CFFileStorage {
@@ -517,46 +544,34 @@ impl FileStorage for CFFileStorage {
             return mock.upload_file(request).await;
         }
 
-        let Some(config) = &self.config else {
-            return Err(FileStorageError::ConnectionError(
-                "No configuration provided".to_string(),
-            ));
-        };
+        #[cfg(not(test))]
+        {
+            let op = self.create_operator()?;
 
-        use opendal::Operator;
+            op.write(&request.path, request.content.clone())
+                .await
+                .map_err(|e| FileStorageError::StorageError(e.to_string()))?;
 
-        let builder = opendal::services::S3::default()
-            .bucket(&config.bucket)
-            .region("auto")
-            .access_key_id(&config.access_key_id)
-            .secret_access_key(&config.secret_access_key)
-            .endpoint(&format!(
-                "https://{}.r2.cloudflarestorage.com",
-                config.account_id
-            ));
+            let filename = request
+                .path
+                .split('/')
+                .next_back()
+                .unwrap_or(&request.path)
+                .to_string();
 
-        let op = Operator::new(builder)
-            .map_err(|e| FileStorageError::StorageError(e.to_string()))?
-            .finish();
+            Ok(FileMetadata {
+                id: request.path,
+                filename,
+                content_type: request.content_type,
+                size: request.content.len() as u64,
+                description: request.description,
+            })
+        }
 
-        op.write(&request.path, request.content.clone())
-            .await
-            .map_err(|e| FileStorageError::StorageError(e.to_string()))?;
-
-        let filename = request
-            .path
-            .split('/')
-            .next_back()
-            .unwrap_or(&request.path)
-            .to_string();
-
-        Ok(FileMetadata {
-            id: request.path,
-            filename,
-            content_type: request.content_type,
-            size: request.content.len() as u64,
-            description: request.description,
-        })
+        #[cfg(test)]
+        Err(FileStorageError::ConnectionError(
+            "No mock storage configured for test".to_string(),
+        ))
     }
 
     async fn download_file(&self, path: &str) -> Result<Vec<u8>, Self::Error> {
@@ -564,35 +579,23 @@ impl FileStorage for CFFileStorage {
             return mock.download_file(path).await;
         }
 
-        let Some(config) = &self.config else {
-            return Err(FileStorageError::ConnectionError(
-                "No configuration provided".to_string(),
-            ));
-        };
+        #[cfg(not(test))]
+        {
+            let op = self.create_operator()?;
 
-        use opendal::Operator;
+            op.read(path).await.map(|buf| buf.to_vec()).map_err(|e| {
+                if e.kind() == opendal::ErrorKind::NotFound {
+                    FileStorageError::NotFound(path.to_string())
+                } else {
+                    FileStorageError::StorageError(e.to_string())
+                }
+            })
+        }
 
-        let builder = opendal::services::S3::default()
-            .bucket(&config.bucket)
-            .region("auto")
-            .access_key_id(&config.access_key_id)
-            .secret_access_key(&config.secret_access_key)
-            .endpoint(&format!(
-                "https://{}.r2.cloudflarestorage.com",
-                config.account_id
-            ));
-
-        let op = Operator::new(builder)
-            .map_err(|e| FileStorageError::StorageError(e.to_string()))?
-            .finish();
-
-        op.read(path).await.map(|buf| buf.to_vec()).map_err(|e| {
-            if e.kind() == opendal::ErrorKind::NotFound {
-                FileStorageError::NotFound(path.to_string())
-            } else {
-                FileStorageError::StorageError(e.to_string())
-            }
-        })
+        #[cfg(test)]
+        Err(FileStorageError::ConnectionError(
+            "No mock storage configured for test".to_string(),
+        ))
     }
 
     async fn delete_file(&self, path: &str) -> Result<bool, Self::Error> {
@@ -600,39 +603,30 @@ impl FileStorage for CFFileStorage {
             return mock.delete_file(path).await;
         }
 
-        let Some(config) = &self.config else {
-            return Err(FileStorageError::ConnectionError(
-                "No configuration provided".to_string(),
-            ));
-        };
+        #[cfg(not(test))]
+        {
+            let op = self.create_operator()?;
 
-        use opendal::Operator;
-
-        let builder = opendal::services::S3::default()
-            .bucket(&config.bucket)
-            .region("auto")
-            .access_key_id(&config.access_key_id)
-            .secret_access_key(&config.secret_access_key)
-            .endpoint(&format!(
-                "https://{}.r2.cloudflarestorage.com",
-                config.account_id
-            ));
-
-        let op = Operator::new(builder)
-            .map_err(|e| FileStorageError::StorageError(e.to_string()))?
-            .finish();
-
-        // Check if file exists first
-        let exists = op.exists(path).await.unwrap_or(false);
-
-        if exists {
-            op.delete(path)
+            // Check if file exists first, propagating any errors
+            let exists = op
+                .exists(path)
                 .await
                 .map_err(|e| FileStorageError::StorageError(e.to_string()))?;
-            Ok(true)
-        } else {
-            Ok(false)
+
+            if exists {
+                op.delete(path)
+                    .await
+                    .map_err(|e| FileStorageError::StorageError(e.to_string()))?;
+                Ok(true)
+            } else {
+                Ok(false)
+            }
         }
+
+        #[cfg(test)]
+        Err(FileStorageError::ConnectionError(
+            "No mock storage configured for test".to_string(),
+        ))
     }
 
     async fn list_files(&self, prefix: &str) -> Result<Vec<FileMetadata>, Self::Error> {
@@ -640,49 +634,39 @@ impl FileStorage for CFFileStorage {
             return mock.list_files(prefix).await;
         }
 
-        let Some(config) = &self.config else {
-            return Err(FileStorageError::ConnectionError(
-                "No configuration provided".to_string(),
-            ));
-        };
+        #[cfg(not(test))]
+        {
+            let op = self.create_operator()?;
 
-        use opendal::Operator;
+            let entries = op
+                .list(prefix)
+                .await
+                .map_err(|e| FileStorageError::StorageError(e.to_string()))?;
 
-        let builder = opendal::services::S3::default()
-            .bucket(&config.bucket)
-            .region("auto")
-            .access_key_id(&config.access_key_id)
-            .secret_access_key(&config.secret_access_key)
-            .endpoint(&format!(
-                "https://{}.r2.cloudflarestorage.com",
-                config.account_id
-            ));
-
-        let op = Operator::new(builder)
-            .map_err(|e| FileStorageError::StorageError(e.to_string()))?
-            .finish();
-
-        let entries = op
-            .list(prefix)
-            .await
-            .map_err(|e| FileStorageError::StorageError(e.to_string()))?;
-
-        let mut files = Vec::new();
-        for entry in entries {
-            let path = entry.path();
-            if entry.metadata().is_file() {
-                let filename = path.split('/').next_back().unwrap_or(path).to_string();
-                files.push(FileMetadata {
-                    id: path.to_string(),
-                    filename,
-                    content_type: "application/octet-stream".to_string(), // R2 doesn't store content-type in list
-                    size: entry.metadata().content_length(),
-                    description: None,
-                });
+            let mut files = Vec::new();
+            for entry in entries {
+                let path = entry.path();
+                if entry.metadata().is_file() {
+                    let filename = path.split('/').next_back().unwrap_or(path).to_string();
+                    // Note: R2's list operation doesn't return content-type.
+                    // Use get_file_metadata() for accurate content-type information.
+                    files.push(FileMetadata {
+                        id: path.to_string(),
+                        filename,
+                        content_type: "application/octet-stream".to_string(),
+                        size: entry.metadata().content_length(),
+                        description: None,
+                    });
+                }
             }
+
+            Ok(files)
         }
 
-        Ok(files)
+        #[cfg(test)]
+        Err(FileStorageError::ConnectionError(
+            "No mock storage configured for test".to_string(),
+        ))
     }
 
     async fn file_exists(&self, path: &str) -> Result<bool, Self::Error> {
@@ -690,29 +674,19 @@ impl FileStorage for CFFileStorage {
             return mock.file_exists(path).await;
         }
 
-        let Some(config) = &self.config else {
-            return Err(FileStorageError::ConnectionError(
-                "No configuration provided".to_string(),
-            ));
-        };
+        #[cfg(not(test))]
+        {
+            let op = self.create_operator()?;
 
-        use opendal::Operator;
+            op.exists(path)
+                .await
+                .map_err(|e| FileStorageError::StorageError(e.to_string()))
+        }
 
-        let builder = opendal::services::S3::default()
-            .bucket(&config.bucket)
-            .region("auto")
-            .access_key_id(&config.access_key_id)
-            .secret_access_key(&config.secret_access_key)
-            .endpoint(&format!(
-                "https://{}.r2.cloudflarestorage.com",
-                config.account_id
-            ));
-
-        let op = Operator::new(builder)
-            .map_err(|e| FileStorageError::StorageError(e.to_string()))?
-            .finish();
-
-        Ok(op.exists(path).await.unwrap_or(false))
+        #[cfg(test)]
+        Err(FileStorageError::ConnectionError(
+            "No mock storage configured for test".to_string(),
+        ))
     }
 
     async fn get_file_metadata(&self, path: &str) -> Result<Option<FileMetadata>, Self::Error> {
@@ -720,45 +694,33 @@ impl FileStorage for CFFileStorage {
             return mock.get_file_metadata(path).await;
         }
 
-        let Some(config) = &self.config else {
-            return Err(FileStorageError::ConnectionError(
-                "No configuration provided".to_string(),
-            ));
-        };
+        #[cfg(not(test))]
+        {
+            let op = self.create_operator()?;
 
-        use opendal::Operator;
-
-        let builder = opendal::services::S3::default()
-            .bucket(&config.bucket)
-            .region("auto")
-            .access_key_id(&config.access_key_id)
-            .secret_access_key(&config.secret_access_key)
-            .endpoint(&format!(
-                "https://{}.r2.cloudflarestorage.com",
-                config.account_id
-            ));
-
-        let op = Operator::new(builder)
-            .map_err(|e| FileStorageError::StorageError(e.to_string()))?
-            .finish();
-
-        match op.stat(path).await {
-            Ok(meta) => {
-                let filename = path.split('/').next_back().unwrap_or(path).to_string();
-                Ok(Some(FileMetadata {
-                    id: path.to_string(),
-                    filename,
-                    content_type: meta
-                        .content_type()
-                        .unwrap_or("application/octet-stream")
-                        .to_string(),
-                    size: meta.content_length(),
-                    description: None,
-                }))
+            match op.stat(path).await {
+                Ok(meta) => {
+                    let filename = path.split('/').next_back().unwrap_or(path).to_string();
+                    Ok(Some(FileMetadata {
+                        id: path.to_string(),
+                        filename,
+                        content_type: meta
+                            .content_type()
+                            .unwrap_or("application/octet-stream")
+                            .to_string(),
+                        size: meta.content_length(),
+                        description: None,
+                    }))
+                }
+                Err(e) if e.kind() == opendal::ErrorKind::NotFound => Ok(None),
+                Err(e) => Err(FileStorageError::StorageError(e.to_string())),
             }
-            Err(e) if e.kind() == opendal::ErrorKind::NotFound => Ok(None),
-            Err(e) => Err(FileStorageError::StorageError(e.to_string())),
         }
+
+        #[cfg(test)]
+        Err(FileStorageError::ConnectionError(
+            "No mock storage configured for test".to_string(),
+        ))
     }
 }
 

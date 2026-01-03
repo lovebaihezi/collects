@@ -2,6 +2,7 @@ mod api_status;
 pub mod cf_token_compute;
 pub mod config;
 pub mod create_user_compute;
+pub mod fetch_users_compute;
 pub mod internal;
 pub mod internal_api_status;
 pub mod login_state;
@@ -13,6 +14,9 @@ pub use cf_token_compute::{CFTokenCompute, CFTokenInput, CFTokenResult, SetCFTok
 pub use config::BusinessConfig;
 pub use create_user_compute::{
     CreateUserCommand, CreateUserCompute, CreateUserInput, CreateUserResult,
+};
+pub use fetch_users_compute::{
+    FetchInternalUsersCommand, FetchInternalUsersCompute, FetchUsersResult,
 };
 pub use internal::{
     CreateUserRequest, CreateUserResponse, DeleteUserResponse, GetUserResponse, InternalUserItem,

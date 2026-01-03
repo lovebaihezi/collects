@@ -5,7 +5,7 @@ use collects_business::{AuthCompute, LoginCommand, LoginInput, LogoutCommand};
 #[cfg(any(feature = "env_internal", feature = "env_test_internal"))]
 use collects_business::{
     CFTokenCompute, CFTokenInput, CreateUserCommand, CreateUserCompute, CreateUserInput,
-    InternalApiStatus, SetCFTokenCommand,
+    FetchInternalUsersCommand, FetchInternalUsersCompute, InternalApiStatus, SetCFTokenCommand,
 };
 use collects_states::{StateCtx, Time};
 use serde::{Deserialize, Serialize};
@@ -59,6 +59,10 @@ impl Default for State {
             ctx.record_compute(InternalApiStatus::default());
             ctx.record_compute(CreateUserCompute::default());
             ctx.record_command(CreateUserCommand::default());
+
+            // Fetch users command
+            ctx.record_compute(FetchInternalUsersCompute::default());
+            ctx.record_command(FetchInternalUsersCommand);
         }
 
         Self {
@@ -104,6 +108,10 @@ impl State {
             ctx.record_compute(InternalApiStatus::default());
             ctx.record_compute(CreateUserCompute::default());
             ctx.record_command(CreateUserCommand::default());
+
+            // Fetch users command
+            ctx.record_compute(FetchInternalUsersCompute::default());
+            ctx.record_command(FetchInternalUsersCommand);
         }
 
         Self {

@@ -1,13 +1,13 @@
 //! Tests for internal users auto-loading behavior.
 //!
 //! Verifies that:
-//! 1. Users are automatically loaded on first panel render
+//! 1. Users are automatically loaded when the app is created (via FetchInternalUsersCommand)
 //! 2. No repeat fetch happens unless refresh button is clicked
 //!
 //! Tests are only compiled when the `env_test_internal` feature is enabled.
 //!
 //! Note: InternalApiStatus compute also calls /api/internal/users for health checking.
-//! So tests need to account for both InternalApiStatus + panel auto-fetch calls.
+//! So tests need to account for both InternalApiStatus + FetchInternalUsersCommand calls.
 
 #![cfg(any(feature = "env_internal", feature = "env_test_internal"))]
 
@@ -38,7 +38,8 @@ impl<'a> AutoLoadTestCtx<'a> {
 ///
 /// Note: `users_mock_expect` should account for:
 /// - 1 call from InternalApiStatus compute (health check)
-/// - Additional calls from panel (auto-fetch, refresh clicks, etc.)
+/// - 1 call from FetchInternalUsersCommand (dispatched in CollectsApp::new)
+/// - Additional calls from refresh button clicks
 async fn setup_auto_load_test_with_users_mock(
     users_mock_expect: wiremock::Times,
 ) -> AutoLoadTestCtx<'static> {
@@ -73,28 +74,28 @@ async fn setup_auto_load_test_with_users_mock(
     }
 }
 
-/// Test that users are automatically fetched on first panel render.
+/// Test that users are automatically fetched when the app is created.
 ///
-/// This test verifies that when the internal_users_panel is first rendered,
-/// it automatically triggers a fetch if no data has been loaded yet.
+/// This test verifies that CollectsApp::new() dispatches the FetchInternalUsersCommand
+/// to load users at startup.
 ///
 /// Expected calls: 2
 /// - 1 from InternalApiStatus compute (health check on app init)
-/// - 1 from panel auto-fetch (on first render)
+/// - 1 from FetchInternalUsersCommand (dispatched in CollectsApp::new)
 #[tokio::test]
-async fn test_auto_fetch_on_first_render() {
-    // Expect 2 calls: InternalApiStatus + panel auto-fetch
+async fn test_auto_fetch_on_app_create() {
+    // Expect 2 calls: InternalApiStatus + FetchInternalUsersCommand
     let mut ctx = setup_auto_load_test_with_users_mock(2.into()).await;
 
     let harness = ctx.harness_mut();
 
-    // First frame render - this should trigger auto-fetch from panel
+    // First frame render
     harness.step();
 
     // Wait for async response
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
-    // Poll for responses - step triggers update which polls
+    // Poll for responses - step triggers update which syncs computes
     harness.step();
 
     // The mock expectation will verify exactly 2 calls were made when the mock server drops
@@ -102,21 +103,21 @@ async fn test_auto_fetch_on_first_render() {
 
 /// Test that no repeat fetch happens on subsequent renders.
 ///
-/// This test verifies that after the initial auto-fetch, subsequent renders
-/// of the panel do NOT trigger additional fetches unless the refresh button
+/// This test verifies that after the initial fetch at app creation,
+/// subsequent renders do NOT trigger additional fetches unless the refresh button
 /// is explicitly clicked.
 ///
 /// Expected calls: 2
 /// - 1 from InternalApiStatus compute (health check on app init)
-/// - 1 from panel auto-fetch (on first render only, not on subsequent renders)
+/// - 1 from FetchInternalUsersCommand (dispatched in CollectsApp::new, not on subsequent renders)
 #[tokio::test]
 async fn test_no_repeat_fetch_on_subsequent_renders() {
-    // Expect 2 calls: InternalApiStatus + panel auto-fetch (no repeats)
+    // Expect 2 calls: InternalApiStatus + FetchInternalUsersCommand (no repeats)
     let mut ctx = setup_auto_load_test_with_users_mock(2.into()).await;
 
     let harness = ctx.harness_mut();
 
-    // First frame - triggers auto-fetch from panel
+    // First frame
     harness.step();
 
     // Wait for async response
@@ -139,21 +140,21 @@ async fn test_no_repeat_fetch_on_subsequent_renders() {
 
 /// Test that clicking the Refresh button triggers a new fetch.
 ///
-/// This test verifies that clicking the refresh button works
-/// to trigger additional fetches after the initial auto-fetch.
+/// This test verifies that clicking the refresh button dispatches
+/// FetchInternalUsersCommand to trigger additional fetches.
 ///
 /// Expected calls: 3
 /// - 1 from InternalApiStatus compute (health check on app init)
-/// - 1 from panel auto-fetch (on first render)
+/// - 1 from FetchInternalUsersCommand (dispatched in CollectsApp::new)
 /// - 1 from refresh button click
 #[tokio::test]
 async fn test_refresh_button_triggers_new_fetch() {
-    // Expect 3 calls: InternalApiStatus + panel auto-fetch + refresh click
+    // Expect 3 calls: InternalApiStatus + FetchInternalUsersCommand + refresh click
     let mut ctx = setup_auto_load_test_with_users_mock(3.into()).await;
 
     let harness = ctx.harness_mut();
 
-    // First frame - triggers auto-fetch from panel
+    // First frame
     harness.step();
 
     // Wait for async response

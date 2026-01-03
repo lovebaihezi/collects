@@ -1,6 +1,8 @@
 use crate::{pages, state::State, utils::clipboard, widgets};
 use chrono::{Timelike, Utc};
 use collects_business::{AuthCompute, Route};
+#[cfg(any(feature = "env_internal", feature = "env_test_internal"))]
+use collects_business::FetchInternalUsersCommand;
 use collects_states::Time;
 
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
@@ -10,7 +12,14 @@ pub struct CollectsApp {
 
 impl CollectsApp {
     /// Called once before the first frame.
-    pub fn new(state: State) -> Self {
+    pub fn new(mut state: State) -> Self {
+        // Dispatch startup commands for internal builds
+        #[cfg(any(feature = "env_internal", feature = "env_test_internal"))]
+        {
+            // Fetch internal users at app startup
+            state.ctx.dispatch::<FetchInternalUsersCommand>();
+        }
+        
         Self { state }
     }
 }
@@ -40,7 +49,7 @@ impl eframe::App for CollectsApp {
         #[cfg(any(feature = "env_internal", feature = "env_test_internal"))]
         widgets::poll_internal_users_responses(
             &mut self.state.internal_users,
-            &self.state.ctx,
+            &mut self.state.ctx,
             ctx,
         );
 

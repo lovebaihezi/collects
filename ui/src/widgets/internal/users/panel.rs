@@ -1,11 +1,13 @@
 //! Main panel for internal users management.
 
-use collects_business::{CreateUserCommand, CreateUserCompute, CreateUserInput, InternalUserItem};
-use collects_states::{StateCtx, Time};
+use collects_business::{
+    CreateUserCommand, CreateUserCompute, CreateUserInput, FetchInternalUsersCommand,
+    FetchInternalUsersCompute,
+};
+use collects_states::StateCtx;
 use egui::{Color32, Response, RichText, ScrollArea, Ui};
 use std::any::TypeId;
 
-use super::api::fetch_users;
 use super::modals::{
     show_create_user_modal, show_delete_user_modal, show_edit_username_modal, show_qr_code_modal,
     show_revoke_otp_modal,
@@ -16,14 +18,18 @@ use super::state::{InternalUsersState, UserAction};
 pub fn internal_users_panel(
     state: &mut InternalUsersState,
     state_ctx: &mut StateCtx,
-    api_base_url: &str,
+    _api_base_url: &str,
     ui: &mut Ui,
 ) -> Response {
-    // Auto-fetch users on first render if not already fetching and no data loaded yet
-    if state.last_fetch.is_none() && !state.is_fetching {
-        state.set_fetching();
-        fetch_users(api_base_url, ui.ctx().clone());
-    }
+    // Get users from the compute
+    let (users, is_pending, error) = if let Some(compute) = state_ctx.cached::<FetchInternalUsersCompute>() {
+        let users = compute.users().cloned().unwrap_or_default();
+        let is_pending = compute.is_pending();
+        let error = compute.error_message().map(|s| s.to_string());
+        (users, is_pending, error)
+    } else {
+        (vec![], false, None)
+    };
 
     let response = ui.vertical(|ui| {
         ui.heading("Internal Users");
@@ -31,9 +37,9 @@ pub fn internal_users_panel(
 
         // Controls row: Refresh and Create buttons
         ui.horizontal(|ui| {
-            if ui.button("🔄 Refresh").clicked() && !state.is_fetching {
-                state.set_fetching();
-                fetch_users(api_base_url, ui.ctx().clone());
+            if ui.button("🔄 Refresh").clicked() && !is_pending {
+                // Dispatch the fetch command on user action
+                state_ctx.dispatch::<FetchInternalUsersCommand>();
             }
 
             if ui.button("➕ Create User").clicked() {
@@ -42,14 +48,14 @@ pub fn internal_users_panel(
                 state.open_create_modal();
             }
 
-            if state.is_fetching {
+            if is_pending {
                 ui.spinner();
                 ui.label("Loading...");
             }
         });
 
         // Error display
-        if let Some(error) = &state.error {
+        if let Some(error) = &error {
             ui.colored_label(Color32::RED, format!("Error: {error}"));
         }
 
@@ -75,7 +81,7 @@ pub fn internal_users_panel(
                     ui.end_row();
 
                     // User rows
-                    for user in &state.users {
+                    for user in &users {
                         ui.label(&user.username);
 
                         // OTP code with reveal/hide
@@ -150,19 +156,24 @@ pub fn internal_users_panel(
         show_create_user_modal(state, state_ctx, ui);
     }
 
-    // Action modals
+    // Action modals - get api_base_url from config
+    let api_base_url = state_ctx
+        .state_mut::<collects_business::BusinessConfig>()
+        .api_url()
+        .to_string();
+
     match &state.current_action {
         UserAction::ShowQrCode(username) => {
-            show_qr_code_modal(state, api_base_url, username.clone(), ui);
+            show_qr_code_modal(state, &api_base_url, username.clone(), ui);
         }
         UserAction::EditUsername(username) => {
-            show_edit_username_modal(state, api_base_url, username.clone(), ui);
+            show_edit_username_modal(state, &api_base_url, username.clone(), ui);
         }
         UserAction::DeleteUser(username) => {
-            show_delete_user_modal(state, api_base_url, username.clone(), ui);
+            show_delete_user_modal(state, &api_base_url, username.clone(), ui);
         }
         UserAction::RevokeOtp(username) => {
-            show_revoke_otp_modal(state, api_base_url, username.clone(), ui);
+            show_revoke_otp_modal(state, &api_base_url, username.clone(), ui);
         }
         UserAction::None => {}
     }
@@ -172,37 +183,14 @@ pub fn internal_users_panel(
 
 /// Poll for async responses and update state.
 /// Call this in the update loop.
+///
+/// Note: Users list is now managed by FetchInternalUsersCompute.
+/// This function handles action-specific responses (QR code, etc.).
 pub fn poll_internal_users_responses(
     state: &mut InternalUsersState,
-    state_ctx: &StateCtx,
+    state_ctx: &mut StateCtx,
     ctx: &egui::Context,
 ) {
-    // Check for users list response
-    if let Some(users) = ctx.memory(|mem| {
-        mem.data
-            .get_temp::<Vec<InternalUserItem>>(egui::Id::new("internal_users_response"))
-    }) {
-        // Get current time from Time state for mockability
-        let now = *state_ctx.state_mut::<Time>().as_ref();
-        state.update_users(users, now);
-        ctx.memory_mut(|mem| {
-            mem.data
-                .remove::<Vec<InternalUserItem>>(egui::Id::new("internal_users_response"));
-        });
-    }
-
-    // Check for users list error
-    if let Some(error) = ctx.memory(|mem| {
-        mem.data
-            .get_temp::<String>(egui::Id::new("internal_users_error"))
-    }) {
-        state.set_error(error);
-        ctx.memory_mut(|mem| {
-            mem.data
-                .remove::<String>(egui::Id::new("internal_users_error"));
-        });
-    }
-
     // Check for action error
     if let Some(error) =
         ctx.memory(|mem| mem.data.get_temp::<String>(egui::Id::new("action_error")))
@@ -220,12 +208,11 @@ pub fn poll_internal_users_responses(
         ctx.memory_mut(|mem| {
             mem.data.remove::<String>(egui::Id::new("action_success"));
         });
-        // Close action modal and mark for refresh
+        // Close action modal and dispatch refresh command
         state.close_action();
         if action == "user_deleted" || action == "username_updated" {
-            // Mark as needing fetch - the actual fetch will happen on next panel render
-            // when internal_users_panel() is called with api_base_url
-            state.set_fetching();
+            // Dispatch the fetch command to refresh users
+            state_ctx.dispatch::<FetchInternalUsersCommand>();
         }
     }
 

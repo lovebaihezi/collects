@@ -36,33 +36,28 @@ fn data_cell<R>(ui: &mut Ui, add_contents: impl FnOnce(&mut Ui) -> R) -> InnerRe
 }
 
 /// Displays the internal users panel with a Typora-like table style.
-pub fn internal_users_panel(
-    state: &mut InternalUsersState,
-    state_ctx: &mut StateCtx,
-    api_base_url: &str,
-    ui: &mut Ui,
-) -> Response {
+pub fn internal_users_panel(state_ctx: &mut StateCtx, api_base_url: &str, ui: &mut Ui) -> Response {
     let response = ui.vertical(|ui| {
+        // Get state from StateCtx
+        let state = state_ctx.state_mut::<InternalUsersState>();
+
         // Toolbar row: Refresh and Create buttons (compact, no heading)
-        ui.horizontal(|ui| {
+        let should_open_create = ui.horizontal(|ui| {
             if ui.button("🔄 Refresh").clicked() && !state.is_fetching {
                 state.set_fetching();
                 fetch_users(api_base_url, ui.ctx().clone());
             }
 
-            if ui.button("➕ Create User").clicked() {
-                // Reset the compute state when opening modal
-                super::reset_create_user_compute(state_ctx);
-                state.open_create_modal();
-            }
-
+            let clicked = ui.button("➕ Create User").clicked();
             if state.is_fetching {
                 ui.spinner();
                 ui.label("Loading...");
             }
-        });
+            clicked
+        }).inner;
 
         // Error display
+        let state = state_ctx.state_mut::<InternalUsersState>();
         if let Some(error) = &state.error {
             ui.colored_label(Color32::RED, format!("Error: {error}"));
         }
@@ -73,7 +68,11 @@ pub fn internal_users_panel(
         let mut username_to_toggle: Option<String> = None;
         let mut action_to_start: Option<UserAction> = None;
 
+        // Get current time for calculating real-time OTP time remaining
+        let now = *state_ctx.state_mut::<Time>().as_ref();
+
         // Typora-like table with frame border
+        let state = state_ctx.state_mut::<InternalUsersState>();
         Frame::NONE
             .stroke(Stroke::new(1.0, TABLE_BORDER_COLOR))
             .inner_margin(Margin::ZERO)
@@ -108,17 +107,21 @@ pub fn internal_users_panel(
                                     }
                                 });
 
+                                // Calculate real-time time remaining based on elapsed time since fetch
+                                let time_remaining =
+                                    state.calculate_time_remaining(user.time_remaining, now);
+
                                 // Time remaining indicator with color coding
                                 data_cell(ui, |ui| {
-                                    let time_color = if user.time_remaining <= 5 {
+                                    let time_color = if time_remaining <= 5 {
                                         Color32::RED // Critical: 5 seconds or less
-                                    } else if user.time_remaining <= 10 {
+                                    } else if time_remaining <= 10 {
                                         Color32::from_rgb(255, 165, 0) // Warning: 10 seconds or less
                                     } else {
                                         Color32::from_rgb(34, 139, 34) // Safe: more than 10 seconds
                                     };
                                     ui.label(
-                                        RichText::new(format!("{}s", user.time_remaining))
+                                        RichText::new(format!("{}s", time_remaining))
                                             .monospace()
                                             .color(time_color),
                                     );
@@ -139,22 +142,13 @@ pub fn internal_users_panel(
                                 // Action buttons
                                 data_cell(ui, |ui| {
                                     ui.horizontal(|ui| {
-                                        if ui
-                                            .button("📱 QR")
-                                            .on_hover_text("Show QR Code")
-                                            .clicked()
-                                        {
+                                        if ui.button("📱 QR").on_hover_text("Show QR Code").clicked() {
                                             action_to_start =
                                                 Some(UserAction::ShowQrCode(user.username.clone()));
                                         }
-                                        if ui
-                                            .button("✏️")
-                                            .on_hover_text("Edit Username")
-                                            .clicked()
-                                        {
-                                            action_to_start = Some(UserAction::EditUsername(
-                                                user.username.clone(),
-                                            ));
+                                        if ui.button("✏️").on_hover_text("Edit Username").clicked() {
+                                            action_to_start =
+                                                Some(UserAction::EditUsername(user.username.clone()));
                                         }
                                         if ui.button("🔄").on_hover_text("Revoke OTP").clicked() {
                                             action_to_start =
@@ -182,26 +176,37 @@ pub fn internal_users_panel(
         if let Some(action) = action_to_start {
             state.start_action(action);
         }
+
+        // Handle create modal open (after borrowing issues resolved)
+        if should_open_create {
+            // Reset the compute state when opening modal
+            reset_create_user_compute(state_ctx);
+            state_ctx
+                .state_mut::<InternalUsersState>()
+                .open_create_modal();
+        }
     });
 
     // Create user modal
+    let state = state_ctx.state_mut::<InternalUsersState>();
     if state.create_modal_open {
-        show_create_user_modal(state, state_ctx, ui);
+        show_create_user_modal(state_ctx, ui);
     }
 
     // Action modals
-    match &state.current_action {
+    let state = state_ctx.state_mut::<InternalUsersState>();
+    match &state.current_action.clone() {
         UserAction::ShowQrCode(username) => {
-            show_qr_code_modal(state, api_base_url, username.clone(), ui);
+            show_qr_code_modal(state_ctx, api_base_url, username.clone(), ui);
         }
         UserAction::EditUsername(username) => {
-            show_edit_username_modal(state, api_base_url, username.clone(), ui);
+            show_edit_username_modal(state_ctx, api_base_url, username.clone(), ui);
         }
         UserAction::DeleteUser(username) => {
-            show_delete_user_modal(state, api_base_url, username.clone(), ui);
+            show_delete_user_modal(state_ctx, api_base_url, username.clone(), ui);
         }
         UserAction::RevokeOtp(username) => {
-            show_revoke_otp_modal(state, api_base_url, username.clone(), ui);
+            show_revoke_otp_modal(state_ctx, api_base_url, username.clone(), ui);
         }
         UserAction::None => {}
     }
@@ -211,11 +216,7 @@ pub fn internal_users_panel(
 
 /// Poll for async responses and update state.
 /// Call this in the update loop.
-pub fn poll_internal_users_responses(
-    state: &mut InternalUsersState,
-    state_ctx: &StateCtx,
-    ctx: &egui::Context,
-) {
+pub fn poll_internal_users_responses(state_ctx: &mut StateCtx, ctx: &egui::Context) {
     // Check for users list response
     if let Some(users) = ctx.memory(|mem| {
         mem.data
@@ -223,7 +224,9 @@ pub fn poll_internal_users_responses(
     }) {
         // Get current time from Time state for mockability
         let now = *state_ctx.state_mut::<Time>().as_ref();
-        state.update_users(users, now);
+        state_ctx
+            .state_mut::<InternalUsersState>()
+            .update_users(users, now);
         ctx.memory_mut(|mem| {
             mem.data
                 .remove::<Vec<InternalUserItem>>(egui::Id::new("internal_users_response"));
@@ -235,7 +238,7 @@ pub fn poll_internal_users_responses(
         mem.data
             .get_temp::<String>(egui::Id::new("internal_users_error"))
     }) {
-        state.set_error(error);
+        state_ctx.state_mut::<InternalUsersState>().set_error(error);
         ctx.memory_mut(|mem| {
             mem.data
                 .remove::<String>(egui::Id::new("internal_users_error"));
@@ -246,7 +249,9 @@ pub fn poll_internal_users_responses(
     if let Some(error) =
         ctx.memory(|mem| mem.data.get_temp::<String>(egui::Id::new("action_error")))
     {
-        state.set_action_error(error);
+        state_ctx
+            .state_mut::<InternalUsersState>()
+            .set_action_error(error);
         ctx.memory_mut(|mem| {
             mem.data.remove::<String>(egui::Id::new("action_error"));
         });
@@ -260,6 +265,7 @@ pub fn poll_internal_users_responses(
             mem.data.remove::<String>(egui::Id::new("action_success"));
         });
         // Close action modal and mark for refresh
+        let state = state_ctx.state_mut::<InternalUsersState>();
         state.close_action();
         if action == "user_deleted" || action == "username_updated" {
             // Mark as needing fetch - the actual fetch will happen on next panel render
@@ -273,7 +279,9 @@ pub fn poll_internal_users_responses(
         mem.data
             .get_temp::<String>(egui::Id::new("user_qr_code_response"))
     }) {
-        state.set_qr_code_data(otpauth_url);
+        state_ctx
+            .state_mut::<InternalUsersState>()
+            .set_qr_code_data(otpauth_url);
         ctx.memory_mut(|mem| {
             mem.data
                 .remove::<String>(egui::Id::new("user_qr_code_response"));
@@ -285,7 +293,9 @@ pub fn poll_internal_users_responses(
         mem.data
             .get_temp::<String>(egui::Id::new("revoke_otp_response"))
     }) {
-        state.set_qr_code_data(otpauth_url);
+        state_ctx
+            .state_mut::<InternalUsersState>()
+            .set_qr_code_data(otpauth_url);
         ctx.memory_mut(|mem| {
             mem.data
                 .remove::<String>(egui::Id::new("revoke_otp_response"));
@@ -324,13 +334,14 @@ mod internal_users_panel_tests {
     use kittest::Queryable;
 
     use super::*;
-    use crate::widgets::InternalUsersState;
 
     /// Helper to create a StateCtx for testing internal users panel.
     fn create_test_state_ctx() -> StateCtx {
         let mut ctx = StateCtx::new();
         ctx.add_state(CreateUserInput::default());
         ctx.record_compute(CreateUserCompute::default());
+        ctx.add_state(InternalUsersState::new());
+        ctx.add_state(Time::default());
         ctx
     }
 
@@ -360,13 +371,12 @@ mod internal_users_panel_tests {
     #[test]
     fn test_table_header_elements_exist() {
         let mut state_ctx = create_test_state_ctx();
-        let mut users_state = InternalUsersState::new();
 
         let harness = Harness::new_ui_state(
-            |ui, (state, state_ctx)| {
-                internal_users_panel(state, state_ctx, "http://test", ui);
+            |ui, state_ctx| {
+                internal_users_panel(state_ctx, "http://test", ui);
             },
-            (&mut users_state, &mut state_ctx),
+            &mut state_ctx,
         );
 
         // Verify header columns exist
@@ -391,13 +401,12 @@ mod internal_users_panel_tests {
     #[test]
     fn test_toolbar_buttons_exist() {
         let mut state_ctx = create_test_state_ctx();
-        let mut users_state = InternalUsersState::new();
 
         let harness = Harness::new_ui_state(
-            |ui, (state, state_ctx)| {
-                internal_users_panel(state, state_ctx, "http://test", ui);
+            |ui, state_ctx| {
+                internal_users_panel(state_ctx, "http://test", ui);
             },
-            (&mut users_state, &mut state_ctx),
+            &mut state_ctx,
         );
 
         // Verify toolbar buttons exist
@@ -414,16 +423,18 @@ mod internal_users_panel_tests {
     #[test]
     fn test_user_rows_display_with_data() {
         let mut state_ctx = create_test_state_ctx();
-        let mut users_state = InternalUsersState::new();
 
         // Add test users
-        users_state.update_users(create_test_users(), Utc::now());
+        let now = Utc::now();
+        state_ctx
+            .state_mut::<InternalUsersState>()
+            .update_users(create_test_users(), now);
 
         let harness = Harness::new_ui_state(
-            |ui, (state, state_ctx)| {
-                internal_users_panel(state, state_ctx, "http://test", ui);
+            |ui, state_ctx| {
+                internal_users_panel(state_ctx, "http://test", ui);
             },
-            (&mut users_state, &mut state_ctx),
+            &mut state_ctx,
         );
 
         // Verify user rows display usernames
@@ -446,16 +457,18 @@ mod internal_users_panel_tests {
     #[test]
     fn test_otp_is_hidden_by_default() {
         let mut state_ctx = create_test_state_ctx();
-        let mut users_state = InternalUsersState::new();
 
         // Add test users
-        users_state.update_users(create_test_users(), Utc::now());
+        let now = Utc::now();
+        state_ctx
+            .state_mut::<InternalUsersState>()
+            .update_users(create_test_users(), now);
 
         let harness = Harness::new_ui_state(
-            |ui, (state, state_ctx)| {
-                internal_users_panel(state, state_ctx, "http://test", ui);
+            |ui, state_ctx| {
+                internal_users_panel(state_ctx, "http://test", ui);
             },
-            (&mut users_state, &mut state_ctx),
+            &mut state_ctx,
         );
 
         // OTP should be hidden (shown as dots) - one per user
@@ -474,16 +487,18 @@ mod internal_users_panel_tests {
     #[test]
     fn test_time_remaining_displays_correctly() {
         let mut state_ctx = create_test_state_ctx();
-        let mut users_state = InternalUsersState::new();
 
         // Add test users with different time remaining values
-        users_state.update_users(create_test_users(), Utc::now());
+        let now = Utc::now();
+        state_ctx
+            .state_mut::<InternalUsersState>()
+            .update_users(create_test_users(), now);
 
         let harness = Harness::new_ui_state(
-            |ui, (state, state_ctx)| {
-                internal_users_panel(state, state_ctx, "http://test", ui);
+            |ui, state_ctx| {
+                internal_users_panel(state_ctx, "http://test", ui);
             },
-            (&mut users_state, &mut state_ctx),
+            &mut state_ctx,
         );
 
         // Time remaining should be displayed with "s" suffix
@@ -504,16 +519,18 @@ mod internal_users_panel_tests {
     #[test]
     fn test_reveal_hide_buttons_exist_for_each_user() {
         let mut state_ctx = create_test_state_ctx();
-        let mut users_state = InternalUsersState::new();
 
         // Add test users
-        users_state.update_users(create_test_users(), Utc::now());
+        let now = Utc::now();
+        state_ctx
+            .state_mut::<InternalUsersState>()
+            .update_users(create_test_users(), now);
 
         let harness = Harness::new_ui_state(
-            |ui, (state, state_ctx)| {
-                internal_users_panel(state, state_ctx, "http://test", ui);
+            |ui, state_ctx| {
+                internal_users_panel(state_ctx, "http://test", ui);
             },
-            (&mut users_state, &mut state_ctx),
+            &mut state_ctx,
         );
 
         // Count "Reveal" buttons - should have one per user
@@ -527,16 +544,18 @@ mod internal_users_panel_tests {
     #[test]
     fn test_action_buttons_exist_for_each_user() {
         let mut state_ctx = create_test_state_ctx();
-        let mut users_state = InternalUsersState::new();
 
         // Add test users
-        users_state.update_users(create_test_users(), Utc::now());
+        let now = Utc::now();
+        state_ctx
+            .state_mut::<InternalUsersState>()
+            .update_users(create_test_users(), now);
 
         let harness = Harness::new_ui_state(
-            |ui, (state, state_ctx)| {
-                internal_users_panel(state, state_ctx, "http://test", ui);
+            |ui, state_ctx| {
+                internal_users_panel(state_ctx, "http://test", ui);
             },
-            (&mut users_state, &mut state_ctx),
+            &mut state_ctx,
         );
 
         // Count QR buttons - should have one per user
@@ -560,23 +579,25 @@ mod internal_users_panel_tests {
     #[test]
     fn test_reveal_button_toggles_otp_visibility() {
         let mut state_ctx = create_test_state_ctx();
-        let mut users_state = InternalUsersState::new();
 
         // Add test users
-        users_state.update_users(create_test_users(), Utc::now());
+        let now = Utc::now();
+        state_ctx
+            .state_mut::<InternalUsersState>()
+            .update_users(create_test_users(), now);
 
         let mut harness = Harness::new_ui_state(
-            |ui, (state, state_ctx)| {
-                internal_users_panel(state, state_ctx, "http://test", ui);
+            |ui, state_ctx| {
+                internal_users_panel(state_ctx, "http://test", ui);
             },
-            (&mut users_state, &mut state_ctx),
+            &mut state_ctx,
         );
 
         harness.step();
 
         // Verify OTP is hidden initially (via state)
         assert!(
-            !harness.state().0.is_otp_revealed("alice"),
+            !harness.state().state_mut::<InternalUsersState>().is_otp_revealed("alice"),
             "OTP should not be revealed initially"
         );
 
@@ -588,7 +609,7 @@ mod internal_users_panel_tests {
 
         // Verify the state has been updated
         assert!(
-            harness.state().0.is_otp_revealed("alice"),
+            harness.state().state_mut::<InternalUsersState>().is_otp_revealed("alice"),
             "OTP should be revealed after clicking Reveal button"
         );
 
@@ -605,24 +626,28 @@ mod internal_users_panel_tests {
     #[test]
     fn test_hide_button_toggles_otp_visibility() {
         let mut state_ctx = create_test_state_ctx();
-        let mut users_state = InternalUsersState::new();
 
         // Add test users and reveal OTP for alice
-        users_state.update_users(create_test_users(), Utc::now());
-        users_state.toggle_otp_visibility("alice");
+        let now = Utc::now();
+        state_ctx
+            .state_mut::<InternalUsersState>()
+            .update_users(create_test_users(), now);
+        state_ctx
+            .state_mut::<InternalUsersState>()
+            .toggle_otp_visibility("alice");
 
         let mut harness = Harness::new_ui_state(
-            |ui, (state, state_ctx)| {
-                internal_users_panel(state, state_ctx, "http://test", ui);
+            |ui, state_ctx| {
+                internal_users_panel(state_ctx, "http://test", ui);
             },
-            (&mut users_state, &mut state_ctx),
+            &mut state_ctx,
         );
 
         harness.step();
 
         // Verify OTP is revealed initially (via state)
         assert!(
-            harness.state().0.is_otp_revealed("alice"),
+            harness.state().state_mut::<InternalUsersState>().is_otp_revealed("alice"),
             "OTP should be revealed initially"
         );
 
@@ -640,7 +665,7 @@ mod internal_users_panel_tests {
 
         // Verify the state has been updated
         assert!(
-            !harness.state().0.is_otp_revealed("alice"),
+            !harness.state().state_mut::<InternalUsersState>().is_otp_revealed("alice"),
             "OTP should be hidden after clicking Hide button"
         );
 
@@ -658,20 +683,19 @@ mod internal_users_panel_tests {
     #[test]
     fn test_create_user_button_opens_modal() {
         let mut state_ctx = create_test_state_ctx();
-        let mut users_state = InternalUsersState::new();
 
         let mut harness = Harness::new_ui_state(
-            |ui, (state, state_ctx)| {
-                internal_users_panel(state, state_ctx, "http://test", ui);
+            |ui, state_ctx| {
+                internal_users_panel(state_ctx, "http://test", ui);
             },
-            (&mut users_state, &mut state_ctx),
+            &mut state_ctx,
         );
 
         harness.step();
 
         // Modal should not be open initially
         assert!(
-            !harness.state().0.create_modal_open,
+            !harness.state().state_mut::<InternalUsersState>().create_modal_open,
             "Create modal should be closed initially"
         );
 
@@ -683,7 +707,7 @@ mod internal_users_panel_tests {
 
         // Modal should now be open
         assert!(
-            harness.state().0.create_modal_open,
+            harness.state().state_mut::<InternalUsersState>().create_modal_open,
             "Create modal should be open after clicking button"
         );
     }
@@ -691,16 +715,15 @@ mod internal_users_panel_tests {
     #[test]
     fn test_loading_state_shows_spinner() {
         let mut state_ctx = create_test_state_ctx();
-        let mut users_state = InternalUsersState::new();
 
         // Set fetching state
-        users_state.set_fetching();
+        state_ctx.state_mut::<InternalUsersState>().set_fetching();
 
         let harness = Harness::new_ui_state(
-            |ui, (state, state_ctx)| {
-                internal_users_panel(state, state_ctx, "http://test", ui);
+            |ui, state_ctx| {
+                internal_users_panel(state_ctx, "http://test", ui);
             },
-            (&mut users_state, &mut state_ctx),
+            &mut state_ctx,
         );
 
         // "Loading..." text should be visible
@@ -713,16 +736,17 @@ mod internal_users_panel_tests {
     #[test]
     fn test_error_state_shows_message() {
         let mut state_ctx = create_test_state_ctx();
-        let mut users_state = InternalUsersState::new();
 
         // Set error state
-        users_state.set_error("Network connection failed".to_string());
+        state_ctx
+            .state_mut::<InternalUsersState>()
+            .set_error("Network connection failed".to_string());
 
         let harness = Harness::new_ui_state(
-            |ui, (state, state_ctx)| {
-                internal_users_panel(state, state_ctx, "http://test", ui);
+            |ui, state_ctx| {
+                internal_users_panel(state_ctx, "http://test", ui);
             },
-            (&mut users_state, &mut state_ctx),
+            &mut state_ctx,
         );
 
         // Error message should be visible
@@ -735,15 +759,14 @@ mod internal_users_panel_tests {
     #[test]
     fn test_empty_state_shows_headers_only() {
         let mut state_ctx = create_test_state_ctx();
-        let mut users_state = InternalUsersState::new();
 
         // Test with empty user list - no users added to state
 
         let harness = Harness::new_ui_state(
-            |ui, (state, state_ctx)| {
-                internal_users_panel(state, state_ctx, "http://test", ui);
+            |ui, state_ctx| {
+                internal_users_panel(state_ctx, "http://test", ui);
             },
-            (&mut users_state, &mut state_ctx),
+            &mut state_ctx,
         );
 
         // Headers should still exist

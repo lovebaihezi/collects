@@ -64,6 +64,81 @@ just scripts::check-pr-title "<pr-title>"
 - **Rust**: Use `cargo fmt` for formatting, `cargo clippy` for linting
 - Run `just check-fmt` and `just check-lint` before committing
 
+## Scripts Organization
+
+All helper scripts, automation tools, and GitHub Actions utilities are located in the `scripts/` directory using **Bun** as the TypeScript runtime.
+
+### Directory Structure
+
+```
+scripts/
+├── main.ts              # CLI entry point (cac-based)
+├── mod.just             # Just commands for scripts
+├── package.json         # Bun dependencies
+├── gh-actions/          # GitHub Actions-related scripts
+│   ├── version-check.ts # Version change detection
+│   └── ci-feedback.ts   # CI failure feedback for Copilot
+└── services/            # Service management scripts
+    ├── neon.ts          # Neon database management
+    ├── gcloud.ts        # Google Cloud setup
+    ├── env-config.ts    # Environment configuration
+    └── pr-title.ts      # PR title validation
+```
+
+### Script Placement Rules
+
+1. **GitHub Actions scripts**: Place in `scripts/gh-actions/`
+   - Scripts called from workflow files (`.github/workflows/*.yml`)
+   - Use `@octokit/rest` for GitHub API interactions
+   - Export a CLI function (e.g., `runCIFeedbackCLI`) and register in `main.ts`
+
+2. **Service management scripts**: Place in `scripts/services/`
+   - Cloud provider integrations (GCloud, Cloudflare)
+   - Database management (Neon)
+   - Environment configuration utilities
+
+3. **CLI Integration**: All scripts should be accessible via `main.ts`
+   - Register commands using `cac` library
+   - Run with: `bun run main.ts <command>`
+   - Add corresponding just command in `mod.just`
+
+### Creating a New Script
+
+1. Create the TypeScript file in the appropriate subdirectory
+2. Export a function (e.g., `runMyScriptCLI`)
+3. Import and register the command in `main.ts`
+4. Add a just command in `scripts/mod.just`
+5. If new dependencies are needed, add to `scripts/package.json`
+
+### Example: GitHub Actions Script
+
+```typescript
+// scripts/gh-actions/my-action.ts
+import { Octokit } from "@octokit/rest";
+
+export function runMyActionCLI(): void {
+  const token = process.env.GITHUB_TOKEN;
+  // ... implementation
+}
+```
+
+```typescript
+// In main.ts
+import { runMyActionCLI } from "./gh-actions/my-action.ts";
+
+cli.command("my-action", "Description of my action")
+  .action(() => runMyActionCLI());
+```
+
+```yaml
+# In workflow file
+- name: Run My Action
+  working-directory: scripts
+  env:
+    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  run: bun run main.ts my-action
+```
+
 ## Testing
 
 - Run `just ui::test` for UI tests

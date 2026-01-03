@@ -8,12 +8,18 @@ import {
   type BuildSetupOptions,
 } from "./services/gcloud.ts";
 import { runVersionCheck } from "./gh-actions/version-check.ts";
+import { runCIFeedbackCLI } from "./gh-actions/ci-feedback.ts";
 import {
   getCargoFeature,
   getDatabaseSecret,
   listEnvironments,
 } from "./services/env-config.ts";
 import { runPrTitleCheck } from "./services/pr-title.ts";
+import {
+  listR2Secrets,
+  promptForR2Credentials,
+  setupR2Secrets,
+} from "./services/r2-setup.ts";
 
 const cli = cac("services");
 
@@ -50,12 +56,12 @@ cli
     const token = options.token
       ? options.token
       : await p.text({
-        message: "Enter your Neon API Token:",
-        placeholder: "neon_api_xxxxx",
-        validate: (value) => {
-          if (!value) return "Neon API Token is required";
-        },
-      });
+          message: "Enter your Neon API Token:",
+          placeholder: "neon_api_xxxxx",
+          validate: (value) => {
+            if (!value) return "Neon API Token is required";
+          },
+        });
 
     if (p.isCancel(token)) {
       p.cancel("Operation cancelled.");
@@ -66,12 +72,12 @@ cli
     const projectId = options.projectId
       ? options.projectId
       : await p.text({
-        message: "Enter your Neon Project ID:",
-        placeholder: "project-id-xxxx",
-        validate: (value) => {
-          if (!value) return "Neon Project ID is required";
-        },
-      });
+          message: "Enter your Neon Project ID:",
+          placeholder: "project-id-xxxx",
+          validate: (value) => {
+            if (!value) return "Neon Project ID is required";
+          },
+        });
 
     if (p.isCancel(projectId)) {
       p.cancel("Operation cancelled.");
@@ -112,11 +118,9 @@ cli
     console.log(getDatabaseSecret(env));
   });
 
-cli
-  .command("env-list", "List all available environment names")
-  .action(() => {
-    console.log(listEnvironments().join("\n"));
-  });
+cli.command("env-list", "List all available environment names").action(() => {
+  console.log(listEnvironments().join("\n"));
+});
 
 cli
   .command(
@@ -125,6 +129,69 @@ cli
   )
   .action((title: string) => {
     runPrTitleCheck(title);
+  });
+
+cli
+  .command(
+    "r2-setup",
+    "Setup Cloudflare R2 secrets in Google Cloud Secret Manager",
+  )
+  .option("--project-id <projectId>", "Google Cloud Project ID")
+  .action(async (options) => {
+    p.intro("Cloudflare R2 Storage Setup");
+
+    // Prompt for project ID if not provided
+    const projectId = options.projectId
+      ? options.projectId
+      : await p.text({
+          message: "Enter your Google Cloud Project ID:",
+          placeholder: "my-gcp-project-id",
+          validate: (value) => {
+            if (!value) return "Project ID is required";
+          },
+        });
+
+    if (p.isCancel(projectId)) {
+      p.cancel("Operation cancelled.");
+      process.exit(0);
+    }
+
+    const credentials = await promptForR2Credentials();
+    if (!credentials) {
+      process.exit(0);
+    }
+
+    await setupR2Secrets(projectId as string, credentials);
+    p.outro("R2 setup complete!");
+  });
+
+cli
+  .command("r2-list", "List Cloudflare R2 secrets status")
+  .option("--project-id <projectId>", "Google Cloud Project ID")
+  .action(async (options) => {
+    p.intro("Cloudflare R2 Secrets Status");
+
+    const projectId = options.projectId
+      ? options.projectId
+      : await p.text({
+          message: "Enter your Google Cloud Project ID:",
+          placeholder: "my-gcp-project-id",
+          validate: (value) => {
+            if (!value) return "Project ID is required";
+          },
+        });
+
+    if (p.isCancel(projectId)) {
+      p.cancel("Operation cancelled.");
+      process.exit(0);
+    }
+
+    await listR2Secrets(projectId as string);
+  });
+cli
+  .command("ci-feedback", "Post CI failure feedback to PR (for GitHub Actions)")
+  .action(() => {
+    runCIFeedbackCLI();
   });
 
 cli.command("", "Show help").action(() => {
@@ -240,6 +307,50 @@ Validates PR title format against conventional commits specification.
 **Example:**
 \`\`\`bash
 just scripts::check-pr-title "feat: add user authentication"
+\`\`\`
+
+### \`r2-setup\`
+
+Sets up Cloudflare R2 storage secrets in Google Cloud Secret Manager.
+
+**What it does:**
+1. Prompts for R2 credentials (Account ID, Access Key ID, Secret Access Key, Bucket).
+2. Creates secrets in Google Cloud Secret Manager if they don't exist.
+3. Updates secret values with the provided credentials.
+
+**Example:**
+\`\`\`bash
+bun run main.ts r2-setup --project-id my-gcp-project-id
+\`\`\`
+
+### \`r2-list\`
+
+Lists the status of Cloudflare R2 secrets in Google Cloud Secret Manager.
+
+**Example:**
+\`\`\`bash
+bun run main.ts r2-list --project-id my-gcp-project-id
+### \`ci-feedback\`
+
+Posts CI failure feedback to the PR. This command is designed to be called from GitHub Actions.
+
+**What it does:**
+1. Reads workflow run information from environment variables.
+2. Collects failed job logs and extracts relevant error lines.
+3. Counts previous failures per job (stops at 3 to prevent loops).
+4. Posts a structured comment on the PR mentioning @copilot for analysis.
+
+**Required Environment Variables:**
+- \`GITHUB_TOKEN\` - GitHub token with write access to PRs
+- \`GITHUB_REPOSITORY_OWNER\` - Repository owner
+- \`GITHUB_REPOSITORY\` - Full repository name (owner/repo)
+- \`WORKFLOW_RUN_ID\` - The workflow run ID
+- \`HEAD_SHA\` - The commit SHA
+- \`WORKFLOW_RUN_URL\` - URL to the workflow run
+
+**Example:**
+\`\`\`bash
+GITHUB_TOKEN=xxx WORKFLOW_RUN_ID=123 ... bun run main.ts ci-feedback
 \`\`\`
 
 ---

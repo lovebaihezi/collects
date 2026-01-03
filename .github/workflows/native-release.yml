@@ -25,6 +25,7 @@ jobs:
       original_event: ${{ steps.check.outputs.original_event }}
       is_main_branch: ${{ steps.check.outputs.is_main_branch }}
       head_sha: ${{ steps.check.outputs.head_sha }}
+      pr_number: ${{ steps.check.outputs.pr_number }}
     steps:
       - name: Check CI Status
         id: check
@@ -34,11 +35,13 @@ jobs:
             echo "original_event=schedule" >> $GITHUB_OUTPUT
             echo "is_main_branch=true" >> $GITHUB_OUTPUT
             echo "head_sha=${{ github.sha }}" >> $GITHUB_OUTPUT
+            echo "pr_number=" >> $GITHUB_OUTPUT
           elif [[ "${{ github.ref }}" == refs/tags/v* ]]; then
             echo "should_continue=true" >> $GITHUB_OUTPUT
             echo "original_event=push" >> $GITHUB_OUTPUT
             echo "is_main_branch=true" >> $GITHUB_OUTPUT
             echo "head_sha=${{ github.sha }}" >> $GITHUB_OUTPUT
+            echo "pr_number=" >> $GITHUB_OUTPUT
           elif [[ "${{ github.event_name }}" == "workflow_run" ]]; then
             echo "should_continue=true" >> $GITHUB_OUTPUT
             echo "original_event=${{ github.event.workflow_run.event }}" >> $GITHUB_OUTPUT
@@ -48,6 +51,8 @@ jobs:
             else
               echo "is_main_branch=false" >> $GITHUB_OUTPUT
             fi
+            # Get PR number from workflow_run context if available
+            echo "pr_number=${{ github.event.workflow_run.pull_requests[0].number || '' }}" >> $GITHUB_OUTPUT
           fi
 
   check-version:
@@ -136,6 +141,8 @@ jobs:
       - name: Build and Package
         shell: bash
         run: just ui::package-native ${{ matrix.output_name }} ${{ env.FEATURES }}
+        env:
+          PR_NUMBER: ${{ needs.ci-check.outputs.pr_number }}
 
       - name: Upload Artifact
         if: needs.ci-check.outputs.original_event == 'pull_request' || (needs.ci-check.outputs.is_main_branch == 'true' && needs.ci-check.outputs.original_event == 'push')

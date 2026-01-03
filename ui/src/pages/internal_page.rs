@@ -17,5 +17,5 @@ pub fn internal_page(state: &mut State, ui: &mut Ui) -> Response {
         .to_string();
 
     // Show only the internal users panel (Typora-like table style)
-    widgets::internal_users_panel(&mut state.internal_users, &mut state.ctx, &api_base_url, ui)
+    widgets::internal_users_panel(&mut state.ctx, &api_base_url, ui)
 }

@@ -315,3 +315,445 @@ pub(crate) fn trigger_create_user(state_ctx: &mut StateCtx, username: &str) {
     // Explicitly dispatch the command (manual-only; never runs implicitly)
     state_ctx.dispatch::<CreateUserCommand>();
 }
+
+#[cfg(test)]
+mod internal_users_panel_tests {
+    use chrono::Utc;
+    use collects_business::InternalUserItem;
+    use egui_kittest::Harness;
+    use kittest::Queryable;
+
+    use super::*;
+    use crate::widgets::InternalUsersState;
+
+    /// Helper to create a StateCtx for testing internal users panel.
+    fn create_test_state_ctx() -> StateCtx {
+        let mut ctx = StateCtx::new();
+        ctx.add_state(CreateUserInput::default());
+        ctx.record_compute(CreateUserCompute::default());
+        ctx
+    }
+
+    /// Helper to create test users data.
+    fn create_test_users() -> Vec<InternalUserItem> {
+        vec![
+            InternalUserItem {
+                username: "alice".to_string(),
+                current_otp: "123456".to_string(),
+                time_remaining: 25,
+            },
+            InternalUserItem {
+                username: "bob".to_string(),
+                current_otp: "654321".to_string(),
+                time_remaining: 8,
+            },
+            InternalUserItem {
+                username: "charlie".to_string(),
+                current_otp: "111222".to_string(),
+                time_remaining: 3,
+            },
+        ]
+    }
+
+    // ========== Element Existence Tests ==========
+
+    #[test]
+    fn test_table_header_elements_exist() {
+        let mut state_ctx = create_test_state_ctx();
+        let mut users_state = InternalUsersState::new();
+
+        let harness = Harness::new_ui_state(
+            |ui, (state, state_ctx)| {
+                internal_users_panel(state, state_ctx, "http://test", ui);
+            },
+            (&mut users_state, &mut state_ctx),
+        );
+
+        // Verify header columns exist
+        assert!(
+            harness.query_by_label_contains("Username").is_some(),
+            "Username header should exist"
+        );
+        assert!(
+            harness.query_by_label_contains("OTP Code").is_some(),
+            "OTP Code header should exist"
+        );
+        assert!(
+            harness.query_by_label_contains("Time Left").is_some(),
+            "Time Left header should exist"
+        );
+        assert!(
+            harness.query_by_label_contains("Actions").is_some(),
+            "Actions header should exist"
+        );
+    }
+
+    #[test]
+    fn test_toolbar_buttons_exist() {
+        let mut state_ctx = create_test_state_ctx();
+        let mut users_state = InternalUsersState::new();
+
+        let harness = Harness::new_ui_state(
+            |ui, (state, state_ctx)| {
+                internal_users_panel(state, state_ctx, "http://test", ui);
+            },
+            (&mut users_state, &mut state_ctx),
+        );
+
+        // Verify toolbar buttons exist
+        assert!(
+            harness.query_by_label_contains("Refresh").is_some(),
+            "Refresh button should exist"
+        );
+        assert!(
+            harness.query_by_label_contains("Create User").is_some(),
+            "Create User button should exist"
+        );
+    }
+
+    #[test]
+    fn test_user_rows_display_with_data() {
+        let mut state_ctx = create_test_state_ctx();
+        let mut users_state = InternalUsersState::new();
+
+        // Add test users
+        users_state.update_users(create_test_users(), Utc::now());
+
+        let harness = Harness::new_ui_state(
+            |ui, (state, state_ctx)| {
+                internal_users_panel(state, state_ctx, "http://test", ui);
+            },
+            (&mut users_state, &mut state_ctx),
+        );
+
+        // Verify user rows display usernames
+        assert!(
+            harness.query_by_label_contains("alice").is_some(),
+            "Username 'alice' should be displayed"
+        );
+        assert!(
+            harness.query_by_label_contains("bob").is_some(),
+            "Username 'bob' should be displayed"
+        );
+        assert!(
+            harness.query_by_label_contains("charlie").is_some(),
+            "Username 'charlie' should be displayed"
+        );
+    }
+
+    // ========== Content Correctness Tests ==========
+
+    #[test]
+    fn test_otp_is_hidden_by_default() {
+        let mut state_ctx = create_test_state_ctx();
+        let mut users_state = InternalUsersState::new();
+
+        // Add test users
+        users_state.update_users(create_test_users(), Utc::now());
+
+        let harness = Harness::new_ui_state(
+            |ui, (state, state_ctx)| {
+                internal_users_panel(state, state_ctx, "http://test", ui);
+            },
+            (&mut users_state, &mut state_ctx),
+        );
+
+        // OTP should be hidden (shown as dots) - one per user
+        let hidden_otp_count = harness.query_all_by_label_contains("••••••").count();
+        assert_eq!(
+            hidden_otp_count, 3,
+            "All 3 OTPs should be hidden with dots by default"
+        );
+        // The actual OTP should not be visible
+        assert!(
+            harness.query_by_label_contains("123456").is_none(),
+            "OTP '123456' should NOT be visible by default"
+        );
+    }
+
+    #[test]
+    fn test_time_remaining_displays_correctly() {
+        let mut state_ctx = create_test_state_ctx();
+        let mut users_state = InternalUsersState::new();
+
+        // Add test users with different time remaining values
+        users_state.update_users(create_test_users(), Utc::now());
+
+        let harness = Harness::new_ui_state(
+            |ui, (state, state_ctx)| {
+                internal_users_panel(state, state_ctx, "http://test", ui);
+            },
+            (&mut users_state, &mut state_ctx),
+        );
+
+        // Time remaining should be displayed with "s" suffix
+        assert!(
+            harness.query_by_label_contains("25s").is_some(),
+            "Time remaining '25s' should be displayed"
+        );
+        assert!(
+            harness.query_by_label_contains("8s").is_some(),
+            "Time remaining '8s' should be displayed"
+        );
+        assert!(
+            harness.query_by_label_contains("3s").is_some(),
+            "Time remaining '3s' should be displayed"
+        );
+    }
+
+    #[test]
+    fn test_reveal_hide_buttons_exist_for_each_user() {
+        let mut state_ctx = create_test_state_ctx();
+        let mut users_state = InternalUsersState::new();
+
+        // Add test users
+        users_state.update_users(create_test_users(), Utc::now());
+
+        let harness = Harness::new_ui_state(
+            |ui, (state, state_ctx)| {
+                internal_users_panel(state, state_ctx, "http://test", ui);
+            },
+            (&mut users_state, &mut state_ctx),
+        );
+
+        // Count "Reveal" buttons - should have one per user
+        let reveal_count = harness.query_all_by_label("Reveal").count();
+        assert_eq!(
+            reveal_count, 3,
+            "Should have 3 Reveal buttons (one per user)"
+        );
+    }
+
+    #[test]
+    fn test_action_buttons_exist_for_each_user() {
+        let mut state_ctx = create_test_state_ctx();
+        let mut users_state = InternalUsersState::new();
+
+        // Add test users
+        users_state.update_users(create_test_users(), Utc::now());
+
+        let harness = Harness::new_ui_state(
+            |ui, (state, state_ctx)| {
+                internal_users_panel(state, state_ctx, "http://test", ui);
+            },
+            (&mut users_state, &mut state_ctx),
+        );
+
+        // Count QR buttons - should have one per user
+        let qr_count = harness.query_all_by_label_contains("QR").count();
+        assert_eq!(qr_count, 3, "Should have 3 QR buttons (one per user)");
+
+        // Verify edit, revoke, and delete buttons exist
+        let edit_count = harness.query_all_by_label("✏️").count();
+        assert_eq!(edit_count, 3, "Should have 3 Edit buttons (one per user)");
+
+        // Delete buttons
+        let delete_count = harness.query_all_by_label("🗑️").count();
+        assert_eq!(
+            delete_count, 3,
+            "Should have 3 Delete buttons (one per user)"
+        );
+    }
+
+    // ========== User Interaction Tests ==========
+
+    #[test]
+    fn test_reveal_button_toggles_otp_visibility() {
+        let mut state_ctx = create_test_state_ctx();
+        let mut users_state = InternalUsersState::new();
+
+        // Add test users
+        users_state.update_users(create_test_users(), Utc::now());
+
+        let mut harness = Harness::new_ui_state(
+            |ui, (state, state_ctx)| {
+                internal_users_panel(state, state_ctx, "http://test", ui);
+            },
+            (&mut users_state, &mut state_ctx),
+        );
+
+        harness.step();
+
+        // Verify OTP is hidden initially (via state)
+        assert!(
+            !harness.state().0.is_otp_revealed("alice"),
+            "OTP should not be revealed initially"
+        );
+
+        // Click the first "Reveal" button
+        if let Some(reveal_button) = harness.query_all_by_label("Reveal").next() {
+            reveal_button.click();
+        }
+        harness.step();
+
+        // Verify the state has been updated
+        assert!(
+            harness.state().0.is_otp_revealed("alice"),
+            "OTP should be revealed after clicking Reveal button"
+        );
+
+        // Run another step to re-render UI with new state
+        harness.step();
+
+        // Verify "Hide" button now appears
+        assert!(
+            harness.query_by_label("Hide").is_some(),
+            "Hide button should appear after revealing OTP"
+        );
+    }
+
+    #[test]
+    fn test_hide_button_toggles_otp_visibility() {
+        let mut state_ctx = create_test_state_ctx();
+        let mut users_state = InternalUsersState::new();
+
+        // Add test users and reveal OTP for alice
+        users_state.update_users(create_test_users(), Utc::now());
+        users_state.toggle_otp_visibility("alice");
+
+        let mut harness = Harness::new_ui_state(
+            |ui, (state, state_ctx)| {
+                internal_users_panel(state, state_ctx, "http://test", ui);
+            },
+            (&mut users_state, &mut state_ctx),
+        );
+
+        harness.step();
+
+        // Verify OTP is revealed initially (via state)
+        assert!(
+            harness.state().0.is_otp_revealed("alice"),
+            "OTP should be revealed initially"
+        );
+
+        // "Hide" button should exist
+        assert!(
+            harness.query_by_label("Hide").is_some(),
+            "Hide button should exist for revealed OTP"
+        );
+
+        // Click the "Hide" button
+        if let Some(hide_button) = harness.query_by_label("Hide") {
+            hide_button.click();
+        }
+        harness.step();
+
+        // Verify the state has been updated
+        assert!(
+            !harness.state().0.is_otp_revealed("alice"),
+            "OTP should be hidden after clicking Hide button"
+        );
+
+        // Run another step to re-render UI with new state
+        harness.step();
+
+        // All buttons should show "Reveal" now
+        let reveal_count = harness.query_all_by_label("Reveal").count();
+        assert_eq!(
+            reveal_count, 3,
+            "All buttons should show 'Reveal' after hiding"
+        );
+    }
+
+    #[test]
+    fn test_create_user_button_opens_modal() {
+        let mut state_ctx = create_test_state_ctx();
+        let mut users_state = InternalUsersState::new();
+
+        let mut harness = Harness::new_ui_state(
+            |ui, (state, state_ctx)| {
+                internal_users_panel(state, state_ctx, "http://test", ui);
+            },
+            (&mut users_state, &mut state_ctx),
+        );
+
+        harness.step();
+
+        // Modal should not be open initially
+        assert!(
+            !harness.state().0.create_modal_open,
+            "Create modal should be closed initially"
+        );
+
+        // Click the "Create User" button
+        if let Some(create_button) = harness.query_by_label_contains("Create User") {
+            create_button.click();
+        }
+        harness.step();
+
+        // Modal should now be open
+        assert!(
+            harness.state().0.create_modal_open,
+            "Create modal should be open after clicking button"
+        );
+    }
+
+    #[test]
+    fn test_loading_state_shows_spinner() {
+        let mut state_ctx = create_test_state_ctx();
+        let mut users_state = InternalUsersState::new();
+
+        // Set fetching state
+        users_state.set_fetching();
+
+        let harness = Harness::new_ui_state(
+            |ui, (state, state_ctx)| {
+                internal_users_panel(state, state_ctx, "http://test", ui);
+            },
+            (&mut users_state, &mut state_ctx),
+        );
+
+        // "Loading..." text should be visible
+        assert!(
+            harness.query_by_label_contains("Loading").is_some(),
+            "Loading indicator should be visible when fetching"
+        );
+    }
+
+    #[test]
+    fn test_error_state_shows_message() {
+        let mut state_ctx = create_test_state_ctx();
+        let mut users_state = InternalUsersState::new();
+
+        // Set error state
+        users_state.set_error("Network connection failed".to_string());
+
+        let harness = Harness::new_ui_state(
+            |ui, (state, state_ctx)| {
+                internal_users_panel(state, state_ctx, "http://test", ui);
+            },
+            (&mut users_state, &mut state_ctx),
+        );
+
+        // Error message should be visible
+        assert!(
+            harness.query_by_label_contains("Network connection failed").is_some(),
+            "Error message should be displayed"
+        );
+    }
+
+    #[test]
+    fn test_empty_state_shows_headers_only() {
+        let mut state_ctx = create_test_state_ctx();
+        let mut users_state = InternalUsersState::new();
+
+        // No users added
+
+        let harness = Harness::new_ui_state(
+            |ui, (state, state_ctx)| {
+                internal_users_panel(state, state_ctx, "http://test", ui);
+            },
+            (&mut users_state, &mut state_ctx),
+        );
+
+        // Headers should still exist
+        assert!(
+            harness.query_by_label_contains("Username").is_some(),
+            "Username header should exist even with no data"
+        );
+
+        // No reveal buttons (no users)
+        let reveal_count = harness.query_all_by_label("Reveal").count();
+        assert_eq!(reveal_count, 0, "No Reveal buttons when no users");
+    }
+}

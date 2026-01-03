@@ -44,7 +44,7 @@ jobs:
               echo "is_main_branch=false" >> $GITHUB_OUTPUT
             fi
             # Get PR number from workflow_run context if available
-            echo "pr_number=${{ github.event.workflow_run.pull_requests[0].number }}" >> $GITHUB_OUTPUT
+            echo "pr_number=${{ github.event.workflow_run.pull_requests[0].number || '' }}" >> $GITHUB_OUTPUT
           fi
 
   check-version:

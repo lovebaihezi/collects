@@ -21,13 +21,15 @@ impl eframe::App for CollectsApp {
         // Handle paste shortcut (Ctrl+V / Cmd+V) for clipboard image
         clipboard::handle_paste_shortcut(ctx);
 
-        // Update Time state only when minute changes (chrono::Utc::now() is WASM-compatible)
-        // This avoids triggering time-dependent computes (ApiStatus, InternalApiStatus) every frame
+        // Update Time state when second changes (chrono::Utc::now() is WASM-compatible)
+        // This enables real-time updates for OTP countdown timers while avoiding
+        // updates on every frame. Time-dependent computes (ApiStatus, InternalApiStatus)
+        // have internal throttling to avoid unnecessary network requests.
         let now = Utc::now();
         let current_time = self.state.ctx.state_mut::<Time>();
-        let current_minute = current_time.as_ref().minute();
-        let new_minute = now.minute();
-        if current_minute != new_minute {
+        let current_second = current_time.as_ref().second();
+        let new_second = now.second();
+        if current_second != new_second {
             self.state.ctx.update::<Time>(|t| {
                 *t.as_mut() = now;
             });
@@ -38,11 +40,7 @@ impl eframe::App for CollectsApp {
 
         // Poll for async responses (internal builds only)
         #[cfg(any(feature = "env_internal", feature = "env_test_internal"))]
-        widgets::poll_internal_users_responses(
-            &mut self.state.internal_users,
-            &self.state.ctx,
-            ctx,
-        );
+        widgets::poll_internal_users_responses(&mut self.state.ctx, ctx);
 
         // Update route based on authentication state
         self.update_route();

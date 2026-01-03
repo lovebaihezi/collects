@@ -45,3 +45,7 @@ r2-setup *args: install
 # Usage: just scripts::r2-list my-gcp-project-id
 r2-list *args: install
     bun run main.ts r2-list {{args}}
+# Post CI failure feedback to PR (for GitHub Actions)
+# Requires environment variables: GITHUB_TOKEN, WORKFLOW_RUN_ID, HEAD_SHA, WORKFLOW_RUN_URL
+ci-feedback: install
+    bun run main.ts ci-feedback

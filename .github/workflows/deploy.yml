@@ -81,6 +81,8 @@ jobs:
       needs.ci-check.outputs.should_continue == 'true' &&
       (needs.check-version.result == 'success' || needs.check-version.result == 'skipped') &&
       needs.ci-check.outputs.original_event == 'pull_request'
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
         with:
@@ -135,6 +137,8 @@ jobs:
       needs.ci-check.outputs.is_main_branch == 'true' &&
       needs.ci-check.outputs.original_event == 'push' &&
       needs.check-version.outputs.version_changed != 'true'
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
         with:
@@ -188,6 +192,8 @@ jobs:
       needs.ci-check.outputs.is_main_branch == 'true' &&
       needs.ci-check.outputs.original_event == 'push' &&
       needs.check-version.outputs.version_changed != 'true'
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
         with:
@@ -241,6 +247,8 @@ jobs:
       needs.ci-check.outputs.is_main_branch == 'true' &&
       needs.ci-check.outputs.original_event == 'push' &&
       needs.check-version.outputs.version_changed == 'true'
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
         with:
@@ -294,6 +302,8 @@ jobs:
       needs.ci-check.outputs.is_main_branch == 'true' &&
       needs.ci-check.outputs.original_event == 'push' &&
       needs.check-version.outputs.version_changed == 'true'
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
         with:
@@ -345,6 +355,8 @@ jobs:
       needs.ci-check.outputs.should_continue == 'true' &&
       (needs.check-version.result == 'success' || needs.check-version.result == 'skipped') &&
       needs.ci-check.outputs.original_event == 'schedule'
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
         with:

@@ -22,9 +22,13 @@ fn main() -> eframe::Result {
             .with_inner_size([400.0, 300.0])
             .with_min_inner_size([300.0, 220.0])
             .with_icon(
-                // NOTE: Adding an icon is optional
-                eframe::icon_data::from_png_bytes(&include_bytes!("../assets/icon-256.png")[..])
-                    .expect("Failed to load icon"),
+                // Icon is generated at build time based on environment features
+                // (original for prod, grayscale for non-prod, inverted grayscale for internal)
+                eframe::icon_data::from_png_bytes(include_bytes!(concat!(
+                    env!("OUT_DIR"),
+                    "/icon.png"
+                )))
+                .expect("Failed to load icon"),
             ),
         ..Default::default()
     };

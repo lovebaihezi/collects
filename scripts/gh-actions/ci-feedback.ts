@@ -129,7 +129,8 @@ function buildCommentBody(
   if (skippedJobs.length > 0) {
     commentBody += `---\n\n`;
     commentBody += `⚠️ **Note:** The following jobs have failed 3+ times and will no longer trigger auto-feedback:\n`;
-    commentBody += skippedJobs.map((j) => `- \`${j.name}\``).join("\n") + "\n\n";
+    commentBody +=
+      skippedJobs.map((j) => `- \`${j.name}\``).join("\n") + "\n\n";
   }
 
   commentBody += `---\n\n`;
@@ -183,7 +184,9 @@ async function collectJobSummaries(
     run_id: runId,
   });
 
-  const failedJobs = jobsData.jobs.filter((job) => job.conclusion === "failure");
+  const failedJobs = jobsData.jobs.filter(
+    (job) => job.conclusion === "failure",
+  );
 
   if (failedJobs.length === 0) {
     console.log("No failed jobs found");

@@ -35,3 +35,13 @@ init-db token project_id: install
 # Usage: just scripts::check-pr-title "feat: add new feature"
 check-pr-title title: install
     bun run main.ts check-pr-title "{{title}}"
+
+# Setup Cloudflare R2 secrets in Google Cloud Secret Manager
+# Usage: just scripts::r2-setup my-gcp-project-id
+r2-setup *args: install
+    bun run main.ts r2-setup {{args}}
+
+# List Cloudflare R2 secrets status
+# Usage: just scripts::r2-list my-gcp-project-id
+r2-list *args: install
+    bun run main.ts r2-list {{args}}

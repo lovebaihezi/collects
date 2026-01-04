@@ -3,7 +3,7 @@ use chrono::{Timelike, Utc};
 use collects_business::{AuthCompute, Route};
 use collects_states::Time;
 
-/// We derive Deserialize/Serialize so we can persist app state on shutdown.
+/// Main application state and logic for the Collects app.
 pub struct CollectsApp {
     state: State,
     /// Whether to show API status (toggled by F1 key)

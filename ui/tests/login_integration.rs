@@ -118,7 +118,7 @@ mod non_internal_tests {
 
 /// Tests for internal builds: user is authenticated via Zero Trust.
 /// Login form should NOT be displayed; user sees the internal users table directly.
-/// The internal env is focused on the data table without App title or signed-in headers.
+/// The internal env is focused on the data table without the App title or signed-in headers.
 #[cfg(any(feature = "env_internal", feature = "env_test_internal"))]
 mod internal_tests {
     use super::*;

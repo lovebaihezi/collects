@@ -18,22 +18,22 @@ use super::state::{InternalUsersState, UserAction};
 pub fn internal_users_panel(state_ctx: &mut StateCtx, api_base_url: &str, ui: &mut Ui) -> Response {
     let response = ui.vertical(|ui| {
         // Controls row: Refresh and Create buttons
-        ui.horizontal(|ui| {
-            let state = state_ctx.state_mut::<InternalUsersState>();
-            if ui.button("🔄 Refresh").clicked() && !state.is_fetching {
-                state.set_fetching();
-                fetch_users(api_base_url, ui.ctx().clone());
-            }
+        let should_open_create = ui
+            .horizontal(|ui| {
+                let state = state_ctx.state_mut::<InternalUsersState>();
+                if ui.button("🔄 Refresh").clicked() && !state.is_fetching {
+                    state.set_fetching();
+                    fetch_users(api_base_url, ui.ctx().clone());
+                }
 
-            let should_open_create = ui.button("➕ Create User").clicked();
-            if state.is_fetching {
-                ui.spinner();
-                ui.label("Loading...");
-            }
-            should_open_create
-        });
-
-        let should_open_create = ui.horizontal(|_ui| false).inner;
+                let should_open_create = ui.button("➕ Create User").clicked();
+                if state.is_fetching {
+                    ui.spinner();
+                    ui.label("Loading...");
+                }
+                should_open_create
+            })
+            .inner;
 
         // Error display
         let state = state_ctx.state_mut::<InternalUsersState>();

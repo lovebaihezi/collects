@@ -181,8 +181,7 @@ const MAX_PREVIEW_SIZE: f32 = 400.0;
 /// The egui Response from the widget.
 pub fn image_preview_fullscreen(state: &mut ImagePreviewState, ui: &mut Ui) -> Response {
     let Some(entry) = state.current_image() else {
-        // Should not happen, but handle gracefully
-        ui.label("No image");
+        // Should not happen (caller checks has_image()), but handle gracefully
         return ui.response();
     };
 

@@ -39,12 +39,15 @@ async fn test_image_preview_visible_on_home_page() {
     // Authenticate the user to access home page
     create_authenticated_state(&mut harness.state_mut().state);
 
-    // Render the app
-    harness.step();
-
-    // Wait for state to sync
-    harness.state_mut().state.ctx.sync_computes();
-    harness.step();
+    // Run several frames to let state sync
+    for _ in 0..10 {
+        harness.step();
+    }
+    // Wait for async operations
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    for _ in 0..5 {
+        harness.step();
+    }
 
     // The home page should show the "Image Preview" heading
     assert!(
@@ -66,6 +69,16 @@ async fn test_image_paste_stores_image_in_state() {
 
     // Authenticate the user
     create_authenticated_state(&mut harness.state_mut().state);
+
+    // Run several frames to let state sync
+    for _ in 0..10 {
+        harness.step();
+    }
+    // Wait for async operations
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    for _ in 0..5 {
+        harness.step();
+    }
 
     // Create an egui context for texture creation
     let egui_ctx = Context::default();
@@ -90,10 +103,10 @@ async fn test_image_paste_stores_image_in_state() {
     assert_eq!(entry.width, 100);
     assert_eq!(entry.height, 100);
 
-    // Render the app
-    harness.step();
-    harness.state_mut().state.ctx.sync_computes();
-    harness.step();
+    // Run several frames to let UI update
+    for _ in 0..10 {
+        harness.step();
+    }
 
     // Should not show "No image" placeholder anymore
     assert!(
@@ -101,7 +114,7 @@ async fn test_image_paste_stores_image_in_state() {
         "Should not show 'No image' when an image is present"
     );
 
-    // Verify the image is actually displayed on screen
+    // Verify the image is actually displayed on screen - in fullscreen mode shows "Image: WxH"
     assert!(
         harness.query_by_label_contains("Image:").is_some(),
         "Image should be displayed on screen after pasting"
@@ -164,6 +177,16 @@ async fn test_image_preview_maximize_state() {
     // Authenticate the user
     create_authenticated_state(&mut harness.state_mut().state);
 
+    // Run several frames to let state sync
+    for _ in 0..10 {
+        harness.step();
+    }
+    // Wait for async operations
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    for _ in 0..5 {
+        harness.step();
+    }
+
     // Create an egui context for texture creation
     let egui_ctx = Context::default();
 
@@ -179,10 +202,10 @@ async fn test_image_preview_maximize_state() {
         image_state.set_maximized(true);
     }
 
-    // Render the app
-    harness.step();
-    harness.state_mut().state.ctx.sync_computes();
-    harness.step();
+    // Run several frames to let UI update
+    for _ in 0..10 {
+        harness.step();
+    }
 
     // Should show the maximized window with dimensions in title
     assert!(
@@ -198,6 +221,16 @@ async fn test_image_clear_removes_image() {
 
     // Authenticate the user
     create_authenticated_state(&mut harness.state_mut().state);
+
+    // Run several frames to let state sync
+    for _ in 0..10 {
+        harness.step();
+    }
+    // Wait for async operations
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    for _ in 0..5 {
+        harness.step();
+    }
 
     // Create an egui context for texture creation
     let egui_ctx = Context::default();
@@ -227,10 +260,10 @@ async fn test_image_clear_removes_image() {
         assert!(!image_state.is_maximized());
     }
 
-    // Render the app
-    harness.step();
-    harness.state_mut().state.ctx.sync_computes();
-    harness.step();
+    // Run several frames to let UI update
+    for _ in 0..10 {
+        harness.step();
+    }
 
     // Should show "No image" placeholder again
     assert!(
@@ -245,9 +278,15 @@ async fn test_image_preview_not_visible_on_login_page() {
     let harness = ctx.harness_mut();
 
     // Don't authenticate - should show login page
-    harness.step();
-    harness.state_mut().state.ctx.sync_computes();
-    harness.step();
+    // Run several frames to let state sync
+    for _ in 0..10 {
+        harness.step();
+    }
+    // Wait for async operations
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    for _ in 0..5 {
+        harness.step();
+    }
 
     // Login page should NOT show the Image Preview section
     // (Image preview is only on home page after sign-in)
@@ -264,6 +303,16 @@ async fn test_image_rgba_bytes_integration() {
 
     // Authenticate the user
     create_authenticated_state(&mut harness.state_mut().state);
+
+    // Run several frames to let state sync
+    for _ in 0..10 {
+        harness.step();
+    }
+    // Wait for async operations
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    for _ in 0..5 {
+        harness.step();
+    }
 
     // Create an egui context for texture creation
     let egui_ctx = Context::default();
@@ -289,10 +338,10 @@ async fn test_image_rgba_bytes_integration() {
         assert_eq!(entry.height, height);
     }
 
-    // Render and verify
-    harness.step();
-    harness.state_mut().state.ctx.sync_computes();
-    harness.step();
+    // Run several frames to let UI update
+    for _ in 0..10 {
+        harness.step();
+    }
 
     assert!(
         harness.query_by_label_contains("No image").is_none(),
@@ -307,6 +356,16 @@ async fn test_invalid_rgba_bytes_rejected() {
 
     // Authenticate the user
     create_authenticated_state(&mut harness.state_mut().state);
+
+    // Run several frames to let state sync
+    for _ in 0..10 {
+        harness.step();
+    }
+    // Wait for async operations
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    for _ in 0..5 {
+        harness.step();
+    }
 
     // Create an egui context for texture creation
     let egui_ctx = Context::default();
@@ -341,11 +400,17 @@ async fn test_image_displays_fullscreen_without_header() {
     // Authenticate the user
     create_authenticated_state(&mut harness.state_mut().state);
 
-    // Initially without image, should show header elements
-    harness.step();
-    harness.state_mut().state.ctx.sync_computes();
-    harness.step();
+    // Run several frames to let state sync
+    for _ in 0..10 {
+        harness.step();
+    }
+    // Wait for async operations
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    for _ in 0..5 {
+        harness.step();
+    }
 
+    // Initially without image, should show header elements
     assert!(
         harness.query_by_label_contains("Signed").is_some()
             || harness.query_by_label_contains("Welcome").is_some(),
@@ -366,10 +431,10 @@ async fn test_image_displays_fullscreen_without_header() {
         image_state.set_image(&egui_ctx, test_image);
     }
 
-    // Render the app
-    harness.step();
-    harness.state_mut().state.ctx.sync_computes();
-    harness.step();
+    // Run several frames to let UI update
+    for _ in 0..10 {
+        harness.step();
+    }
 
     // When image is displayed fullscreen, should show close button
     assert!(
@@ -398,6 +463,16 @@ async fn test_close_button_returns_to_normal_view() {
     // Authenticate the user
     create_authenticated_state(&mut harness.state_mut().state);
 
+    // Run several frames to let state sync
+    for _ in 0..10 {
+        harness.step();
+    }
+    // Wait for async operations
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    for _ in 0..5 {
+        harness.step();
+    }
+
     let egui_ctx = Context::default();
 
     // Paste an image
@@ -411,10 +486,10 @@ async fn test_close_button_returns_to_normal_view() {
         image_state.set_image(&egui_ctx, test_image);
     }
 
-    // Render
-    harness.step();
-    harness.state_mut().state.ctx.sync_computes();
-    harness.step();
+    // Run several frames to let UI update
+    for _ in 0..10 {
+        harness.step();
+    }
 
     // Verify we're in fullscreen mode
     assert!(
@@ -432,10 +507,10 @@ async fn test_close_button_returns_to_normal_view() {
         image_state.clear();
     }
 
-    // Render
-    harness.step();
-    harness.state_mut().state.ctx.sync_computes();
-    harness.step();
+    // Run several frames to let UI update
+    for _ in 0..10 {
+        harness.step();
+    }
 
     // Should be back to normal view with header
     assert!(

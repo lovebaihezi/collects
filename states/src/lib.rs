@@ -73,6 +73,10 @@ mod state_runtime_test {
             self
         }
 
+        fn as_any_mut(&mut self) -> &mut dyn Any {
+            self
+        }
+
         fn deps(&self) -> ComputeDeps {
             const IDS: [TypeId; 1] = [TypeId::of::<DummyState>()];
             (&IDS, &[])
@@ -119,6 +123,10 @@ mod state_runtime_test {
 
     impl Compute for DummyComputeB {
         fn as_any(&self) -> &dyn Any {
+            self
+        }
+
+        fn as_any_mut(&mut self) -> &mut dyn Any {
             self
         }
 
@@ -226,6 +234,10 @@ mod state_runtime_test {
 
     impl Compute for DummyComputeC {
         fn as_any(&self) -> &dyn Any {
+            self
+        }
+
+        fn as_any_mut(&mut self) -> &mut dyn Any {
             self
         }
 
@@ -340,6 +352,10 @@ mod state_runtime_test {
             self
         }
 
+        fn as_any_mut(&mut self) -> &mut dyn Any {
+            self
+        }
+
         fn deps(&self) -> ComputeDeps {
             const STATE_IDS: [TypeId; 0] = [];
             const COMPUTE_IDS: [TypeId; 0] = [];
@@ -397,6 +413,10 @@ mod state_runtime_test {
 
     impl Compute for UnregisteredCompute {
         fn as_any(&self) -> &dyn Any {
+            self
+        }
+
+        fn as_any_mut(&mut self) -> &mut dyn Any {
             self
         }
 

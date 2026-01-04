@@ -1,9 +1,9 @@
 use crate::{pages, state::State, utils::clipboard, widgets};
 use chrono::{Timelike, Utc};
-use collects_business::{AuthCompute, Route};
+use collects_business::{ApiStatus, AuthCompute, Route};
 use collects_states::Time;
 
-/// We derive Deserialize/Serialize so we can persist app state on shutdown.
+/// Main application state and logic for the Collects app.
 pub struct CollectsApp {
     state: State,
 }
@@ -20,6 +20,13 @@ impl eframe::App for CollectsApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Handle paste shortcut (Ctrl+V / Cmd+V) for clipboard image
         clipboard::handle_paste_shortcut(ctx);
+
+        // Toggle API status display when F1 is pressed
+        if ctx.input(|i| i.key_pressed(egui::Key::F1)) {
+            self.state.ctx.update_compute::<ApiStatus>(|api| {
+                api.toggle_show_status();
+            });
+        }
 
         // Update Time state when second changes (chrono::Utc::now() is WASM-compatible)
         // This enables real-time updates for OTP countdown timers while avoiding
@@ -45,12 +52,21 @@ impl eframe::App for CollectsApp {
         // Update route based on authentication state
         self.update_route();
 
-        egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
-            egui::MenuBar::new().ui(ui, |ui| {
-                // API status dots (includes internal API for internal builds)
-                widgets::api_status(&self.state.ctx, ui);
+        // Show top panel with API status only when F1 is pressed (toggled)
+        let show_api_status = self
+            .state
+            .ctx
+            .cached::<ApiStatus>()
+            .map(|api| api.show_status())
+            .unwrap_or(false);
+        if show_api_status {
+            egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
+                egui::MenuBar::new().ui(ui, |ui| {
+                    // API status dots (includes internal API for internal builds)
+                    widgets::api_status(&self.state.ctx, ui);
+                });
             });
-        });
+        }
 
         egui::CentralPanel::default().show(ctx, |ui| {
             // Render the appropriate page based on current route

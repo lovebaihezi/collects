@@ -47,8 +47,6 @@ pub fn render_user_row(row: &mut TableRow<'_, '_>, data: &UserRowData) -> UserRo
         action: None,
     };
 
-    let username_ustr = Ustr::from(&data.user.username);
-
     // ID cell with border indicator
     row.col(|ui| {
         render_id_cell(ui, data.index);
@@ -84,6 +82,7 @@ pub fn render_user_row(row: &mut TableRow<'_, '_>, data: &UserRowData) -> UserRo
 
     // Action buttons
     row.col(|ui| {
+        let username_ustr = Ustr::from(&data.user.username);
         result.action = render_action_buttons(ui, username_ustr);
         draw_cell_bottom_border(ui);
     });

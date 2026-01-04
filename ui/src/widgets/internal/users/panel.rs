@@ -57,7 +57,7 @@ pub fn internal_users_panel(state_ctx: &mut StateCtx, api_base_url: &str, ui: &m
 
 /// Renders the controls row with Refresh and Create buttons.
 #[inline]
-fn render_controls_row(state_ctx: &mut StateCtx, api_base_url: &str, ui: &mut Ui) -> bool {
+fn render_controls_row(state_ctx: &mut StateCtx, api_base_url: &str, ui: &mut Ui) {
     let should_open_create = ui
         .horizontal(|ui| {
             let state = state_ctx.state_mut::<InternalUsersState>();
@@ -82,8 +82,6 @@ fn render_controls_row(state_ctx: &mut StateCtx, api_base_url: &str, ui: &mut Ui
             .state_mut::<InternalUsersState>()
             .open_create_modal();
     }
-
-    should_open_create
 }
 
 /// Renders error display if present.

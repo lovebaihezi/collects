@@ -23,6 +23,9 @@ interface RetentionPolicy {
   description: string;
 }
 
+// Milliseconds in a day for age calculations
+const MS_PER_DAY = 1000 * 60 * 60 * 24;
+
 // Retention policies for different image types
 const RETENTION_POLICIES: RetentionPolicy[] = [
   {
@@ -54,6 +57,30 @@ interface CleanupResult {
   deleted: string[];
   skipped: string[];
   errors: string[];
+}
+
+// Allowed characters for GCP resource names (alphanumeric, hyphens, underscores)
+const SAFE_RESOURCE_NAME_PATTERN = /^[a-zA-Z0-9][-a-zA-Z0-9_]*$/;
+
+/**
+ * Validate a GCP resource name to prevent command injection
+ */
+function validateResourceName(name: string, fieldName: string): void {
+  if (!name || !SAFE_RESOURCE_NAME_PATTERN.test(name)) {
+    throw new Error(
+      `Invalid ${fieldName}: "${name}". Must start with alphanumeric and contain only alphanumeric, hyphens, or underscores.`,
+    );
+  }
+}
+
+/**
+ * Validate all cleanup options
+ */
+function validateOptions(options: CleanupOptions): void {
+  validateResourceName(options.projectId, "project ID");
+  validateResourceName(options.region, "region");
+  validateResourceName(options.repository, "repository");
+  validateResourceName(options.imageName, "image name");
 }
 
 /**
@@ -131,7 +158,7 @@ function shouldDeleteImage(
     const policy = findRetentionPolicy(tag);
     if (policy) {
       const ageInDays =
-        (now.getTime() - image.createTime.getTime()) / (1000 * 60 * 60 * 24);
+        (now.getTime() - image.createTime.getTime()) / MS_PER_DAY;
       if (ageInDays > policy.maxAgeDays) {
         return {
           shouldDelete: true,
@@ -191,6 +218,9 @@ export async function cleanupArtifacts(
     imageName: options.imageName || "collects-services",
     dryRun: options.dryRun ?? false,
   };
+
+  // Validate inputs to prevent command injection
+  validateOptions(fullOptions);
 
   console.log("=== Artifact Registry Cleanup ===");
   console.log(`Project: ${fullOptions.projectId}`);

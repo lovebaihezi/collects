@@ -47,7 +47,7 @@ jobs:
       - name: Run Artifact Cleanup
         working-directory: scripts
         env:
-          DRY_RUN: ${{ inputs.dry_run && 'true' || 'false' }}
+          DRY_RUN: ${{ inputs.dry_run == true && 'true' || 'false' }}
         run: bun run main.ts artifact-cleanup
 
       - name: Cleanup Summary

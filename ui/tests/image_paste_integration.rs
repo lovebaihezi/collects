@@ -1,0 +1,325 @@
+//! Integration tests for image paste functionality.
+//!
+//! These tests verify the image paste feature works correctly in the context
+//! of the full application, including:
+//! - Image preview widget on the home page
+//! - Paste handler integration
+//! - State management
+
+use crate::common::TestCtx;
+use collects_business::{AuthCompute, AuthStatus};
+use collects_ui::state::State;
+use collects_ui::widgets::ImagePreviewState;
+use egui::{Color32, ColorImage, Context};
+use kittest::Queryable;
+
+mod common;
+
+/// Helper to create an authenticated state for testing.
+fn create_authenticated_state(state: &mut State) {
+    state.ctx.record_compute(AuthCompute {
+        status: AuthStatus::Authenticated {
+            username: "TestUser".to_string(),
+            token: None,
+        },
+    });
+}
+
+/// Helper to create a test image with the given dimensions.
+fn create_test_image(width: usize, height: usize) -> ColorImage {
+    let pixels = vec![Color32::RED; width * height];
+    ColorImage::new([width, height], pixels)
+}
+
+#[tokio::test]
+async fn test_image_preview_visible_on_home_page() {
+    let mut ctx = TestCtx::new_app().await;
+    let harness = ctx.harness_mut();
+
+    // Authenticate the user to access home page
+    create_authenticated_state(&mut harness.state_mut().state);
+
+    // Render the app
+    harness.step();
+
+    // Wait for state to sync
+    harness.state_mut().state.ctx.sync_computes();
+    harness.step();
+
+    // The home page should show the "Image Preview" heading
+    assert!(
+        harness.query_by_label_contains("Image Preview").is_some(),
+        "Home page should show Image Preview section"
+    );
+
+    // Initially should show "No image" placeholder
+    assert!(
+        harness.query_by_label_contains("No image").is_some(),
+        "Should show 'No image' placeholder when no image is pasted"
+    );
+}
+
+#[tokio::test]
+async fn test_image_paste_stores_image_in_state() {
+    let mut ctx = TestCtx::new_app().await;
+    let harness = ctx.harness_mut();
+
+    // Authenticate the user
+    create_authenticated_state(&mut harness.state_mut().state);
+
+    // Create an egui context for texture creation
+    let egui_ctx = Context::default();
+
+    // Simulate pasting an image by directly setting the image state
+    let image_state = harness
+        .state_mut()
+        .state
+        .ctx
+        .state_mut::<ImagePreviewState>();
+
+    // Create and set a test image
+    let test_image = create_test_image(100, 100);
+    image_state.set_image(&egui_ctx, test_image);
+
+    // Verify the image is stored
+    assert!(
+        image_state.has_image(),
+        "Image state should have an image after paste"
+    );
+    let entry = image_state.current_image().unwrap();
+    assert_eq!(entry.width, 100);
+    assert_eq!(entry.height, 100);
+
+    // Render the app
+    harness.step();
+    harness.state_mut().state.ctx.sync_computes();
+    harness.step();
+
+    // Should not show "No image" placeholder anymore
+    assert!(
+        harness.query_by_label_contains("No image").is_none(),
+        "Should not show 'No image' when an image is present"
+    );
+}
+
+#[tokio::test]
+async fn test_image_paste_replaces_previous_image() {
+    let mut ctx = TestCtx::new_app().await;
+    let harness = ctx.harness_mut();
+
+    // Authenticate the user
+    create_authenticated_state(&mut harness.state_mut().state);
+
+    // Create an egui context for texture creation
+    let egui_ctx = Context::default();
+
+    // Set first image
+    {
+        let image_state = harness
+            .state_mut()
+            .state
+            .ctx
+            .state_mut::<ImagePreviewState>();
+        let test_image1 = create_test_image(100, 100);
+        image_state.set_image(&egui_ctx, test_image1);
+
+        assert_eq!(image_state.current_image().unwrap().width, 100);
+    }
+
+    // Set second image - should replace
+    {
+        let image_state = harness
+            .state_mut()
+            .state
+            .ctx
+            .state_mut::<ImagePreviewState>();
+        let test_image2 = create_test_image(200, 150);
+        image_state.set_image(&egui_ctx, test_image2);
+
+        // Verify replacement
+        assert_eq!(
+            image_state.current_image().unwrap().width,
+            200,
+            "Second paste should replace first image"
+        );
+        assert_eq!(
+            image_state.current_image().unwrap().height,
+            150,
+            "Second paste should replace first image"
+        );
+    }
+}
+
+#[tokio::test]
+async fn test_image_preview_maximize_state() {
+    let mut ctx = TestCtx::new_app().await;
+    let harness = ctx.harness_mut();
+
+    // Authenticate the user
+    create_authenticated_state(&mut harness.state_mut().state);
+
+    // Create an egui context for texture creation
+    let egui_ctx = Context::default();
+
+    // Set an image and maximize it
+    {
+        let image_state = harness
+            .state_mut()
+            .state
+            .ctx
+            .state_mut::<ImagePreviewState>();
+        let test_image = create_test_image(100, 100);
+        image_state.set_image(&egui_ctx, test_image);
+        image_state.set_maximized(true);
+    }
+
+    // Render the app
+    harness.step();
+    harness.state_mut().state.ctx.sync_computes();
+    harness.step();
+
+    // Should show the maximized window with dimensions in title
+    assert!(
+        harness.query_by_label_contains("100×100").is_some(),
+        "Maximized view should show image dimensions"
+    );
+}
+
+#[tokio::test]
+async fn test_image_clear_removes_image() {
+    let mut ctx = TestCtx::new_app().await;
+    let harness = ctx.harness_mut();
+
+    // Authenticate the user
+    create_authenticated_state(&mut harness.state_mut().state);
+
+    // Create an egui context for texture creation
+    let egui_ctx = Context::default();
+
+    // Set an image
+    {
+        let image_state = harness
+            .state_mut()
+            .state
+            .ctx
+            .state_mut::<ImagePreviewState>();
+        let test_image = create_test_image(100, 100);
+        image_state.set_image(&egui_ctx, test_image);
+        image_state.set_maximized(true);
+        assert!(image_state.has_image());
+    }
+
+    // Clear the image
+    {
+        let image_state = harness
+            .state_mut()
+            .state
+            .ctx
+            .state_mut::<ImagePreviewState>();
+        image_state.clear();
+        assert!(!image_state.has_image());
+        assert!(!image_state.is_maximized());
+    }
+
+    // Render the app
+    harness.step();
+    harness.state_mut().state.ctx.sync_computes();
+    harness.step();
+
+    // Should show "No image" placeholder again
+    assert!(
+        harness.query_by_label_contains("No image").is_some(),
+        "Should show 'No image' after clearing"
+    );
+}
+
+#[tokio::test]
+async fn test_image_preview_not_visible_on_login_page() {
+    let mut ctx = TestCtx::new_app().await;
+    let harness = ctx.harness_mut();
+
+    // Don't authenticate - should show login page
+    harness.step();
+    harness.state_mut().state.ctx.sync_computes();
+    harness.step();
+
+    // Login page should NOT show the Image Preview section
+    // (Image preview is only on home page after sign-in)
+    assert!(
+        harness.query_by_label_contains("Image Preview").is_none(),
+        "Login page should NOT show Image Preview section"
+    );
+}
+
+#[tokio::test]
+async fn test_image_rgba_bytes_integration() {
+    let mut ctx = TestCtx::new_app().await;
+    let harness = ctx.harness_mut();
+
+    // Authenticate the user
+    create_authenticated_state(&mut harness.state_mut().state);
+
+    // Create an egui context for texture creation
+    let egui_ctx = Context::default();
+
+    // Test setting image from RGBA bytes (simulates clipboard paste)
+    {
+        let image_state = harness
+            .state_mut()
+            .state
+            .ctx
+            .state_mut::<ImagePreviewState>();
+
+        let width = 10;
+        let height = 10;
+        let rgba_bytes = vec![255u8; width * height * 4];
+
+        let success = image_state.set_image_rgba(&egui_ctx, width, height, rgba_bytes);
+        assert!(success, "Should successfully set image from RGBA bytes");
+        assert!(image_state.has_image());
+
+        let entry = image_state.current_image().unwrap();
+        assert_eq!(entry.width, width);
+        assert_eq!(entry.height, height);
+    }
+
+    // Render and verify
+    harness.step();
+    harness.state_mut().state.ctx.sync_computes();
+    harness.step();
+
+    assert!(
+        harness.query_by_label_contains("No image").is_none(),
+        "Should not show 'No image' when image is set via RGBA bytes"
+    );
+}
+
+#[tokio::test]
+async fn test_invalid_rgba_bytes_rejected() {
+    let mut ctx = TestCtx::new_app().await;
+    let harness = ctx.harness_mut();
+
+    // Authenticate the user
+    create_authenticated_state(&mut harness.state_mut().state);
+
+    // Create an egui context for texture creation
+    let egui_ctx = Context::default();
+
+    // Test setting image with invalid RGBA bytes (wrong size)
+    {
+        let image_state = harness
+            .state_mut()
+            .state
+            .ctx
+            .state_mut::<ImagePreviewState>();
+
+        let width = 10;
+        let height = 10;
+        // Wrong number of bytes - only 3 bytes per pixel instead of 4
+        let rgba_bytes = vec![255u8; width * height * 3];
+
+        let success = image_state.set_image_rgba(&egui_ctx, width, height, rgba_bytes);
+        assert!(!success, "Should reject invalid RGBA bytes");
+        assert!(!image_state.has_image(), "Should not have image after invalid data");
+    }
+}

@@ -387,3 +387,135 @@ mod tests {
         assert!(!state.is_maximized());
     }
 }
+
+/// Widget tests for image_preview rendering and interactions.
+#[cfg(test)]
+mod image_preview_widget_tests {
+    use super::*;
+    use egui_kittest::Harness;
+    use kittest::Queryable;
+
+    /// Creates a simple test ColorImage with the given dimensions.
+    fn create_test_image(width: usize, height: usize) -> ColorImage {
+        let pixels = vec![Color32::RED; width * height];
+        ColorImage::new([width, height], pixels)
+    }
+
+    #[test]
+    fn test_image_preview_widget_renders_empty_state() {
+        let state = ImagePreviewState::new();
+
+        let harness = Harness::new_ui_state(
+            |ui, state: &mut ImagePreviewState| {
+                image_preview(state, ui);
+            },
+            state,
+        );
+
+        // Should show the "No image" placeholder text
+        assert!(
+            harness.query_by_label_contains("No image").is_some(),
+            "Empty state should show 'No image' placeholder"
+        );
+    }
+
+    #[test]
+    fn test_image_preview_widget_renders_with_image() {
+        let ctx = Context::default();
+        let mut state = ImagePreviewState::new();
+
+        // Set up an image
+        let image = create_test_image(100, 100);
+        state.set_image(&ctx, image);
+
+        let mut harness = Harness::new_ui_state(
+            |ui, state: &mut ImagePreviewState| {
+                image_preview(state, ui);
+            },
+            state,
+        );
+
+        harness.step();
+
+        // Should NOT show the "No image" placeholder when image is present
+        assert!(
+            harness.query_by_label_contains("No image").is_none(),
+            "Should not show 'No image' when an image is set"
+        );
+    }
+
+    #[test]
+    fn test_image_preview_widget_maximized_state() {
+        let ctx = Context::default();
+        let mut state = ImagePreviewState::new();
+
+        // Set up an image and maximize it
+        let image = create_test_image(100, 100);
+        state.set_image(&ctx, image);
+        state.set_maximized(true);
+
+        let mut harness = Harness::new_ui_state(
+            |ui, state: &mut ImagePreviewState| {
+                image_preview(state, ui);
+            },
+            state,
+        );
+
+        harness.step();
+
+        // When maximized, should show the modal window
+        assert!(
+            harness.query_by_label_contains("Image Preview").is_some(),
+            "Maximized state should show Image Preview window"
+        );
+    }
+
+    #[test]
+    fn test_image_preview_dimensions_stored_correctly() {
+        let ctx = Context::default();
+        let mut state = ImagePreviewState::new();
+
+        // Test various image dimensions
+        let test_cases = [(100, 100), (200, 150), (50, 200), (1, 1)];
+
+        for (width, height) in test_cases {
+            let image = create_test_image(width, height);
+            state.set_image(&ctx, image);
+
+            let entry = state.current_image().unwrap();
+            assert_eq!(
+                entry.width, width,
+                "Width should be stored correctly for {}x{}",
+                width, height
+            );
+            assert_eq!(
+                entry.height, height,
+                "Height should be stored correctly for {}x{}",
+                width, height
+            );
+        }
+    }
+
+    #[test]
+    fn test_image_preview_rgba_conversion() {
+        let ctx = Context::default();
+        let mut state = ImagePreviewState::new();
+
+        // Create RGBA bytes for a 2x2 image
+        // Red, Green, Blue, White pixels
+        let rgba_bytes = vec![
+            255, 0, 0, 255, // Red
+            0, 255, 0, 255, // Green
+            0, 0, 255, 255, // Blue
+            255, 255, 255, 255, // White
+        ];
+
+        let success = state.set_image_rgba(&ctx, 2, 2, rgba_bytes);
+        assert!(success, "Should successfully convert RGBA bytes to image");
+        assert!(state.has_image(), "Image should be stored after conversion");
+
+        let entry = state.current_image().unwrap();
+        assert_eq!(entry.width, 2);
+        assert_eq!(entry.height, 2);
+    }
+}

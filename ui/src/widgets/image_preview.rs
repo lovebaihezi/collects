@@ -40,7 +40,6 @@ fn next_image_id() -> usize {
 }
 
 /// A single image entry in the preview state.
-/// A single image entry in the preview state.
 pub struct ImageEntry {
     /// Unique identifier for this image.
     pub id: usize,
@@ -518,12 +517,16 @@ mod tests {
         let ctx = Context::default();
         let mut state = ImagePreviewState::new();
 
-        for _ in 0..5 {
+        let mut first_id = 0;
+        for i in 0..5 {
             let image = create_test_image(50, 50);
-            state.add_image(&ctx, image);
+            let id = state.add_image(&ctx, image);
+            if i == 0 {
+                first_id = id;
+            }
         }
 
-        state.maximize(0);
+        state.maximize(first_id);
         assert_eq!(state.len(), 5);
 
         state.clear();

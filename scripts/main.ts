@@ -9,6 +9,7 @@ import {
 } from "./services/gcloud.ts";
 import { runVersionCheck } from "./gh-actions/version-check.ts";
 import { runCIFeedbackCLI } from "./gh-actions/ci-feedback.ts";
+import { runArtifactCleanupCLI } from "./gh-actions/artifact-cleanup.ts";
 import {
   getCargoFeature,
   getDatabaseSecret,
@@ -194,6 +195,15 @@ cli
     runCIFeedbackCLI();
   });
 
+cli
+  .command(
+    "artifact-cleanup",
+    "Cleanup old Docker images from Artifact Registry (for GitHub Actions)",
+  )
+  .action(async () => {
+    await runArtifactCleanupCLI();
+  });
+
 cli.command("", "Show help").action(() => {
   const helpText = `
 # Services Helper Script
@@ -365,6 +375,35 @@ Personal Access Token (PAT) so the comment appears to come from your account.
 If you prefer a classic token, create one with the \`repo\` scope and save it as \`COPILOT_INVOKER_TOKEN\`.
 
 That's it! Now when CI fails on a PR, Copilot will automatically be asked to help.
+
+### \`artifact-cleanup\`
+
+Cleans up old Docker images from Google Cloud Artifact Registry based on retention policies.
+
+**What it does:**
+1. Lists all Docker images in the specified Artifact Registry repository.
+2. Applies retention policies based on image tags:
+   - Nightly builds (\`nightly-YYYYMMDD\`): Deleted after 7 days
+   - Main branch builds (\`main-<sha>\`): Deleted after 1 day
+   - Production releases (\`v<version>\`): Deleted after 30 days
+   - PR builds (\`pr-<number>\`): Handled separately by cleanup-pr.yml
+3. Deletes images that exceed their retention period.
+
+**Environment Variables:**
+- \`GCP_PROJECT_ID\` - Google Cloud Project ID (optional, uses gcloud config if not set)
+- \`GCP_REGION\` - Artifact Registry region (default: us-east1)
+- \`GCP_REPOSITORY\` - Repository name (default: collects-services)
+- \`GCP_IMAGE_NAME\` - Image name (default: collects-services)
+- \`DRY_RUN\` - Set to "true" to preview deletions without executing them
+
+**Example:**
+\`\`\`bash
+# Preview what would be deleted
+DRY_RUN=true bun run main.ts artifact-cleanup
+
+# Actually delete old images
+bun run main.ts artifact-cleanup
+\`\`\`
 
 ---
 Run \`bun run main.ts --help\` for CLI details.

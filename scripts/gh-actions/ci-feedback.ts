@@ -74,12 +74,10 @@ function countPreviousFailures(
   const jobFailureCounts: Record<string, number> = {};
 
   // Find CI feedback comments from this workflow
-  const feedbackComments = comments.filter(
-    (comment) =>
-      comment.body &&
-      comment.body.includes("<!-- CI-FEEDBACK-BOT -->") &&
-      comment.user &&
-      comment.user.type === "Bot",
+  // Note: We only check for the marker, not user.type, because comments posted via
+  // user PAT (like COPILOT_INVOKER_TOKEN) have type "User", not "Bot"
+  const feedbackComments = comments.filter((comment) =>
+    comment.body?.includes("<!-- CI-FEEDBACK-BOT -->"),
   );
 
   for (const comment of feedbackComments) {

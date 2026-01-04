@@ -100,6 +100,12 @@ async fn test_image_paste_stores_image_in_state() {
         harness.query_by_label_contains("No image").is_none(),
         "Should not show 'No image' when an image is present"
     );
+
+    // Verify the image is actually displayed on screen
+    assert!(
+        harness.query_by_label_contains("Image displayed").is_some(),
+        "Image should be displayed on screen after pasting"
+    );
 }
 
 #[tokio::test]
@@ -369,6 +375,12 @@ async fn test_image_displays_fullscreen_without_header() {
     assert!(
         harness.query_by_label_contains("Close Image").is_some(),
         "Should show Close Image button in fullscreen mode"
+    );
+
+    // Should verify the image is actually displayed on screen
+    assert!(
+        harness.query_by_label_contains("Image displayed").is_some(),
+        "Should show 'Image displayed' indicator when image is rendered"
     );
 
     // Should show image dimensions

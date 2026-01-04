@@ -215,8 +215,8 @@ pub fn image_preview_fullscreen(state: &mut ImagePreviewState, ui: &mut Ui) -> R
 
         ui.add_space(8.0);
 
-        // Display image dimensions
-        ui.label(format!("{}×{}", width, height));
+        // Display image dimensions with display indicator for testing
+        ui.label(format!("Image displayed: {}×{}", width, height));
 
         ui.add_space(8.0);
 

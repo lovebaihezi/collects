@@ -69,7 +69,7 @@ impl CollectsApp<SystemPasteHandler> {
     pub fn new(state: State) -> Self {
         Self {
             state,
-            paste_handler: SystemPasteHandler::default(),
+            paste_handler: SystemPasteHandler,
         }
     }
 }

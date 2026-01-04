@@ -9,11 +9,10 @@ use ustr::Ustr;
 
 use super::api::fetch_users;
 use super::modals::{
-    show_create_user_modal, show_delete_user_modal, show_edit_username_modal,
-    show_revoke_otp_modal,
+    show_create_user_modal, show_delete_user_modal, show_edit_username_modal, show_revoke_otp_modal,
 };
 use super::state::{InternalUsersState, UserAction};
-use super::table::columns::{table_columns, HEADER_HEIGHT, QR_ROW_HEIGHT, ROW_HEIGHT};
+use super::table::columns::{HEADER_HEIGHT, QR_ROW_HEIGHT, ROW_HEIGHT, table_columns};
 use super::table::header::render_table_header;
 use super::table::row::{prepare_user_row_data, render_qr_expansion, render_user_row};
 
@@ -95,10 +94,7 @@ fn render_error_display(state_ctx: &mut StateCtx, ui: &mut Ui) {
 
 /// Renders the users table and returns any pending actions.
 #[inline]
-fn render_users_table(
-    state_ctx: &mut StateCtx,
-    ui: &mut Ui,
-) -> (Option<Ustr>, Option<UserAction>) {
+fn render_users_table(state_ctx: &mut StateCtx, ui: &mut Ui) -> (Option<Ustr>, Option<UserAction>) {
     let mut username_to_toggle: Option<Ustr> = None;
     let mut action_to_start: Option<UserAction> = None;
 

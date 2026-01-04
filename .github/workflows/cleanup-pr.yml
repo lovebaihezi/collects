@@ -15,6 +15,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install Scripts Dependencies
+        working-directory: scripts
+        run: bun install --frozen-lockfile
+
       - name: Google Auth
         id: auth
         uses: google-github-actions/auth@v2
@@ -27,35 +36,7 @@ jobs:
 
       - name: Delete Docker Image
         id: delete-image
-        run: |
-          set -x
-          
-          GCP_REGION="us-east1"
-          PROJECT_ID=$(gcloud config get-value project)
-          REPOSITORY_NAME="collects-services"
-          IMAGE_NAME="collects-services"
-          TAG="pr-${{ github.event.pull_request.number }}"
-          
-          # Try to delete the Docker image tag
-          if gcloud artifacts docker images delete \
-            "${GCP_REGION}-docker.pkg.dev/${PROJECT_ID}/${REPOSITORY_NAME}/${IMAGE_NAME}:${TAG}" \
-            --quiet \
-            --delete-tags 2>/dev/null; then
-            echo "Successfully deleted Docker image with tag: ${TAG}"
-            echo "image_deleted=true" >> $GITHUB_OUTPUT
-          else
-            echo "Docker image with tag ${TAG} not found or already deleted"
-            echo "image_deleted=false" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Cleanup Summary
-        run: |
-          echo "## Cleanup Summary for PR #${{ github.event.pull_request.number }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          if [[ "${{ steps.delete-image.outputs.image_deleted }}" == "true" ]]; then
-            echo "- ✅ Docker image \`pr-${{ github.event.pull_request.number }}\` deleted" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "- ℹ️ Docker image \`pr-${{ github.event.pull_request.number }}\` not found or already deleted" >> $GITHUB_STEP_SUMMARY
-          fi
-          echo "- ℹ️ Cloud Run service \`collects-services-pr\` is shared and remains active" >> $GITHUB_STEP_SUMMARY
-          echo "- ℹ️ Cloudflare Worker \`pr\` environment is shared and remains active" >> $GITHUB_STEP_SUMMARY
+        working-directory: scripts
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: bun run main.ts cleanup-pr-image

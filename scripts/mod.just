@@ -49,3 +49,8 @@ r2-list *args: install
 # Requires environment variables: GITHUB_TOKEN, WORKFLOW_RUN_ID, HEAD_SHA, WORKFLOW_RUN_URL
 ci-feedback: install
     bun run main.ts ci-feedback
+
+# Cleanup PR Docker image from GCloud Artifact Registry (for GitHub Actions)
+# Requires environment variable: PR_NUMBER
+cleanup-pr-image: install
+    bun run main.ts cleanup-pr-image

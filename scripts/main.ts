@@ -9,6 +9,7 @@ import {
 } from "./services/gcloud.ts";
 import { runVersionCheck } from "./gh-actions/version-check.ts";
 import { runCIFeedbackCLI } from "./gh-actions/ci-feedback.ts";
+import { runCleanupPRImageCLI } from "./gh-actions/cleanup-pr-image.ts";
 import {
   getCargoFeature,
   getDatabaseSecret,
@@ -194,6 +195,15 @@ cli
     runCIFeedbackCLI();
   });
 
+cli
+  .command(
+    "cleanup-pr-image",
+    "Delete PR Docker image from GCloud Artifact Registry (for GitHub Actions)",
+  )
+  .action(() => {
+    runCleanupPRImageCLI();
+  });
+
 cli.command("", "Show help").action(() => {
   const helpText = `
 # Services Helper Script
@@ -330,6 +340,8 @@ Lists the status of Cloudflare R2 secrets in Google Cloud Secret Manager.
 **Example:**
 \`\`\`bash
 bun run main.ts r2-list --project-id my-gcp-project-id
+\`\`\`
+
 ### \`ci-feedback\`
 
 Posts CI failure feedback to the PR. This command is designed to be called from GitHub Actions.
@@ -351,6 +363,29 @@ Posts CI failure feedback to the PR. This command is designed to be called from 
 **Example:**
 \`\`\`bash
 GITHUB_TOKEN=xxx WORKFLOW_RUN_ID=123 ... bun run main.ts ci-feedback
+\`\`\`
+
+### \`cleanup-pr-image\`
+
+Deletes Docker images for closed PRs from GCloud Artifact Registry. This command is designed to be called from GitHub Actions when a PR is closed (merged or not).
+
+**What it does:**
+1. Gets the GCP project ID from gcloud config.
+2. Constructs the full image path for the PR-specific Docker image tag.
+3. Attempts to delete the image from GCloud Artifact Registry.
+4. Writes a cleanup summary to GitHub Actions step summary.
+
+**Required Environment Variables:**
+- \`PR_NUMBER\` - The pull request number
+
+**Optional Environment Variables:**
+- \`GCP_REGION\` - GCP region (default: us-east1)
+- \`REPOSITORY_NAME\` - Artifact Registry repository name (default: collects-services)
+- \`IMAGE_NAME\` - Docker image name (default: collects-services)
+
+**Example:**
+\`\`\`bash
+PR_NUMBER=123 bun run main.ts cleanup-pr-image
 \`\`\`
 
 ---

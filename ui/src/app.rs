@@ -1,6 +1,6 @@
 use crate::{pages, state::State, utils::clipboard, widgets};
 use chrono::{Timelike, Utc};
-use collects_business::{ApiStatus, AuthCompute, Route};
+use collects_business::{ApiStatus, AuthCompute, Route, ToggleApiStatusCommand};
 use collects_states::Time;
 
 /// Main application state and logic for the Collects app.
@@ -23,9 +23,7 @@ impl eframe::App for CollectsApp {
 
         // Toggle API status display when F1 is pressed
         if ctx.input(|i| i.key_pressed(egui::Key::F1)) {
-            self.state.ctx.update_compute::<ApiStatus>(|api| {
-                api.toggle_show_status();
-            });
+            self.state.ctx.dispatch::<ToggleApiStatusCommand>();
         }
 
         // Update Time state when second changes (chrono::Utc::now() is WASM-compatible)

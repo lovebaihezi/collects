@@ -2,7 +2,7 @@ use std::any::{Any, TypeId};
 
 use crate::BusinessConfig;
 use chrono::{DateTime, Utc};
-use collects_states::{Compute, ComputeDeps, Dep, State, Time, Updater, assign_impl};
+use collects_states::{Command, Compute, ComputeDeps, Dep, State, Time, Updater, assign_impl};
 use log::{debug, info, warn};
 use ustr::Ustr;
 
@@ -56,11 +56,6 @@ impl ApiStatus {
     /// Returns whether the API status panel should be shown
     pub fn show_status(&self) -> bool {
         self.show_status
-    }
-
-    /// Toggles the show_status flag
-    pub fn toggle_show_status(&mut self) {
-        self.show_status = !self.show_status;
     }
 }
 
@@ -163,10 +158,6 @@ impl Compute for ApiStatus {
         self
     }
 
-    fn as_any_mut(&mut self) -> &mut dyn Any {
-        self
-    }
-
     fn assign_box(&mut self, new_self: Box<dyn Any>) {
         assign_impl(self, new_self);
     }
@@ -175,5 +166,26 @@ impl Compute for ApiStatus {
 impl State for ApiStatus {
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
+    }
+}
+
+/// Command to toggle the API status panel visibility.
+///
+/// Dispatch explicitly via `ctx.dispatch::<ToggleApiStatusCommand>()`.
+#[derive(Default, Debug)]
+pub struct ToggleApiStatusCommand;
+
+impl Command for ToggleApiStatusCommand {
+    fn run(&self, deps: Dep, updater: Updater) {
+        let current = deps.get_compute_ref::<ApiStatus>();
+        let new_show_status = !current.show_status;
+        
+        updater.set(ApiStatus {
+            last_update_time: current.last_update_time,
+            last_error: current.last_error.clone(),
+            service_version: current.service_version.clone(),
+            retry_count: current.retry_count,
+            show_status: new_show_status,
+        });
     }
 }

@@ -135,20 +135,6 @@ impl StateCtx {
         self.propagate_dirty_from(&id);
     }
 
-    /// Directly mutates a compute value without going through the async Updater.
-    ///
-    /// Use this only for UI state changes that don't affect compute dependencies
-    /// or when immediate synchronous updates are required (e.g., toggle states).
-    ///
-    /// Note: This does NOT mark the compute as dirty or trigger re-computation.
-    /// For changes that should trigger dependency updates, use the normal
-    /// `Updater::set()` mechanism within `Compute::compute()`.
-    pub fn update_compute<T: Compute>(&self, f: impl FnOnce(&mut T)) {
-        let id = TypeId::of::<T>();
-        let compute = self.get_compute_mut(&id);
-        f(compute.as_any_mut().downcast_mut::<T>().unwrap());
-    }
-
     /// Propagates dirty status from a changed state/compute to all its dependents.
     fn propagate_dirty_from(&mut self, source_id: &TypeId) {
         // Collect dependent IDs first to avoid borrow issues

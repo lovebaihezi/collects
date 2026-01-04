@@ -128,10 +128,6 @@ impl Compute for AuthCompute {
         self
     }
 
-    fn as_any_mut(&mut self) -> &mut dyn Any {
-        self
-    }
-
     fn assign_box(&mut self, new_self: Box<dyn Any>) {
         assign_impl(self, new_self);
     }

@@ -154,19 +154,45 @@ export function buildCommentBody(
 
 /**
  * Get PR number associated with a workflow run
+ *
+ * This function uses multiple strategies to find the PR:
+ * 1. Use the pullRequests array from the workflow run (fastest, but empty for fork PRs)
+ * 2. Search for open PRs by head commit SHA (works for both fork and non-fork PRs)
+ * 3. Search for PRs by head branch (fallback, doesn't work for forks)
  */
 async function getPRInfo(
   octokit: Octokit,
   owner: string,
   repo: string,
   headBranch: string,
+  headSha: string,
   pullRequests?: Array<{ number: number }>,
 ): Promise<PRInfo> {
+  // Strategy 1: Use pullRequests from workflow run (fastest)
   if (pullRequests && pullRequests.length > 0) {
     return { hasPR: true, prNumber: pullRequests[0].number };
   }
 
-  // Try to find PR by head branch
+  // Strategy 2: Search for PRs by head commit SHA (works for fork PRs)
+  // This is more reliable than branch search because SHA is unique and works across forks
+  try {
+    const { data: searchResults } =
+      await octokit.rest.search.issuesAndPullRequests({
+        q: `repo:${owner}/${repo} is:pr is:open ${headSha}`,
+      });
+
+    if (searchResults.total_count > 0 && searchResults.items.length > 0) {
+      return { hasPR: true, prNumber: searchResults.items[0].number };
+    }
+  } catch (error) {
+    // Log search error but continue to fallback
+    const message = error instanceof Error ? error.message : String(error);
+    console.log(
+      `SHA-based PR search failed: ${message}, falling back to branch search`,
+    );
+  }
+
+  // Strategy 3: Try to find PR by head branch (fallback, doesn't work for forks)
   const { data: pulls } = await octokit.rest.pulls.list({
     owner,
     repo,
@@ -270,6 +296,7 @@ export async function runCIFeedback(options: CIFeedbackOptions): Promise<void> {
     owner,
     repo,
     workflowRun.head_branch || "",
+    headSha,
     workflowRun.pull_requests,
   );
 

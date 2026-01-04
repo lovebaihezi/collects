@@ -263,7 +263,9 @@ let show_panel = self.state.ctx
 
 ## Testing
 
-- Run `just ui::test` for UI tests
+- Run `just ui::test` for UI tests (with all features enabled, includes internal features)
+- Run `just ui::test-non-internal` for non-internal tests only
+- Run `just ui::test-all` for complete coverage (both test configurations)
 - Ensure all tests pass before creating a PR
 
 ### How UI Tests Work
@@ -419,19 +421,26 @@ async fn setup_test_state_with_status(status_code: u16) -> (MockServer, State) {
 
 #### CI/CD Test Execution
 
-In CI (`.github/workflows/ci.yml`), tests run with `--all-features`:
+In CI (`.github/workflows/ci.yml`), tests run **both** code paths to ensure complete coverage:
 
 ```yaml
-- name: Run Tests
-  run: just ui::test
+- name: Run Non-Internal Tests
+  working-directory: ui
+  run: cargo test
+
+- name: Run Internal Tests (all features)
+  working-directory: ui
+  run: cargo test --all-features
 ```
 
-This corresponds to:
-```bash
-RUST_LOG=DEBUG cargo test --all-features
-```
+This ensures:
+- **Non-internal tests** run first (`cargo test`) — tests code paths gated by `#[cfg(not(any(feature = "env_internal", feature = "env_test_internal")))]`
+- **Internal tests** run second (`cargo test --all-features`) — tests code paths gated by `#[cfg(any(feature = "env_internal", feature = "env_test_internal"))]`
 
-This ensures both normal and internal code paths are tested in CI.
+**Why both are needed:**
+- `--all-features` enables internal features, so `#[cfg(not(...))]` tests are **excluded**
+- Running without features enables non-internal code paths, so `#[cfg(any(...))]` tests are **excluded**
+- Together, both runs provide complete test coverage
 
 ### Testing Requirements
 

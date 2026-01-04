@@ -14,6 +14,9 @@ use egui_kittest::Harness;
 use wiremock::matchers::{body_json, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
+/// Time to wait for async API responses in tests (milliseconds).
+const API_RESPONSE_WAIT_MS: u64 = 100;
+
 /// Test context for login integration tests.
 struct LoginTestCtx<'a> {
     mock_server: MockServer,
@@ -243,7 +246,7 @@ async fn test_login_success_flow() {
     harness.step();
 
     // Wait for async response
-    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    tokio::time::sleep(std::time::Duration::from_millis(API_RESPONSE_WAIT_MS)).await;
 
     // Sync computes to get the result
     {
@@ -311,7 +314,7 @@ async fn test_login_invalid_otp_flow() {
     harness.step();
 
     // Wait for async response
-    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    tokio::time::sleep(std::time::Duration::from_millis(API_RESPONSE_WAIT_MS)).await;
 
     // Sync computes to get the result
     {
@@ -383,7 +386,7 @@ async fn test_login_unauthorized_flow() {
     harness.step();
 
     // Wait for async response
-    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    tokio::time::sleep(std::time::Duration::from_millis(API_RESPONSE_WAIT_MS)).await;
 
     // Sync computes to get the result
     {
@@ -451,7 +454,7 @@ async fn test_login_server_error_flow() {
     harness.step();
 
     // Wait for async response
-    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    tokio::time::sleep(std::time::Duration::from_millis(API_RESPONSE_WAIT_MS)).await;
 
     // Sync computes to get the result
     {
@@ -754,7 +757,7 @@ async fn test_auth_compute_helper_methods() {
     harness.step();
 
     // Wait for async response
-    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    tokio::time::sleep(std::time::Duration::from_millis(API_RESPONSE_WAIT_MS)).await;
 
     // Sync computes to get the result
     {

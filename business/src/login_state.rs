@@ -165,6 +165,13 @@ impl State for AuthCompute {
     }
 }
 
+/// Extracts an error message from a response, falling back to a default message.
+fn extract_error_message(response_bytes: &[u8], default: &str) -> String {
+    serde_json::from_slice::<VerifyOtpResponse>(response_bytes)
+        .map(|r| r.message.unwrap_or_else(|| default.to_string()))
+        .unwrap_or_else(|_| default.to_string())
+}
+
 /// Manual-only command that handles login.
 ///
 /// This command verifies user credentials against the backend `/auth/verify-otp` endpoint.
@@ -224,7 +231,7 @@ impl Command for LoginCommand {
         });
 
         // Build the request payload
-        let url = format!("{}/auth/verify-otp", config.api_url().as_str());
+        let url = format!("{}/auth/verify-otp", config.api_url());
         let body = match serde_json::to_vec(&VerifyOtpRequest {
             username: username.clone(),
             code: otp,
@@ -283,21 +290,16 @@ impl Command for LoginCommand {
                     }
                 } else if response.status == 400 {
                     // Bad request - likely invalid input format
-                    let error_msg = serde_json::from_slice::<VerifyOtpResponse>(&response.bytes)
-                        .map(|r| r.message.unwrap_or_else(|| "Invalid request".to_string()))
-                        .unwrap_or_else(|_| "Invalid request format".to_string());
+                    let error_msg =
+                        extract_error_message(&response.bytes, "Invalid request format");
                     info!("LoginCommand: Bad request: {}", error_msg);
                     updater.set(AuthCompute {
                         status: AuthStatus::Failed(error_msg),
                     });
                 } else if response.status == 401 {
                     // Unauthorized - invalid credentials
-                    let error_msg = serde_json::from_slice::<VerifyOtpResponse>(&response.bytes)
-                        .map(|r| {
-                            r.message
-                                .unwrap_or_else(|| "Invalid username or OTP code".to_string())
-                        })
-                        .unwrap_or_else(|_| "Invalid username or OTP code".to_string());
+                    let error_msg =
+                        extract_error_message(&response.bytes, "Invalid username or OTP code");
                     info!("LoginCommand: Authentication failed: {}", error_msg);
                     updater.set(AuthCompute {
                         status: AuthStatus::Failed(error_msg),

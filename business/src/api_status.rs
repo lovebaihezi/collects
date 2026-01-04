@@ -266,7 +266,10 @@ mod tests {
             show_status: false,
             is_fetching: false,
         };
-        assert!(!status_hidden.show_status(), "show_status should return false");
+        assert!(
+            !status_hidden.show_status(),
+            "show_status should return false"
+        );
 
         let status_shown = ApiStatus {
             last_update_time: None,

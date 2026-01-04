@@ -335,9 +335,6 @@ mod api_state_widget_test {
             .cached::<ApiStatus>()
             .map(|api| api.show_status())
             .unwrap_or(false);
-        assert!(
-            show_status,
-            "API status should be visible after toggle"
-        );
+        assert!(show_status, "API status should be visible after toggle");
     }
 }

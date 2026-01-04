@@ -21,6 +21,8 @@ pub struct ApiStatus {
     service_version: Option<String>,
     // Number of consecutive failed attempts (resets on success)
     retry_count: u8,
+    // Whether to show the API status panel (toggled by F1 key)
+    show_status: bool,
 }
 
 pub enum APIAvailability<'a> {
@@ -50,6 +52,16 @@ impl ApiStatus {
             _ => APIAvailability::Unknown,
         }
     }
+
+    /// Returns whether the API status panel should be shown
+    pub fn show_status(&self) -> bool {
+        self.show_status
+    }
+
+    /// Toggles the show_status flag and returns the new value
+    pub fn toggle_show_status(&mut self) {
+        self.show_status = !self.show_status;
+    }
 }
 
 impl Compute for ApiStatus {
@@ -64,6 +76,7 @@ impl Compute for ApiStatus {
         let request = ehttp::Request::get(url);
         let now = deps.get_state_ref::<Time>().as_ref().to_utc();
         let current_retry_count = self.retry_count;
+        let current_show_status = self.show_status;
 
         // Determine if we should fetch:
         // 1. Never fetched before -> fetch
@@ -116,6 +129,7 @@ impl Compute for ApiStatus {
                             last_error: None,
                             service_version,
                             retry_count: 0, // Reset retry count on success
+                            show_status: current_show_status,
                         };
                         updater.set(api_status);
                     } else {
@@ -125,6 +139,7 @@ impl Compute for ApiStatus {
                             last_error: Some(format!("API Health: {}", response.status)),
                             service_version,
                             retry_count: current_retry_count.saturating_add(1),
+                            show_status: current_show_status,
                         };
                         updater.set(api_status);
                     }
@@ -136,6 +151,7 @@ impl Compute for ApiStatus {
                         last_error: Some(err.to_string()),
                         service_version: None,
                         retry_count: current_retry_count.saturating_add(1),
+                        show_status: current_show_status,
                     };
                     updater.set(api_status);
                 }
@@ -144,6 +160,10 @@ impl Compute for ApiStatus {
     }
 
     fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
         self
     }
 

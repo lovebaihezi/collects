@@ -34,6 +34,9 @@ pub trait Compute: Debug + Any {
     /// returns the `Any` trait object for downcasting.
     fn as_any(&self) -> &dyn Any;
 
+    /// Returns a mutable `Any` trait object for downcasting.
+    fn as_any_mut(&mut self) -> &mut dyn Any;
+
     /// Assigns a new value to this compute from a boxed `Any`.
     ///
     /// Used for updating the compute's value after a recalculation.

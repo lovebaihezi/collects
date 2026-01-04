@@ -341,7 +341,7 @@ Posts CI failure feedback to the PR. This command is designed to be called from 
 4. Posts a structured comment on the PR mentioning @copilot for analysis.
 
 **Required Environment Variables:**
-- \`GITHUB_TOKEN\` - GitHub token with write access to PRs (see note below)
+- \`GITHUB_TOKEN\` - A user PAT (Personal Access Token) is required (see setup below)
 - \`GITHUB_REPOSITORY_OWNER\` - Repository owner
 - \`GITHUB_REPOSITORY\` - Full repository name (owner/repo)
 - \`WORKFLOW_RUN_ID\` - The workflow run ID
@@ -350,17 +350,12 @@ Posts CI failure feedback to the PR. This command is designed to be called from 
 
 **Important: Token Requirements for Copilot Invocation**
 
-To enable @copilot mentions to trigger Copilot responses, you must use a Personal Access Token (PAT)
-from a user account instead of the default \`GITHUB_TOKEN\`. Comments from the GitHub Actions bot
-(using \`GITHUB_TOKEN\`) cannot invoke Copilot - only user account comments can.
+A Personal Access Token (PAT) from a user account is required. Comments from the GitHub Actions bot
+(using the default \`GITHUB_TOKEN\`) cannot invoke Copilot - only user account comments can.
 
 **Setup Instructions:**
 1. Create a Personal Access Token (PAT) with \`repo\` scope
 2. Add the PAT as a repository secret named \`COPILOT_INVOKER_TOKEN\`
-3. The workflow will automatically use this token if available
-
-If \`COPILOT_INVOKER_TOKEN\` is not configured, the workflow falls back to \`GITHUB_TOKEN\`,
-which will post the comment but won't trigger Copilot responses.
 
 **Example:**
 \`\`\`bash

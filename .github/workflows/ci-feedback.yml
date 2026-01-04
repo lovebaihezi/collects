@@ -6,10 +6,8 @@ on:
     types:
       - completed
 
-# Note: When using COPILOT_INVOKER_TOKEN (a user PAT), the comment will appear
-# to come from that user, allowing @copilot mentions to trigger Copilot responses.
-# If COPILOT_INVOKER_TOKEN is not set, falls back to GITHUB_TOKEN (bot account),
-# which cannot invoke Copilot.
+# COPILOT_INVOKER_TOKEN (a user PAT) is required for @copilot mentions to trigger
+# Copilot responses. The comment will appear to come from the PAT owner.
 
 permissions:
   contents: read
@@ -36,12 +34,18 @@ jobs:
         working-directory: scripts
         run: bun install
 
+      - name: Validate Required Secret
+        run: |
+          if [ -z "${{ secrets.COPILOT_INVOKER_TOKEN }}" ]; then
+            echo "::error::COPILOT_INVOKER_TOKEN secret is not configured. This PAT is required for @copilot mentions to trigger Copilot responses."
+            exit 1
+          fi
+
       - name: Run CI Feedback
         working-directory: scripts
         env:
-          # Use COPILOT_INVOKER_TOKEN (user PAT) if available, otherwise fall back to GITHUB_TOKEN
-          # A user PAT is required for @copilot mentions to trigger Copilot responses
-          GITHUB_TOKEN: ${{ secrets.COPILOT_INVOKER_TOKEN || secrets.GITHUB_TOKEN }}
+          # User PAT required for @copilot mentions to trigger Copilot responses
+          GITHUB_TOKEN: ${{ secrets.COPILOT_INVOKER_TOKEN }}
           WORKFLOW_RUN_ID: ${{ github.event.workflow_run.id }}
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
           WORKFLOW_RUN_URL: ${{ github.event.workflow_run.html_url }}

@@ -10,6 +10,10 @@ check-fmt:
 check-lint:
     bun oxlint --type-aware
 
+# Run tests
+test: install
+    bun test
+
 # Get cargo feature flags for an environment (used by other modules)
 # Usage: just scripts::env-feature pr
 env-feature env="":

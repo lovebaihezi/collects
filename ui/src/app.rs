@@ -20,7 +20,18 @@ impl eframe::App for CollectsApp {
     /// Called each time the UI needs repainting, which may be many times per second.
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Handle paste shortcut (Ctrl+V / Cmd+V) for clipboard image
-        clipboard::handle_paste_shortcut(ctx);
+        // If an image was pasted, store it in the image preview state
+        // Note: Clipboard image access is only available on native platforms
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some(clipboard_image) = clipboard::handle_paste_shortcut(ctx) {
+            let image_state = self.state.ctx.state_mut::<widgets::ImagePreviewState>();
+            image_state.add_image_rgba(
+                ctx,
+                clipboard_image.width,
+                clipboard_image.height,
+                clipboard_image.bytes,
+            );
+        }
 
         // Toggle API status display when F1 is pressed
         if ctx.input(|i| i.key_pressed(egui::Key::F1)) {

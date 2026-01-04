@@ -1,26 +1,54 @@
-use crate::{pages, state::State, utils::clipboard, widgets};
+use crate::{
+    pages,
+    state::State,
+    utils::paste_handler::{PasteHandler, SystemPasteHandler},
+    widgets,
+};
 use chrono::{Timelike, Utc};
 use collects_business::{ApiStatus, AuthCompute, Route, ToggleApiStatusCommand};
 use collects_states::Time;
 
 /// Main application state and logic for the Collects app.
-pub struct CollectsApp {
+pub struct CollectsApp<P: PasteHandler = SystemPasteHandler> {
     /// The application state (public for testing access).
     pub state: State,
+    paste_handler: P,
 }
 
-impl CollectsApp {
+impl CollectsApp<SystemPasteHandler> {
     /// Called once before the first frame.
     pub fn new(state: State) -> Self {
-        Self { state }
+        Self {
+            state,
+            paste_handler: SystemPasteHandler,
+        }
     }
 }
 
-impl eframe::App for CollectsApp {
+impl<P: PasteHandler> CollectsApp<P> {
+    /// Create a new app with a custom paste handler (for testing).
+    pub fn with_paste_handler(state: State, paste_handler: P) -> Self {
+        Self {
+            state,
+            paste_handler,
+        }
+    }
+}
+
+impl<P: PasteHandler> eframe::App for CollectsApp<P> {
     /// Called each time the UI needs repainting, which may be many times per second.
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Handle paste shortcut (Ctrl+V / Cmd+V) for clipboard image
-        clipboard::handle_paste_shortcut(ctx);
+        // If an image was pasted, replace the current displayed image
+        if let Some(clipboard_image) = self.paste_handler.handle_paste(ctx) {
+            let image_state = self.state.ctx.state_mut::<widgets::ImagePreviewState>();
+            image_state.set_image_rgba(
+                ctx,
+                clipboard_image.width,
+                clipboard_image.height,
+                clipboard_image.bytes,
+            );
+        }
 
         // Toggle API status display when F1 is pressed
         if ctx.input(|i| i.key_pressed(egui::Key::F1)) {
@@ -79,7 +107,7 @@ impl eframe::App for CollectsApp {
     }
 }
 
-impl CollectsApp {
+impl<P: PasteHandler> CollectsApp<P> {
     /// Updates the route based on authentication state.
     fn update_route(&mut self) {
         let is_authenticated = self

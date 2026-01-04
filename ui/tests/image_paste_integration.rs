@@ -103,7 +103,7 @@ async fn test_image_paste_stores_image_in_state() {
 
     // Verify the image is actually displayed on screen
     assert!(
-        harness.query_by_label_contains("Image displayed").is_some(),
+        harness.query_by_label_contains("Image:").is_some(),
         "Image should be displayed on screen after pasting"
     );
 }
@@ -379,8 +379,8 @@ async fn test_image_displays_fullscreen_without_header() {
 
     // Should verify the image is actually displayed on screen
     assert!(
-        harness.query_by_label_contains("Image displayed").is_some(),
-        "Should show 'Image displayed' indicator when image is rendered"
+        harness.query_by_label_contains("Image:").is_some(),
+        "Should show 'Image:' label when image is rendered"
     );
 
     // Should show image dimensions

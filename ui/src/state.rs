@@ -11,6 +11,7 @@ use collects_business::{
 use collects_states::{StateCtx, Time};
 use serde::{Deserialize, Serialize};
 
+use crate::widgets::ImagePreviewState;
 #[cfg(any(feature = "env_internal", feature = "env_test_internal"))]
 use crate::widgets::InternalUsersState;
 
@@ -43,6 +44,9 @@ impl Default for State {
 
         ctx.record_command(LoginCommand);
         ctx.record_command(LogoutCommand);
+
+        // Add image preview state for clipboard/drop image handling
+        ctx.add_state(ImagePreviewState::new());
 
         // Add internal states and computes for internal builds
         #[cfg(any(feature = "env_internal", feature = "env_test_internal"))]
@@ -88,6 +92,9 @@ impl State {
 
         ctx.record_command(LoginCommand);
         ctx.record_command(LogoutCommand);
+
+        // Add image preview state for clipboard/drop image handling
+        ctx.add_state(ImagePreviewState::new());
 
         // Add internal states and computes for internal builds
         #[cfg(any(feature = "env_internal", feature = "env_test_internal"))]

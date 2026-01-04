@@ -320,7 +320,10 @@ async fn test_invalid_rgba_bytes_rejected() {
 
         let success = image_state.set_image_rgba(&egui_ctx, width, height, rgba_bytes);
         assert!(!success, "Should reject invalid RGBA bytes");
-        assert!(!image_state.has_image(), "Should not have image after invalid data");
+        assert!(
+            !image_state.has_image(),
+            "Should not have image after invalid data"
+        );
     }
 }
 

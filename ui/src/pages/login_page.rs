@@ -1,13 +1,26 @@
 //! Login page for unauthenticated users.
 //!
-//! Displays the login form centered on the screen.
+//! Displays the login form and image preview grid.
 
 use crate::{state::State, widgets};
 use egui::{Response, Ui};
 
-/// Renders the login page with a centered login form.
+/// Renders the login page with a login form and image preview grid.
 pub fn login_page(state: &mut State, ui: &mut Ui) -> Response {
-    widgets::login_widget(&mut state.ctx, ui)
+    ui.vertical(|ui| {
+        widgets::login_widget(&mut state.ctx, ui);
+
+        ui.add_space(16.0);
+
+        // Image preview section (available even before login)
+        ui.heading("Image Preview");
+        ui.label("Paste images (Ctrl+V) to add them to the grid. Click to maximize.");
+        ui.add_space(8.0);
+
+        let image_state = state.ctx.state_mut::<widgets::ImagePreviewState>();
+        widgets::image_preview_grid(image_state, ui);
+    })
+    .response
 }
 
 #[cfg(test)]

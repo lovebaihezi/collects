@@ -15,15 +15,15 @@ const MAX_RETRY_COUNT: u8 = 3;
 #[derive(Default, Debug)]
 pub struct ApiStatus {
     last_update_time: Option<DateTime<Utc>>,
-    // if exists error, means api unavailable
+    /// If exists error, means api unavailable
     last_error: Option<String>,
-    // Service version from x-service-version header
+    /// Service version from x-service-version header
     service_version: Option<String>,
-    // Number of consecutive failed attempts (resets on success)
+    /// Number of consecutive failed attempts (resets on success)
     retry_count: u8,
-    // Whether to show the API status panel (toggled by F1 key)
+    /// Whether to show the API status panel (toggled by F1 key)
     show_status: bool,
-    // Whether an API fetch is currently in-flight (prevents duplicate requests)
+    /// Whether an API fetch is currently in-flight (prevents duplicate requests)
     is_fetching: bool,
 }
 

@@ -88,10 +88,10 @@ impl<P: PasteHandler> eframe::App for CollectsApp<P> {
     /// Called each time the UI needs repainting, which may be many times per second.
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Handle paste shortcut (Ctrl+V / Cmd+V) for clipboard image
-        // If an image was pasted, store it in the image preview state
+        // If an image was pasted, replace the current displayed image
         if let Some(clipboard_image) = self.paste_handler.handle_paste(ctx) {
             let image_state = self.state.ctx.state_mut::<widgets::ImagePreviewState>();
-            image_state.add_image_rgba(
+            image_state.set_image_rgba(
                 ctx,
                 clipboard_image.width,
                 clipboard_image.height,

@@ -167,13 +167,48 @@ cli.command("my-action", "Description of my action")
   .action(() => runMyActionCLI());
 ```
 
+```just
+# In scripts/mod.just - add the just command
+my-action: install
+    bun run main.ts my-action
+```
+
 ```yaml
-# In workflow file
+# In workflow file - ALWAYS use just commands, never call bun directly
+- name: Setup Bun
+  uses: oven-sh/setup-bun@v2
+
+- name: Setup Just
+  uses: extractions/setup-just@v2
+
 - name: Run My Action
-  working-directory: scripts
   env:
     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-  run: bun run main.ts my-action
+  run: just scripts::my-action
+```
+
+### GitHub Actions Best Practices
+
+**IMPORTANT**: All commands in GitHub Actions workflows **MUST** be invoked through `just` commands, never directly via `bun` or other runtimes.
+
+**Why:**
+- Centralizes command definitions in justfiles for consistency
+- The just command handles dependency installation automatically (via `install` dependency)
+- Makes local development and CI use the same commands
+- Easier to update commands in one place
+
+**Do:**
+```yaml
+run: just scripts::my-action
+run: just scripts::check-pr-title "${{ github.event.pull_request.title }}"
+```
+
+**Don't:**
+```yaml
+run: bun run main.ts my-action
+run: bun install && bun run main.ts my-action
+working-directory: scripts
+run: bun run main.ts my-action
 ```
 
 ## Testing

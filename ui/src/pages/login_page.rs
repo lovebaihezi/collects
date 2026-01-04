@@ -1,26 +1,13 @@
 //! Login page for unauthenticated users.
 //!
-//! Displays the login form and image preview.
+//! Displays the login form.
 
 use crate::{state::State, widgets};
 use egui::{Response, Ui};
 
-/// Renders the login page with a login form and image preview.
+/// Renders the login page with a login form.
 pub fn login_page(state: &mut State, ui: &mut Ui) -> Response {
-    ui.vertical(|ui| {
-        widgets::login_widget(&mut state.ctx, ui);
-
-        ui.add_space(16.0);
-
-        // Image preview section (available even before login)
-        ui.heading("Image Preview");
-        ui.label("Paste an image (Ctrl+V) to display it here. Click to maximize.");
-        ui.add_space(8.0);
-
-        let image_state = state.ctx.state_mut::<widgets::ImagePreviewState>();
-        widgets::image_preview(image_state, ui);
-    })
-    .response
+    widgets::login_widget(&mut state.ctx, ui)
 }
 
 #[cfg(test)]

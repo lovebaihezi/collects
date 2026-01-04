@@ -1,6 +1,7 @@
 //! Internal page for authenticated users (internal builds only).
 //!
-//! Displays only the internal users table with a clean, Typora-like style.
+//! Displays only the internal users table using native egui table styling
+//! that adapts properly to light and dark themes.
 //! The App title and signed-in information are intentionally omitted to
 //! provide a focused, data-centric view.
 

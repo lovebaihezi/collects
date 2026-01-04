@@ -145,20 +145,24 @@ impl ClipboardProvider for SystemClipboard {
     }
 }
 
-/// Handles paste keyboard shortcut (Ctrl+V or Cmd+V) and reads image from clipboard.
+/// Handles paste keyboard shortcut (Ctrl+V or Cmd+V) and returns pasted image.
 ///
 /// When a paste shortcut is detected and the clipboard contains an image,
-/// this function logs the image information (width, height, byte size).
+/// this function returns the image data for storage in state.
 ///
 /// # Arguments
 /// * `ctx` - The egui context to check for input events
+///
+/// # Returns
+///
+/// The pasted `ClipboardImage` if one was found, or None.
 ///
 /// # Platform Support
 /// * Native (Windows, macOS, Linux): Full support via arboard crate
 /// * Web (WASM): Not yet supported - clipboard image API requires async and secure context
 #[cfg(not(target_arch = "wasm32"))]
-pub fn handle_paste_shortcut(ctx: &Context) {
-    handle_paste_shortcut_with_clipboard(ctx, &SystemClipboard);
+pub fn handle_paste_shortcut(ctx: &Context) -> Option<ClipboardImage> {
+    handle_paste_shortcut_with_clipboard(ctx, &SystemClipboard)
 }
 
 /// Handles paste shortcut with a custom clipboard provider (for testing)
@@ -166,8 +170,15 @@ pub fn handle_paste_shortcut(ctx: &Context) {
 /// # Arguments
 /// * `ctx` - The egui context to check for input events
 /// * `clipboard` - The clipboard provider to use for reading images
+///
+/// # Returns
+///
+/// The pasted `ClipboardImage` if one was found, or None.
 #[cfg(not(target_arch = "wasm32"))]
-pub fn handle_paste_shortcut_with_clipboard<C: ClipboardProvider>(ctx: &Context, clipboard: &C) {
+pub fn handle_paste_shortcut_with_clipboard<C: ClipboardProvider>(
+    ctx: &Context,
+    clipboard: &C,
+) -> Option<ClipboardImage> {
     // Check for paste keyboard shortcut: Ctrl+V (Windows/Linux) or Cmd+V (macOS)
     // Using modifiers.command for cross-platform support
     let paste_pressed = ctx.input(|i| {
@@ -185,17 +196,23 @@ pub fn handle_paste_shortcut_with_clipboard<C: ClipboardProvider>(ctx: &Context,
     });
 
     if paste_pressed {
-        read_and_log_clipboard_image(clipboard);
+        read_clipboard_image(clipboard)
+    } else {
+        None
     }
 }
 
-/// Reads image from clipboard and logs its information.
+/// Reads image from clipboard and returns it.
 ///
 /// This function attempts to read an image from the system clipboard.
-/// If successful, it logs the image dimensions and byte size.
+/// If successful, it logs the image dimensions and returns the image.
 /// If no image is found or an error occurs, appropriate messages are logged.
+///
+/// # Returns
+///
+/// The `ClipboardImage` if one was found, or None.
 #[cfg(not(target_arch = "wasm32"))]
-fn read_and_log_clipboard_image<C: ClipboardProvider>(clipboard: &C) {
+fn read_clipboard_image<C: ClipboardProvider>(clipboard: &C) -> Option<ClipboardImage> {
     match clipboard.get_image() {
         Ok(Some(image)) => {
             let width = image.width;
@@ -223,17 +240,22 @@ fn read_and_log_clipboard_image<C: ClipboardProvider>(clipboard: &C) {
                 "Clipboard image pasted: width={width}, height={height}, \
                  bytes={bytes_len}, format={format_info}"
             );
+
+            Some(image)
         }
         Ok(None) => {
             log::debug!(
                 "No image in clipboard - paste shortcut pressed but clipboard contains other content"
             );
+            None
         }
         Err(ClipboardError::AccessError(e)) => {
             log::warn!("Failed to access clipboard: {e}");
+            None
         }
         Err(ClipboardError::NoImageContent) => {
             log::debug!("Clipboard does not contain image content");
+            None
         }
     }
 }
@@ -242,13 +264,18 @@ fn read_and_log_clipboard_image<C: ClipboardProvider>(clipboard: &C) {
 ///
 /// Clipboard image access is not yet supported on web platforms.
 /// The browser Clipboard API requires async operations and a secure context (HTTPS).
+///
+/// # Returns
+///
+/// Always returns None on WASM.
 #[cfg(target_arch = "wasm32")]
-pub fn handle_paste_shortcut(_ctx: &Context) {
+pub fn handle_paste_shortcut(_ctx: &Context) -> Option<ClipboardImage> {
     // Web clipboard image support requires:
     // 1. HTTPS secure context
     // 2. Async Clipboard API
     // 3. User gesture (paste event)
     // This is left as a placeholder for future implementation.
+    None
 }
 
 #[cfg(test)]

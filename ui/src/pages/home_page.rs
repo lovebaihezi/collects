@@ -1,6 +1,6 @@
 //! Home page for authenticated users (non-internal builds).
 //!
-//! Displays the signed-in header and basic app content.
+//! Displays the signed-in header and image preview grid.
 
 use crate::{state::State, widgets};
 use collects_business::AuthCompute;
@@ -8,7 +8,7 @@ use egui::{Response, Ui};
 
 /// Renders the home page for authenticated users.
 ///
-/// Shows the signed-in header with username and basic app content.
+/// Shows the signed-in header with username and the image preview grid.
 pub fn home_page(state: &mut State, ui: &mut Ui) -> Response {
     // Get username for display
     let username = state
@@ -20,6 +20,17 @@ pub fn home_page(state: &mut State, ui: &mut Ui) -> Response {
     ui.vertical(|ui| {
         // Show signed-in header (reusing the shared widget)
         widgets::show_signed_in_header(ui, &username);
+
+        ui.add_space(16.0);
+
+        // Image preview section
+        ui.heading("Image Preview");
+        ui.label("Paste images (Ctrl+V) to add them to the grid. Click to maximize.");
+        ui.add_space(8.0);
+
+        // Get the image preview state and render the grid
+        let image_state = state.ctx.state_mut::<widgets::ImagePreviewState>();
+        widgets::image_preview_grid(image_state, ui);
 
         ui.add_space(16.0);
         widgets::powered_by_egui_and_eframe(ui);

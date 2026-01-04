@@ -57,16 +57,16 @@ mod home_page_tests {
             harness.step();
         }
 
-        // The home page should show the "Image Preview" heading
+        // The home page should show Welcome message (no "Image Preview" heading anymore)
         assert!(
-            harness.query_by_label_contains("Image Preview").is_some(),
-            "Home page should show Image Preview section"
+            harness.query_by_label_contains("Welcome").is_some(),
+            "Home page should show Welcome message"
         );
 
-        // Initially should show "No image" placeholder
+        // No "No image" placeholder text (removed for cleaner UI)
         assert!(
-            harness.query_by_label_contains("No image").is_some(),
-            "Should show 'No image' placeholder when no image is pasted"
+            harness.query_by_label_contains("No image").is_none(),
+            "Should not show 'No image' placeholder (removed)"
         );
     }
 
@@ -273,10 +273,10 @@ mod home_page_tests {
             harness.step();
         }
 
-        // Should show "No image" placeholder again
+        // After clearing, should show Welcome message again (no "No image" text anymore)
         assert!(
-            harness.query_by_label_contains("No image").is_some(),
-            "Should show 'No image' after clearing"
+            harness.query_by_label_contains("Welcome").is_some(),
+            "Should show Welcome message after clearing image"
         );
     }
 
@@ -496,10 +496,10 @@ mod home_page_tests {
             harness.step();
         }
 
-        // Should be back to normal view with header
+        // Should be back to normal view with Welcome message
         assert!(
-            harness.query_by_label_contains("No image").is_some()
-                || harness.query_by_label_contains("Image Preview").is_some(),
+            harness.query_by_label_contains("Welcome").is_some()
+                || harness.query_by_label_contains("Signed").is_some(),
             "Should be back to normal view after clearing image"
         );
     }

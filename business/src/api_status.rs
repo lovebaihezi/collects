@@ -2,7 +2,7 @@ use std::any::{Any, TypeId};
 
 use crate::BusinessConfig;
 use chrono::{DateTime, Utc};
-use collects_states::{Compute, ComputeDeps, Dep, State, Time, Updater, assign_impl};
+use collects_states::{Command, Compute, ComputeDeps, Dep, State, Time, Updater, assign_impl};
 use log::{debug, info, warn};
 use ustr::Ustr;
 
@@ -21,6 +21,8 @@ pub struct ApiStatus {
     service_version: Option<String>,
     // Number of consecutive failed attempts (resets on success)
     retry_count: u8,
+    // Whether to show the API status panel (toggled by F1 key)
+    show_status: bool,
 }
 
 pub enum APIAvailability<'a> {
@@ -50,6 +52,11 @@ impl ApiStatus {
             _ => APIAvailability::Unknown,
         }
     }
+
+    /// Returns whether the API status panel should be shown
+    pub fn show_status(&self) -> bool {
+        self.show_status
+    }
 }
 
 impl Compute for ApiStatus {
@@ -64,6 +71,7 @@ impl Compute for ApiStatus {
         let request = ehttp::Request::get(url);
         let now = deps.get_state_ref::<Time>().as_ref().to_utc();
         let current_retry_count = self.retry_count;
+        let current_show_status = self.show_status;
 
         // Determine if we should fetch:
         // 1. Never fetched before -> fetch
@@ -116,6 +124,7 @@ impl Compute for ApiStatus {
                             last_error: None,
                             service_version,
                             retry_count: 0, // Reset retry count on success
+                            show_status: current_show_status,
                         };
                         updater.set(api_status);
                     } else {
@@ -125,6 +134,7 @@ impl Compute for ApiStatus {
                             last_error: Some(format!("API Health: {}", response.status)),
                             service_version,
                             retry_count: current_retry_count.saturating_add(1),
+                            show_status: current_show_status,
                         };
                         updater.set(api_status);
                     }
@@ -136,6 +146,7 @@ impl Compute for ApiStatus {
                         last_error: Some(err.to_string()),
                         service_version: None,
                         retry_count: current_retry_count.saturating_add(1),
+                        show_status: current_show_status,
                     };
                     updater.set(api_status);
                 }
@@ -155,5 +166,26 @@ impl Compute for ApiStatus {
 impl State for ApiStatus {
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
+    }
+}
+
+/// Command to toggle the API status panel visibility.
+///
+/// Dispatch explicitly via `ctx.dispatch::<ToggleApiStatusCommand>()`.
+#[derive(Default, Debug)]
+pub struct ToggleApiStatusCommand;
+
+impl Command for ToggleApiStatusCommand {
+    fn run(&self, deps: Dep, updater: Updater) {
+        let current = deps.get_compute_ref::<ApiStatus>();
+        let new_show_status = !current.show_status;
+
+        updater.set(ApiStatus {
+            last_update_time: current.last_update_time,
+            last_error: current.last_error.clone(),
+            service_version: current.service_version.clone(),
+            retry_count: current.retry_count,
+            show_status: new_show_status,
+        });
     }
 }

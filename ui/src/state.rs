@@ -1,6 +1,7 @@
 use collects_business::ApiStatus;
 use collects_business::BusinessConfig;
 use collects_business::Route;
+use collects_business::ToggleApiStatusCommand;
 use collects_business::{AuthCompute, LoginCommand, LoginInput, LogoutCommand};
 #[cfg(any(feature = "env_internal", feature = "env_test_internal"))]
 use collects_business::{
@@ -28,6 +29,7 @@ impl Default for State {
         ctx.add_state(BusinessConfig::default());
         ctx.add_state(Route::default());
         ctx.record_compute(ApiStatus::default());
+        ctx.record_command(ToggleApiStatusCommand);
 
         // Add login states and commands
         ctx.add_state(LoginInput::default());
@@ -72,6 +74,7 @@ impl State {
         ctx.add_state(BusinessConfig::new(base_url));
         ctx.add_state(Route::default());
         ctx.record_compute(ApiStatus::default());
+        ctx.record_command(ToggleApiStatusCommand);
 
         // Add login states and commands
         ctx.add_state(LoginInput::default());

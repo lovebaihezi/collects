@@ -5,7 +5,7 @@ use collects_states::StateCtx;
 use egui::{Color32, RichText, Ui, Window};
 use ustr::Ustr;
 
-use super::api::{delete_user, revoke_otp, update_username};
+use super::api::{delete_user, revoke_otp, update_profile, update_username};
 use super::qr::generate_qr_image;
 use super::state::InternalUsersState;
 
@@ -60,6 +60,79 @@ pub fn show_edit_username_modal(
                         &state.edit_username_input,
                         ui.ctx().clone(),
                     );
+                }
+
+                if ui.button("Cancel").clicked() {
+                    state.close_action();
+                }
+            });
+        });
+
+    if !open {
+        state_ctx.state_mut::<InternalUsersState>().close_action();
+    }
+}
+
+/// Shows the edit profile modal (nickname and avatar URL).
+pub fn show_edit_profile_modal(
+    state_ctx: &mut StateCtx,
+    api_base_url: &str,
+    username: Ustr,
+    ui: &mut Ui,
+) {
+    let mut open = true;
+    let state = state_ctx.state_mut::<InternalUsersState>();
+
+    Window::new(format!("Edit Profile - {}", username))
+        .open(&mut open)
+        .collapsible(false)
+        .resizable(false)
+        .show(ui.ctx(), |ui| {
+            if let Some(error) = &state.action_error {
+                ui.colored_label(Color32::RED, format!("Error: {error}"));
+                ui.add_space(8.0);
+            }
+
+            if state.action_in_progress {
+                ui.label("Updating profile...");
+                ui.spinner();
+                return;
+            }
+
+            ui.label("Edit the user's profile information:");
+            ui.add_space(8.0);
+
+            ui.horizontal(|ui| {
+                ui.label("Nickname:");
+                ui.text_edit_singleline(&mut state.edit_nickname_input);
+            });
+
+            ui.add_space(8.0);
+
+            ui.horizontal(|ui| {
+                ui.label("Avatar URL:");
+                ui.text_edit_singleline(&mut state.edit_avatar_url_input);
+            });
+
+            ui.add_space(4.0);
+            ui.label(RichText::new("Leave fields empty to clear them.").weak().small());
+
+            ui.add_space(16.0);
+
+            ui.horizontal(|ui| {
+                if ui.button("Update").clicked() {
+                    state.set_action_in_progress();
+                    let nickname = if state.edit_nickname_input.is_empty() {
+                        None
+                    } else {
+                        Some(state.edit_nickname_input.clone())
+                    };
+                    let avatar_url = if state.edit_avatar_url_input.is_empty() {
+                        None
+                    } else {
+                        Some(state.edit_avatar_url_input.clone())
+                    };
+                    update_profile(api_base_url, &username, nickname, avatar_url, ui.ctx().clone());
                 }
 
                 if ui.button("Cancel").clicked() {

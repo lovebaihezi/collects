@@ -9,7 +9,8 @@ use ustr::Ustr;
 
 use super::api::fetch_users;
 use super::modals::{
-    show_create_user_modal, show_delete_user_modal, show_edit_username_modal, show_revoke_otp_modal,
+    show_create_user_modal, show_delete_user_modal, show_edit_profile_modal,
+    show_edit_username_modal, show_revoke_otp_modal,
 };
 use super::state::{InternalUsersState, UserAction};
 use super::table::columns::{HEADER_HEIGHT, QR_ROW_HEIGHT, ROW_HEIGHT, table_columns};
@@ -175,6 +176,9 @@ fn render_modals(state_ctx: &mut StateCtx, api_base_url: &str, ui: &mut Ui) {
         UserAction::EditUsername(username) => {
             show_edit_username_modal(state_ctx, api_base_url, *username, ui);
         }
+        UserAction::EditProfile(username) => {
+            show_edit_profile_modal(state_ctx, api_base_url, *username, ui);
+        }
         UserAction::DeleteUser(username) => {
             show_delete_user_modal(state_ctx, api_base_url, *username, ui);
         }
@@ -238,7 +242,7 @@ pub fn poll_internal_users_responses(state_ctx: &mut StateCtx, ctx: &egui::Conte
         // Close action modal and mark for refresh
         let state = state_ctx.state_mut::<InternalUsersState>();
         state.close_action();
-        if action == "user_deleted" || action == "username_updated" {
+        if action == "user_deleted" || action == "username_updated" || action == "profile_updated" {
             // Mark as needing fetch - the actual fetch will happen on next panel render
             // when internal_users_panel() is called with api_base_url
             state.set_fetching();

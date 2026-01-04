@@ -7,8 +7,9 @@ use egui_extras::TableRow;
 use ustr::Ustr;
 
 use super::cells::{
-    render_action_buttons, render_id_cell, render_otp_code_cell, render_otp_toggle_button,
-    render_time_remaining_cell, render_username_cell,
+    render_action_buttons, render_avatar_cell, render_id_cell, render_nickname_cell,
+    render_otp_code_cell, render_otp_toggle_button, render_time_remaining_cell,
+    render_timestamp_cell, render_username_cell,
 };
 use crate::widgets::internal::users::api::fetch_user_qr_code;
 use crate::widgets::internal::users::qr::generate_qr_image;
@@ -33,10 +34,14 @@ pub struct UserRowResult {
 ///
 /// This function renders a complete row including:
 /// - ID with border indicator
+/// - Avatar (icon or placeholder)
 /// - Username
+/// - Nickname
 /// - OTP code (revealed or hidden)
 /// - Time remaining with color coding
 /// - OTP toggle button
+/// - Created timestamp
+/// - Updated timestamp
 /// - Action buttons
 ///
 /// If QR code is expanded, also renders the QR inline below the row data.
@@ -50,13 +55,24 @@ pub fn render_user_row(row: &mut TableRow<'_, '_>, data: &UserRowData) -> UserRo
     // ID cell with border indicator
     row.col(|ui| {
         render_id_cell(ui, data.index);
-        // Draw bottom border for the cell
+        draw_cell_bottom_border(ui);
+    });
+
+    // Avatar cell
+    row.col(|ui| {
+        render_avatar_cell(ui, data.user.avatar_url.as_deref());
         draw_cell_bottom_border(ui);
     });
 
     // Username cell
     row.col(|ui| {
         render_username_cell(ui, &data.user.username);
+        draw_cell_bottom_border(ui);
+    });
+
+    // Nickname cell
+    row.col(|ui| {
+        render_nickname_cell(ui, data.user.nickname.as_deref());
         draw_cell_bottom_border(ui);
     });
 
@@ -77,6 +93,18 @@ pub fn render_user_row(row: &mut TableRow<'_, '_>, data: &UserRowData) -> UserRo
         if render_otp_toggle_button(ui, data.is_revealed) {
             result.toggle_otp = true;
         }
+        draw_cell_bottom_border(ui);
+    });
+
+    // Created timestamp cell
+    row.col(|ui| {
+        render_timestamp_cell(ui, &data.user.created_at);
+        draw_cell_bottom_border(ui);
+    });
+
+    // Updated timestamp cell
+    row.col(|ui| {
+        render_timestamp_cell(ui, &data.user.updated_at);
         draw_cell_bottom_border(ui);
     });
 

@@ -2,7 +2,7 @@
 
 use collects_business::{
     DeleteUserResponse, GetUserResponse, ListUsersResponse, RevokeOtpResponse,
-    UpdateUsernameResponse,
+    UpdateProfileResponse, UpdateUsernameResponse,
 };
 
 /// Fetch users from the internal API.
@@ -215,6 +215,63 @@ pub fn revoke_otp(api_base_url: &str, username: &str, ctx: egui::Context) {
                             mem.data.insert_temp(
                                 egui::Id::new("revoke_otp_response"),
                                 revoke_response.otpauth_url,
+                            );
+                        });
+                    } else {
+                        ctx.memory_mut(|mem| {
+                            mem.data.insert_temp(
+                                egui::Id::new("action_error"),
+                                "Failed to parse response".to_string(),
+                            );
+                        });
+                    }
+                } else {
+                    ctx.memory_mut(|mem| {
+                        mem.data.insert_temp(
+                            egui::Id::new("action_error"),
+                            format!("API returned status: {}", response.status),
+                        );
+                    });
+                }
+            }
+            Err(err) => {
+                ctx.memory_mut(|mem| {
+                    mem.data
+                        .insert_temp(egui::Id::new("action_error"), err.to_string());
+                });
+            }
+        }
+    });
+}
+
+/// Update user profile (nickname and avatar URL) via the internal API.
+pub fn update_profile(
+    api_base_url: &str,
+    username: &str,
+    nickname: Option<String>,
+    avatar_url: Option<String>,
+    ctx: egui::Context,
+) {
+    let url = format!("{api_base_url}/internal/users/{username}/profile");
+    let body = serde_json::json!({
+        "nickname": nickname,
+        "avatar_url": avatar_url
+    })
+    .to_string();
+    let mut request = ehttp::Request::post(&url, body.into_bytes());
+    request.method = "PUT".to_string();
+    request.headers.insert("Content-Type", "application/json");
+
+    ehttp::fetch(request, move |result| {
+        ctx.request_repaint();
+        match result {
+            Ok(response) => {
+                if response.status == 200 {
+                    if serde_json::from_slice::<UpdateProfileResponse>(&response.bytes).is_ok() {
+                        ctx.memory_mut(|mem| {
+                            mem.data.insert_temp(
+                                egui::Id::new("action_success"),
+                                "profile_updated".to_string(),
                             );
                         });
                     } else {

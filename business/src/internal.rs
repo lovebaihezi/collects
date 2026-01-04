@@ -23,6 +23,14 @@ pub struct InternalUserItem {
     pub current_otp: String,
     /// Seconds remaining until the OTP code expires (1-30).
     pub time_remaining: u8,
+    /// The user's nickname (optional).
+    pub nickname: Option<String>,
+    /// The user's avatar URL (optional).
+    pub avatar_url: Option<String>,
+    /// When the user was created (ISO 8601 format).
+    pub created_at: String,
+    /// When the user was last updated (ISO 8601 format).
+    pub updated_at: String,
 }
 
 /// Response from listing internal users.
@@ -97,6 +105,26 @@ pub struct DeleteUserResponse {
     pub username: String,
     /// Whether the deletion was successful.
     pub deleted: bool,
+}
+
+/// Request to update user's profile (nickname and avatar URL).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateProfileRequest {
+    /// The new nickname (optional, pass null to remove).
+    pub nickname: Option<String>,
+    /// The new avatar URL (optional, pass null to remove).
+    pub avatar_url: Option<String>,
+}
+
+/// Response from updating user's profile.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateProfileResponse {
+    /// The username.
+    pub username: String,
+    /// The updated nickname.
+    pub nickname: Option<String>,
+    /// The updated avatar URL.
+    pub avatar_url: Option<String>,
 }
 
 #[cfg(test)]

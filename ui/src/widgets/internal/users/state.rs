@@ -18,6 +18,8 @@ pub enum UserAction {
     ShowQrCode(Ustr),
     /// Edit username.
     EditUsername(Ustr),
+    /// Edit profile (nickname and avatar URL).
+    EditProfile(Ustr),
     /// Delete user (with confirmation).
     DeleteUser(Ustr),
     /// Revoke OTP for a user.
@@ -49,6 +51,10 @@ pub struct InternalUsersState {
     pub(crate) current_action: UserAction,
     /// Edit username input.
     pub(crate) edit_username_input: String,
+    /// Edit nickname input for profile editing.
+    pub(crate) edit_nickname_input: String,
+    /// Edit avatar URL input for profile editing.
+    pub(crate) edit_avatar_url_input: String,
     /// Whether an action is in progress.
     pub(crate) action_in_progress: bool,
     /// Action error message.
@@ -70,6 +76,8 @@ impl std::fmt::Debug for InternalUsersState {
             .field("qr_texture", &self.qr_texture.is_some())
             .field("current_action", &self.current_action)
             .field("edit_username_input", &self.edit_username_input)
+            .field("edit_nickname_input", &self.edit_nickname_input)
+            .field("edit_avatar_url_input", &self.edit_avatar_url_input)
             .field("action_in_progress", &self.action_in_progress)
             .field("action_error", &self.action_error)
             .field("qr_code_data", &self.qr_code_data)
@@ -144,9 +152,24 @@ impl InternalUsersState {
         self.qr_texture = None;
         self.qr_code_data = None;
 
-        // Initialize edit username input if editing
-        if let UserAction::EditUsername(username) = &action {
-            self.edit_username_input = username.to_string();
+        // Initialize inputs based on action type
+        match &action {
+            UserAction::EditUsername(username) => {
+                self.edit_username_input = username.to_string();
+            }
+            UserAction::EditProfile(username) => {
+                // Initialize with current values from the user
+                if let Some(user) = self.users.iter().find(|u| u.username == username.as_str()) {
+                    self.edit_nickname_input =
+                        user.nickname.clone().unwrap_or_default();
+                    self.edit_avatar_url_input =
+                        user.avatar_url.clone().unwrap_or_default();
+                } else {
+                    self.edit_nickname_input.clear();
+                    self.edit_avatar_url_input.clear();
+                }
+            }
+            _ => {}
         }
     }
 
@@ -156,6 +179,8 @@ impl InternalUsersState {
         self.action_in_progress = false;
         self.action_error = None;
         self.edit_username_input.clear();
+        self.edit_nickname_input.clear();
+        self.edit_avatar_url_input.clear();
         self.qr_texture = None;
         self.qr_code_data = None;
     }

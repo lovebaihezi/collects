@@ -35,6 +35,58 @@ pub fn render_username_cell(ui: &mut Ui, username: &str) {
     });
 }
 
+/// Renders the nickname cell.
+#[inline]
+pub fn render_nickname_cell(ui: &mut Ui, nickname: Option<&str>) {
+    ui.centered_and_justified(|ui| {
+        if let Some(name) = nickname {
+            ui.label(name);
+        } else {
+            ui.label(RichText::new("-").weak());
+        }
+    });
+}
+
+/// Renders the avatar cell (shows avatar icon or placeholder).
+#[inline]
+pub fn render_avatar_cell(ui: &mut Ui, avatar_url: Option<&str>) {
+    ui.centered_and_justified(|ui| {
+        if avatar_url.is_some() {
+            // Show avatar icon indicator when URL is present
+            ui.label(RichText::new("🖼️").size(16.0))
+                .on_hover_text(avatar_url.unwrap_or_default());
+        } else {
+            // Show placeholder
+            ui.label(RichText::new("👤").size(16.0).weak());
+        }
+    });
+}
+
+/// Renders a timestamp cell (created_at or updated_at).
+#[inline]
+pub fn render_timestamp_cell(ui: &mut Ui, timestamp: &str) {
+    ui.centered_and_justified(|ui| {
+        // Parse and format the timestamp to be more readable
+        let display = format_timestamp(timestamp);
+        ui.label(RichText::new(display).small());
+    });
+}
+
+/// Formats a timestamp string to a more readable format.
+fn format_timestamp(timestamp: &str) -> String {
+    // Try to parse RFC3339 format and display more compactly
+    if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(timestamp) {
+        dt.format("%Y-%m-%d %H:%M").to_string()
+    } else {
+        // If parsing fails, just show the raw timestamp truncated
+        if timestamp.len() > 16 {
+            timestamp[..16].to_string()
+        } else {
+            timestamp.to_string()
+        }
+    }
+}
+
 /// Renders the OTP code cell with reveal/hide functionality.
 #[inline]
 pub fn render_otp_code_cell(ui: &mut Ui, otp_code: &str, is_revealed: bool) {
@@ -102,6 +154,13 @@ pub fn render_action_buttons(ui: &mut Ui, username: Ustr) -> Option<UserAction> 
             }
             if ui.button("✏️").on_hover_text("Edit Username").clicked() {
                 action = Some(UserAction::EditUsername(username));
+            }
+            if ui
+                .button("📝")
+                .on_hover_text("Edit Nickname/Avatar")
+                .clicked()
+            {
+                action = Some(UserAction::EditProfile(username));
             }
             if ui.button("🔄").on_hover_text("Revoke OTP").clicked() {
                 action = Some(UserAction::RevokeOtp(username));

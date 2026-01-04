@@ -25,6 +25,10 @@ use collects_ui::state::State;
 use egui_kittest::Harness;
 use kittest::Queryable;
 
+/// Number of frames to run for route changes to propagate through the UI.
+/// This accounts for state updates, compute sync, and rendering cycles.
+const ROUTE_PROPAGATION_FRAMES: usize = 5;
+
 /// E2E test context that connects to real backend services.
 /// Unlike TestCtx, this does NOT use a mock server.
 #[allow(dead_code)]
@@ -179,7 +183,7 @@ mod non_internal_e2e_tests {
         }
 
         // Run multiple frames to let route update propagate
-        for _ in 0..5 {
+        for _ in 0..ROUTE_PROPAGATION_FRAMES {
             harness.step();
         }
 
@@ -200,6 +204,7 @@ mod non_internal_e2e_tests {
 #[cfg(feature = "env_test_internal")]
 mod internal_e2e_tests {
     use super::*;
+    use chrono::Utc;
     use collects_business::{
         CFTokenInput, CreateUserCommand, CreateUserCompute, CreateUserInput, CreateUserResult,
         SetCFTokenCommand,
@@ -254,7 +259,7 @@ mod internal_e2e_tests {
         harness.step();
 
         // Step 3: Create a test user
-        let test_username = format!("e2e_test_{}", chrono::Utc::now().timestamp());
+        let test_username = format!("e2e_test_{}", Utc::now().timestamp());
 
         {
             let state = harness.state_mut();
@@ -273,8 +278,8 @@ mod internal_e2e_tests {
             state.state.ctx.sync_computes();
         }
 
-        // Run multiple frames
-        for _ in 0..5 {
+        // Run multiple frames to let async state propagate
+        for _ in 0..ROUTE_PROPAGATION_FRAMES {
             harness.step();
         }
 

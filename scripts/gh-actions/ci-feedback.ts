@@ -26,10 +26,25 @@ interface PRInfo {
 }
 
 /**
+ * Strip ANSI escape codes from text
+ * These codes are used for terminal coloring but appear as garbled characters in PR comments
+ * @param text - The text containing potential ANSI escape codes
+ * @returns Clean text with all ANSI escape codes removed
+ */
+function stripAnsiCodes(text: string): string {
+  // Matches ANSI escape sequences: ESC[ followed by any number of parameters and a final byte
+  // This covers color codes, cursor movement, and other terminal control sequences
+  // eslint-disable-next-line no-control-regex
+  return text.replace(/\x1B\[[0-?]*[ -/]*[@-~]/g, "");
+}
+
+/**
  * Extract relevant error lines from job logs
  */
 function extractErrorLines(logs: string): string {
-  const logLines = logs.split("\n");
+  // Strip ANSI escape codes first to get clean log lines
+  const cleanLogs = stripAnsiCodes(logs);
+  const logLines = cleanLogs.split("\n");
   const seenLines = new Set<string>();
   const errorLines: string[] = [];
   const relevantPatterns = [

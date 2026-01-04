@@ -1,61 +1,12 @@
-use crate::{pages, state::State, utils::clipboard, widgets};
+use crate::{
+    pages,
+    state::State,
+    utils::paste_handler::{PasteHandler, SystemPasteHandler},
+    widgets,
+};
 use chrono::{Timelike, Utc};
 use collects_business::{ApiStatus, AuthCompute, Route, ToggleApiStatusCommand};
 use collects_states::Time;
-
-/// Trait for handling paste operations, enabling mock implementations for testing.
-///
-/// This trait abstracts the paste shortcut detection and clipboard access,
-/// allowing tests to inject mock clipboard providers.
-pub trait PasteHandler {
-    /// Handle paste shortcut and return clipboard image if available.
-    fn handle_paste(&self, ctx: &egui::Context) -> Option<clipboard::ClipboardImage>;
-}
-
-/// Default paste handler using the system clipboard.
-#[cfg(not(target_arch = "wasm32"))]
-#[derive(Default)]
-pub struct SystemPasteHandler;
-
-#[cfg(not(target_arch = "wasm32"))]
-impl PasteHandler for SystemPasteHandler {
-    fn handle_paste(&self, ctx: &egui::Context) -> Option<clipboard::ClipboardImage> {
-        clipboard::handle_paste_shortcut(ctx)
-    }
-}
-
-/// Generic paste handler that wraps any ClipboardProvider for testing.
-#[cfg(not(target_arch = "wasm32"))]
-pub struct GenericPasteHandler<C: clipboard::ClipboardProvider> {
-    clipboard: C,
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-impl<C: clipboard::ClipboardProvider> GenericPasteHandler<C> {
-    /// Create a new paste handler with the given clipboard provider.
-    pub fn new(clipboard: C) -> Self {
-        Self { clipboard }
-    }
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-impl<C: clipboard::ClipboardProvider> PasteHandler for GenericPasteHandler<C> {
-    fn handle_paste(&self, ctx: &egui::Context) -> Option<clipboard::ClipboardImage> {
-        clipboard::handle_paste_shortcut_with_clipboard(ctx, &self.clipboard)
-    }
-}
-
-/// Stub paste handler for WASM target.
-#[cfg(target_arch = "wasm32")]
-#[derive(Default)]
-pub struct SystemPasteHandler;
-
-#[cfg(target_arch = "wasm32")]
-impl PasteHandler for SystemPasteHandler {
-    fn handle_paste(&self, _ctx: &egui::Context) -> Option<clipboard::ClipboardImage> {
-        None
-    }
-}
 
 /// Main application state and logic for the Collects app.
 pub struct CollectsApp<P: PasteHandler = SystemPasteHandler> {
@@ -203,87 +154,5 @@ impl<P: PasteHandler> CollectsApp<P> {
                 pages::internal_page(&mut self.state, ui);
             }
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// Mock paste handler that always returns None (no image in clipboard)
-    struct MockPasteHandlerEmpty;
-
-    impl PasteHandler for MockPasteHandlerEmpty {
-        fn handle_paste(&self, _ctx: &egui::Context) -> Option<clipboard::ClipboardImage> {
-            None
-        }
-    }
-
-    /// Mock paste handler that returns a predefined image
-    struct MockPasteHandlerWithImage {
-        image: clipboard::ClipboardImage,
-    }
-
-    impl PasteHandler for MockPasteHandlerWithImage {
-        fn handle_paste(&self, _ctx: &egui::Context) -> Option<clipboard::ClipboardImage> {
-            Some(self.image.clone())
-        }
-    }
-
-    #[test]
-    fn test_app_with_mock_paste_handler_empty() {
-        // This test demonstrates how to create an app with a mock paste handler
-        // that returns no image, for testing paste behavior without system clipboard
-        let state = State::default();
-        let _app = CollectsApp::with_paste_handler(state, MockPasteHandlerEmpty);
-        // The app can now be tested without relying on system clipboard
-    }
-
-    #[test]
-    fn test_app_with_mock_paste_handler_with_image() {
-        // This test demonstrates how to create an app with a mock paste handler
-        // that returns a predefined image, for testing image paste functionality
-        let state = State::default();
-        let mock = MockPasteHandlerWithImage {
-            image: clipboard::ClipboardImage {
-                width: 100,
-                height: 100,
-                bytes: vec![255u8; 100 * 100 * 4],
-            },
-        };
-        let _app = CollectsApp::with_paste_handler(state, mock);
-        // The app can now be tested with predictable image paste behavior
-    }
-
-    #[test]
-    fn test_generic_paste_handler_with_mock_clipboard() {
-        // Test that GenericPasteHandler correctly wraps a ClipboardProvider
-        use crate::utils::clipboard::{ClipboardError, ClipboardImage, ClipboardProvider};
-
-        struct MockClipboard {
-            image: Option<ClipboardImage>,
-        }
-
-        impl ClipboardProvider for MockClipboard {
-            fn get_image(&self) -> Result<Option<ClipboardImage>, ClipboardError> {
-                Ok(self.image.clone())
-            }
-        }
-
-        let mock_clipboard = MockClipboard {
-            image: Some(ClipboardImage {
-                width: 50,
-                height: 50,
-                bytes: vec![128u8; 50 * 50 * 4],
-            }),
-        };
-
-        let paste_handler = GenericPasteHandler::new(mock_clipboard);
-        let ctx = egui::Context::default();
-
-        // The handler won't return an image because no paste key event occurred,
-        // but this verifies the generic type composition works correctly
-        let result = paste_handler.handle_paste(&ctx);
-        assert!(result.is_none()); // No key event, so no paste triggered
     }
 }

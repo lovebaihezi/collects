@@ -4,6 +4,7 @@ members = ["states", "utils", "business", "ui", "services"]
 
 [workspace.dependencies]
 egui = "0.33"
+egui_extras = "0.33"
 eframe = { version = "0.33", default-features = false, features = [
     "accesskit",     # Make egui compatible with screen readers. NOTE: adds a lot of dependencies.
     "default_fonts", # Embed the default egui fonts.

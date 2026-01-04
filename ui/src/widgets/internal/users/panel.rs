@@ -1,9 +1,9 @@
 //! Main panel for internal users management.
 
-use crate::utils::colors::{TABLE_BORDER, TABLE_HEADER_BG, TABLE_ROW_STRIPE};
 use collects_business::{CreateUserCommand, CreateUserCompute, CreateUserInput, InternalUserItem};
 use collects_states::{StateCtx, Time};
-use egui::{Color32, Frame, Margin, Response, RichText, ScrollArea, Stroke, Ui};
+use egui::{Color32, Response, RichText, Ui};
+use egui_extras::{Column, TableBuilder};
 use std::any::TypeId;
 use ustr::Ustr;
 
@@ -13,6 +13,14 @@ use super::modals::{
     show_revoke_otp_modal,
 };
 use super::state::{InternalUsersState, UserAction};
+
+// Fixed column widths for consistent table layout
+const OTP_CODE_WIDTH: f32 = 100.0;
+const TIME_LEFT_WIDTH: f32 = 80.0;
+const OTP_BUTTON_WIDTH: f32 = 70.0;
+const ACTIONS_WIDTH: f32 = 180.0;
+const ROW_HEIGHT: f32 = 30.0;
+const HEADER_HEIGHT: f32 = 24.0;
 
 /// Displays the internal users panel with a table and create button.
 pub fn internal_users_panel(state_ctx: &mut StateCtx, api_base_url: &str, ui: &mut Ui) -> Response {
@@ -50,116 +58,98 @@ pub fn internal_users_panel(state_ctx: &mut StateCtx, api_base_url: &str, ui: &m
         // Get current time for calculating real-time OTP time remaining
         let now = *state_ctx.state_mut::<Time>().as_ref();
 
-        // Users table with Typora-like styling
+        // Users table using native egui_extras TableBuilder
         let state = state_ctx.state_mut::<InternalUsersState>();
 
-        // Table frame with border
-        Frame::NONE
-            .stroke(Stroke::new(1.0, TABLE_BORDER))
-            .show(ui, |ui| {
-                ScrollArea::vertical().show(ui, |ui| {
-                    egui::Grid::new("users_table")
-                        .num_columns(5)
-                        .striped(false) // We handle striping manually for Typora style
-                        .spacing([0.0, 0.0]) // No extra spacing, padding handled by frames
-                        .show(ui, |ui| {
-                            // Header row with background
-                            show_table_header_cell(ui, "Username");
-                            show_table_header_cell(ui, "OTP Code");
-                            show_table_header_cell(ui, "Time Left");
-                            show_table_header_cell(ui, "OTP");
-                            show_table_header_cell(ui, "Actions");
-                            ui.end_row();
+        TableBuilder::new(ui)
+            .striped(true) // Native egui striping adapts to light/dark theme
+            .column(Column::remainder().at_least(100.0)) // Username - flexible, fills remaining space
+            .column(Column::exact(OTP_CODE_WIDTH)) // OTP Code - fixed
+            .column(Column::exact(TIME_LEFT_WIDTH)) // Time Left - fixed
+            .column(Column::exact(OTP_BUTTON_WIDTH)) // OTP button - fixed
+            .column(Column::exact(ACTIONS_WIDTH)) // Actions - fixed
+            .header(HEADER_HEIGHT, |mut header| {
+                header.col(|ui| {
+                    ui.strong("Username");
+                });
+                header.col(|ui| {
+                    ui.strong("OTP Code");
+                });
+                header.col(|ui| {
+                    ui.strong("Time Left");
+                });
+                header.col(|ui| {
+                    ui.strong("OTP");
+                });
+                header.col(|ui| {
+                    ui.strong("Actions");
+                });
+            })
+            .body(|mut body| {
+                for user in &state.users {
+                    let username_ustr = Ustr::from(&user.username);
+                    let is_revealed = state.is_otp_revealed(&user.username);
+                    let time_remaining = state.calculate_time_remaining(user.time_remaining, now);
 
-                            // User rows with alternating stripe colors
-                            for (row_idx, user) in state.users.iter().enumerate() {
-                                let is_even = row_idx % 2 == 0;
-                                let row_bg = if is_even {
-                                    Color32::TRANSPARENT
-                                } else {
-                                    TABLE_ROW_STRIPE
-                                };
+                    body.row(ROW_HEIGHT, |mut row| {
+                        // Username cell - flexible width
+                        row.col(|ui| {
+                            ui.label(&user.username);
+                        });
 
-                                // Username cell
-                                show_table_cell(ui, row_bg, |ui| {
-                                    ui.label(&user.username);
-                                });
-
-                                // OTP code with reveal/hide
-                                show_table_cell(ui, row_bg, |ui| {
-                                    if state.is_otp_revealed(&user.username) {
-                                        ui.label(RichText::new(&user.current_otp).monospace());
-                                    } else {
-                                        ui.label(RichText::new("••••••").monospace());
-                                    }
-                                });
-
-                                // Calculate real-time time remaining based on elapsed time since fetch
-                                let time_remaining =
-                                    state.calculate_time_remaining(user.time_remaining, now);
-
-                                // Time remaining indicator with color coding
-                                let time_color = if time_remaining <= 5 {
-                                    Color32::RED // Critical: 5 seconds or less
-                                } else if time_remaining <= 10 {
-                                    Color32::from_rgb(255, 165, 0) // Warning: 10 seconds or less
-                                } else {
-                                    Color32::from_rgb(34, 139, 34) // Safe: more than 10 seconds
-                                };
-
-                                show_table_cell(ui, row_bg, |ui| {
-                                    ui.label(
-                                        RichText::new(format!("{}s", time_remaining))
-                                            .monospace()
-                                            .color(time_color),
-                                    );
-                                });
-
-                                // Reveal/hide button
-                                let username_ustr = Ustr::from(&user.username);
-                                show_table_cell(ui, row_bg, |ui| {
-                                    let button_text = if state.is_otp_revealed(&user.username) {
-                                        "Hide"
-                                    } else {
-                                        "Reveal"
-                                    };
-                                    if ui.button(button_text).clicked() {
-                                        username_to_toggle = Some(username_ustr);
-                                    }
-                                });
-
-                                // Action buttons
-                                show_table_cell(ui, row_bg, |ui| {
-                                    ui.horizontal(|ui| {
-                                        if ui
-                                            .button("📱 QR")
-                                            .on_hover_text("Show QR Code")
-                                            .clicked()
-                                        {
-                                            action_to_start =
-                                                Some(UserAction::ShowQrCode(username_ustr));
-                                        }
-                                        if ui.button("✏️").on_hover_text("Edit Username").clicked()
-                                        {
-                                            action_to_start =
-                                                Some(UserAction::EditUsername(username_ustr));
-                                        }
-                                        if ui.button("🔄").on_hover_text("Revoke OTP").clicked() {
-                                            action_to_start =
-                                                Some(UserAction::RevokeOtp(username_ustr));
-                                        }
-                                        if ui.button("🗑️").on_hover_text("Delete User").clicked()
-                                        {
-                                            action_to_start =
-                                                Some(UserAction::DeleteUser(username_ustr));
-                                        }
-                                    });
-                                });
-
-                                ui.end_row();
+                        // OTP code with reveal/hide
+                        row.col(|ui| {
+                            if is_revealed {
+                                ui.label(RichText::new(&user.current_otp).monospace());
+                            } else {
+                                ui.label(RichText::new("••••••").monospace());
                             }
                         });
-                });
+
+                        // Time remaining indicator with color coding
+                        let time_color = if time_remaining <= 5 {
+                            Color32::RED // Critical: 5 seconds or less
+                        } else if time_remaining <= 10 {
+                            Color32::from_rgb(255, 165, 0) // Warning: 10 seconds or less
+                        } else {
+                            Color32::from_rgb(34, 139, 34) // Safe: more than 10 seconds
+                        };
+
+                        row.col(|ui| {
+                            ui.label(
+                                RichText::new(format!("{time_remaining}s"))
+                                    .monospace()
+                                    .color(time_color),
+                            );
+                        });
+
+                        // Reveal/hide button
+                        row.col(|ui| {
+                            let button_text = if is_revealed { "Hide" } else { "Reveal" };
+                            if ui.button(button_text).clicked() {
+                                username_to_toggle = Some(username_ustr);
+                            }
+                        });
+
+                        // Action buttons
+                        row.col(|ui| {
+                            ui.horizontal(|ui| {
+                                if ui.button("📱 QR").on_hover_text("Show QR Code").clicked() {
+                                    action_to_start = Some(UserAction::ShowQrCode(username_ustr));
+                                }
+                                if ui.button("✏️").on_hover_text("Edit Username").clicked() {
+                                    action_to_start = Some(UserAction::EditUsername(username_ustr));
+                                }
+                                if ui.button("🔄").on_hover_text("Revoke OTP").clicked() {
+                                    action_to_start = Some(UserAction::RevokeOtp(username_ustr));
+                                }
+                                if ui.button("🗑️").on_hover_text("Delete User").clicked() {
+                                    action_to_start = Some(UserAction::DeleteUser(username_ustr));
+                                }
+                            });
+                        });
+                    });
+                }
             });
 
         // Apply toggle action after table iteration
@@ -207,31 +197,6 @@ pub fn internal_users_panel(state_ctx: &mut StateCtx, api_base_url: &str, ui: &m
     }
 
     response.response
-}
-
-/// Renders a styled header cell for the Typora-like table.
-fn show_table_header_cell(ui: &mut Ui, text: &str) {
-    Frame::NONE
-        .fill(TABLE_HEADER_BG)
-        .stroke(Stroke::new(1.0, TABLE_BORDER))
-        .inner_margin(Margin::symmetric(12, 8))
-        .show(ui, |ui| {
-            ui.strong(text);
-        });
-}
-
-/// Renders a styled data cell for the Typora-like table.
-fn show_table_cell<R>(
-    ui: &mut Ui,
-    bg_color: Color32,
-    add_contents: impl FnOnce(&mut Ui) -> R,
-) -> R {
-    Frame::NONE
-        .fill(bg_color)
-        .stroke(Stroke::new(1.0, TABLE_BORDER))
-        .inner_margin(Margin::symmetric(12, 8))
-        .show(ui, add_contents)
-        .inner
 }
 
 /// Poll for async responses and update state.

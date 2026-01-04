@@ -166,6 +166,70 @@ impl ImagePreviewState {
 /// Maximum display size for the preview image (pixels).
 const MAX_PREVIEW_SIZE: f32 = 400.0;
 
+/// Renders the image in fullscreen mode.
+///
+/// Displays the current pasted image filling the available space while preserving aspect ratio.
+/// Shows a close button to clear the image and return to normal view.
+///
+/// # Arguments
+///
+/// * `state` - Mutable reference to the image preview state
+/// * `ui` - The egui UI to render into
+///
+/// # Returns
+///
+/// The egui Response from the widget.
+pub fn image_preview_fullscreen(state: &mut ImagePreviewState, ui: &mut Ui) -> Response {
+    let Some(entry) = state.current_image() else {
+        // Should not happen, but handle gracefully
+        ui.label("No image");
+        return ui.response();
+    };
+
+    let width = entry.width;
+    let height = entry.height;
+    let texture = entry.texture.clone();
+
+    // Calculate display size to fill available space while preserving aspect ratio
+    let available_size = ui.available_size();
+    let aspect_ratio = width as f32 / height as f32;
+
+    let (display_w, display_h) = {
+        let max_w = available_size.x;
+        let max_h = available_size.y - 40.0; // Leave space for close button
+
+        if max_w / max_h > aspect_ratio {
+            // Height-constrained
+            (max_h * aspect_ratio, max_h)
+        } else {
+            // Width-constrained
+            (max_w, max_w / aspect_ratio)
+        }
+    };
+
+    ui.vertical_centered(|ui| {
+        // Close button at the top
+        if ui.button("✕ Close Image").clicked() {
+            state.clear();
+        }
+
+        ui.add_space(8.0);
+
+        // Display image dimensions
+        ui.label(format!("{}×{}", width, height));
+
+        ui.add_space(8.0);
+
+        // Display the image
+        ui.image(egui::load::SizedTexture::new(
+            texture.id(),
+            [display_w, display_h],
+        ));
+    });
+
+    ui.response()
+}
+
 /// Renders the image preview widget.
 ///
 /// Displays the current pasted image. Each paste replaces the previous image.

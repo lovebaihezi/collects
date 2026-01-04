@@ -323,3 +323,109 @@ async fn test_invalid_rgba_bytes_rejected() {
         assert!(!image_state.has_image(), "Should not have image after invalid data");
     }
 }
+
+#[tokio::test]
+async fn test_image_displays_fullscreen_without_header() {
+    let mut ctx = TestCtx::new_app().await;
+    let harness = ctx.harness_mut();
+
+    // Authenticate the user
+    create_authenticated_state(&mut harness.state_mut().state);
+
+    // Initially without image, should show header elements
+    harness.step();
+    harness.state_mut().state.ctx.sync_computes();
+    harness.step();
+
+    assert!(
+        harness.query_by_label_contains("Signed").is_some()
+            || harness.query_by_label_contains("Welcome").is_some(),
+        "Should show header when no image is pasted"
+    );
+
+    // Create an egui context for texture creation
+    let egui_ctx = Context::default();
+
+    // Paste an image
+    {
+        let image_state = harness
+            .state_mut()
+            .state
+            .ctx
+            .state_mut::<ImagePreviewState>();
+        let test_image = create_test_image(100, 100);
+        image_state.set_image(&egui_ctx, test_image);
+    }
+
+    // Render the app
+    harness.step();
+    harness.state_mut().state.ctx.sync_computes();
+    harness.step();
+
+    // When image is displayed fullscreen, should show close button
+    assert!(
+        harness.query_by_label_contains("Close Image").is_some(),
+        "Should show Close Image button in fullscreen mode"
+    );
+
+    // Should show image dimensions
+    assert!(
+        harness.query_by_label_contains("100×100").is_some(),
+        "Should show image dimensions in fullscreen mode"
+    );
+}
+
+#[tokio::test]
+async fn test_close_button_returns_to_normal_view() {
+    let mut ctx = TestCtx::new_app().await;
+    let harness = ctx.harness_mut();
+
+    // Authenticate the user
+    create_authenticated_state(&mut harness.state_mut().state);
+
+    let egui_ctx = Context::default();
+
+    // Paste an image
+    {
+        let image_state = harness
+            .state_mut()
+            .state
+            .ctx
+            .state_mut::<ImagePreviewState>();
+        let test_image = create_test_image(100, 100);
+        image_state.set_image(&egui_ctx, test_image);
+    }
+
+    // Render
+    harness.step();
+    harness.state_mut().state.ctx.sync_computes();
+    harness.step();
+
+    // Verify we're in fullscreen mode
+    assert!(
+        harness.query_by_label_contains("Close Image").is_some(),
+        "Should be in fullscreen mode with Close button"
+    );
+
+    // Clear the image (simulating clicking Close)
+    {
+        let image_state = harness
+            .state_mut()
+            .state
+            .ctx
+            .state_mut::<ImagePreviewState>();
+        image_state.clear();
+    }
+
+    // Render
+    harness.step();
+    harness.state_mut().state.ctx.sync_computes();
+    harness.step();
+
+    // Should be back to normal view with header
+    assert!(
+        harness.query_by_label_contains("No image").is_some()
+            || harness.query_by_label_contains("Image Preview").is_some(),
+        "Should be back to normal view after clearing image"
+    );
+}

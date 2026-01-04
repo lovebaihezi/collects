@@ -1,6 +1,7 @@
 //! Home page for authenticated users (non-internal builds).
 //!
 //! Displays the signed-in header and image preview.
+//! When an image is pasted, it displays full screen without the header.
 
 use crate::{state::State, widgets};
 use collects_business::AuthCompute;
@@ -8,7 +9,8 @@ use egui::{Response, Ui};
 
 /// Renders the home page for authenticated users.
 ///
-/// Shows the signed-in header with username and the image preview.
+/// When no image is pasted: Shows the signed-in header with username and instructions.
+/// When an image is pasted: Shows the image full screen without the header.
 pub fn home_page(state: &mut State, ui: &mut Ui) -> Response {
     // Get username for display
     let username = state
@@ -17,25 +19,41 @@ pub fn home_page(state: &mut State, ui: &mut Ui) -> Response {
         .and_then(|c| c.username().map(String::from))
         .unwrap_or_default();
 
-    ui.vertical(|ui| {
-        // Show signed-in header (reusing the shared widget)
-        widgets::show_signed_in_header(ui, &username);
-
-        ui.add_space(16.0);
-
-        // Image preview section
-        ui.heading("Image Preview");
-        ui.label("Paste an image (Ctrl+V) to display it here. Click to maximize.");
-        ui.add_space(8.0);
-
-        // Get the image preview state and render
+    // Check if we have an image to display full screen
+    let has_image = {
         let image_state = state.ctx.state_mut::<widgets::ImagePreviewState>();
-        widgets::image_preview(image_state, ui);
+        image_state.has_image()
+    };
 
-        ui.add_space(16.0);
-        widgets::powered_by_egui_and_eframe(ui);
-    })
-    .response
+    if has_image {
+        // Full screen image display mode - no header
+        ui.vertical_centered(|ui| {
+            let image_state = state.ctx.state_mut::<widgets::ImagePreviewState>();
+            widgets::image_preview_fullscreen(image_state, ui);
+        })
+        .response
+    } else {
+        // Normal mode - show header and instructions
+        ui.vertical(|ui| {
+            // Show signed-in header (reusing the shared widget)
+            widgets::show_signed_in_header(ui, &username);
+
+            ui.add_space(16.0);
+
+            // Image preview section - show instructions
+            ui.heading("Image Preview");
+            ui.label("Paste an image (Ctrl+V) to display it full screen.");
+            ui.add_space(8.0);
+
+            // Get the image preview state and render (will show "No image" placeholder)
+            let image_state = state.ctx.state_mut::<widgets::ImagePreviewState>();
+            widgets::image_preview(image_state, ui);
+
+            ui.add_space(16.0);
+            widgets::powered_by_egui_and_eframe(ui);
+        })
+        .response
+    }
 }
 
 #[cfg(test)]

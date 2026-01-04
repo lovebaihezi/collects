@@ -211,6 +211,56 @@ working-directory: scripts
 run: bun run main.ts my-action
 ```
 
+## StateCtx and Compute Pattern
+
+The application uses a reactive state management system with `StateCtx` for state and `Compute` for derived/async values.
+
+### Updating Computes
+
+Computes **MUST** only be updated through the Command pattern using `Updater::set()`. Never mutate computes directly.
+
+**Why:**
+- Ensures state changes are trackable and predictable
+- Allows async operations to safely update state
+- Maintains separation between state reading and writing
+
+**Do:**
+```rust
+// Create a Command to update the compute
+#[derive(Default, Debug)]
+pub struct ToggleMyFeatureCommand;
+
+impl Command for ToggleMyFeatureCommand {
+    fn run(&self, deps: Dep, updater: Updater) {
+        let current = deps.get_compute_ref::<MyCompute>();
+        updater.set(MyCompute {
+            // ... update fields
+            my_flag: !current.my_flag,
+        });
+    }
+}
+
+// Dispatch the command from UI code
+ctx.dispatch::<ToggleMyFeatureCommand>();
+```
+
+**Don't:**
+```rust
+// ❌ Never mutate computes directly
+let compute = ctx.get_compute_mut::<MyCompute>();
+compute.my_flag = !compute.my_flag;
+```
+
+### Reading State in UI
+
+Use `cached::<T>()` to read compute values in UI code:
+```rust
+let show_panel = self.state.ctx
+    .cached::<MyCompute>()
+    .map(|c| c.show_flag())
+    .unwrap_or(false);
+```
+
 ## Testing
 
 - Run `just ui::test` for UI tests
@@ -250,8 +300,8 @@ mod my_widget_test {
         let harness = ctx.harness_mut();
         harness.step();
         
-        // Assert widget renders correctly
-        assert!(harness.query_by_label("expected_label").is_some());
+        // Assert widget renders correctly using kittest queries
+        assert!(harness.query_by_label_contains("expected_label").is_some());
     }
 }
 ```
@@ -303,7 +353,76 @@ async fn test_my_feature_with_error() {
 - Test with various authentication scenarios (Zero Trust, etc.)
 - Test database interactions if applicable
 
-#### 3. File Organization Guidelines
+#### 3. UI Testing Best Practices
+
+**Use kittest queries to validate UI state, not internal StateCtx:**
+
+Integration tests should verify what the user sees, not internal application state. Use `harness.query_by_label_contains()` to check if UI elements are visible.
+
+**Do:**
+```rust
+// ✅ Query UI elements directly
+fn is_panel_visible(harness: &egui_kittest::Harness<'_, MyApp>) -> bool {
+    harness.query_by_label_contains("Panel Title").is_some()
+}
+
+assert!(is_panel_visible(harness), "Panel should be visible");
+```
+
+**Don't:**
+```rust
+// ❌ Don't check internal state in integration tests
+let show_panel = harness.state().ctx.cached::<MyCompute>()
+    .map(|c| c.show_flag())
+    .unwrap_or(false);
+assert!(show_panel);
+```
+
+**Use harness.key_press() to simulate user input:**
+
+```rust
+// Simulate F1 key press to toggle a feature
+harness.key_press(egui::Key::F1);
+harness.step();  // Process the key event
+harness.step();  // Let UI update
+
+// Verify the UI changed
+assert!(harness.query_by_label_contains("Feature Panel").is_some());
+```
+
+**Wait for async operations in tests:**
+
+If your test involves async API calls, ensure they complete before asserting:
+```rust
+// Run several frames to let initial API fetch complete
+for _ in 0..10 {
+    harness.step();
+}
+// Wait for async operations
+tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+for _ in 0..5 {
+    harness.step();
+}
+
+// Now test the feature
+harness.key_press(egui::Key::F1);
+harness.step();
+```
+
+**Add accessible labels to UI elements for testing:**
+
+When creating UI panels or widgets that need to be tested, include labels that kittest can query:
+```rust
+// In your UI code
+if show_api_status {
+    egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
+        ui.label("API Status");  // This label makes the panel queryable
+        // ... rest of panel content
+    });
+}
+```
+
+#### 4. File Organization Guidelines
 
 Split large files into smaller, focused files following these guidelines:
 

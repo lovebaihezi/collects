@@ -505,8 +505,9 @@ mod home_page_tests {
     }
 }
 
-/// Tests for login page behavior (applies to both internal and non-internal builds).
+/// Tests for login page behavior (non-internal builds only).
 /// This test verifies that the image preview is NOT visible on the login page.
+/// Note: Internal builds use Zero Trust and skip the login page entirely.
 #[cfg(not(any(feature = "env_internal", feature = "env_test_internal")))]
 mod login_page_tests {
     use crate::common::TestCtx;

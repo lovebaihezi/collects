@@ -64,6 +64,43 @@ just scripts::check-pr-title "<pr-title>"
 - **Rust**: Use `cargo fmt` for formatting, `cargo clippy` for linting
 - Run `just check-fmt` and `just check-lint` before committing
 
+### String Interning with Ustr
+
+When working with strings that are frequently cloned or compared (e.g., usernames, identifiers, keys), **MUST** use `Ustr` instead of `String`.
+
+**Why:**
+- `Ustr` provides Copy semantics (zero-cost cloning)
+- String interning means identical strings share memory
+- Pre-computed hash for efficient HashMap lookups
+
+**When to use `Ustr`:**
+- Enum variants containing identifiers (e.g., `UserAction::ShowQrCode(Ustr)`)
+- HashMap keys for lookups (e.g., `HashMap<Ustr, bool>`)
+- Struct fields that are frequently cloned or passed around
+- Any string that doesn't require mutation
+
+**When to keep `String`:**
+- User input fields that require mutation (e.g., `text_edit_singleline`)
+- Error messages that are constructed once and rarely cloned
+- Data that comes from external sources and won't be compared/hashed
+
+**Example:**
+```rust
+// ✅ Good: Use Ustr for frequently cloned identifiers
+pub enum UserAction {
+    ShowQrCode(Ustr),
+    EditUsername(Ustr),
+}
+let username = Ustr::from(&user.username);
+
+// ❌ Bad: Unnecessary heap allocation on clone
+pub enum UserAction {
+    ShowQrCode(String),
+    EditUsername(String),
+}
+let username = user.username.clone();
+```
+
 ## Scripts Organization
 
 All helper scripts, automation tools, and GitHub Actions utilities are located in the `scripts/` directory using **Bun** as the TypeScript runtime.

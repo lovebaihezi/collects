@@ -3,6 +3,7 @@
 //! Each function renders a specific type of cell content with
 //! centered alignment and appropriate styling.
 
+use chrono::DateTime;
 use egui::{Color32, RichText, Ui};
 use ustr::Ustr;
 
@@ -51,10 +52,9 @@ pub fn render_nickname_cell(ui: &mut Ui, nickname: Option<&str>) {
 #[inline]
 pub fn render_avatar_cell(ui: &mut Ui, avatar_url: Option<&str>) {
     ui.centered_and_justified(|ui| {
-        if avatar_url.is_some() {
+        if let Some(url) = avatar_url {
             // Show avatar icon indicator when URL is present
-            ui.label(RichText::new("🖼️").size(16.0))
-                .on_hover_text(avatar_url.unwrap_or_default());
+            ui.label(RichText::new("🖼️").size(16.0)).on_hover_text(url);
         } else {
             // Show placeholder
             ui.label(RichText::new("👤").size(16.0).weak());
@@ -75,7 +75,7 @@ pub fn render_timestamp_cell(ui: &mut Ui, timestamp: &str) {
 /// Formats a timestamp string to a more readable format.
 fn format_timestamp(timestamp: &str) -> String {
     // Try to parse RFC3339 format and display more compactly
-    if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(timestamp) {
+    if let Ok(dt) = DateTime::parse_from_rfc3339(timestamp) {
         dt.format("%Y-%m-%d %H:%M").to_string()
     } else {
         // If parsing fails, just show the raw timestamp truncated

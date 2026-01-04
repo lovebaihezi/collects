@@ -58,7 +58,7 @@ impl ApiStatus {
         self.show_status
     }
 
-    /// Toggles the show_status flag and returns the new value
+    /// Toggles the show_status flag
     pub fn toggle_show_status(&mut self) {
         self.show_status = !self.show_status;
     }

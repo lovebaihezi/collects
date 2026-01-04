@@ -137,10 +137,12 @@ impl StateCtx {
 
     /// Directly mutates a compute value without going through the async Updater.
     ///
-    /// This is useful for simple synchronous updates to compute state that don't
-    /// require dependency propagation (e.g., UI toggle states).
+    /// Use this only for UI state changes that don't affect compute dependencies
+    /// or when immediate synchronous updates are required (e.g., toggle states).
     ///
     /// Note: This does NOT mark the compute as dirty or trigger re-computation.
+    /// For changes that should trigger dependency updates, use the normal
+    /// `Updater::set()` mechanism within `Compute::compute()`.
     pub fn update_compute<T: Compute>(&self, f: impl FnOnce(&mut T)) {
         let id = TypeId::of::<T>();
         let compute = self.get_compute_mut(&id);

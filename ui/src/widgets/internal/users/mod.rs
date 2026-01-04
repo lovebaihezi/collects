@@ -6,12 +6,14 @@
 //! - `modals`: Modal dialogs for user actions
 //! - `panel`: Main panel widget and polling functions
 //! - `qr`: QR code generation utilities
+//! - `table`: Table rendering components (columns, header, row, cells)
 
 mod api;
 mod modals;
 mod panel;
-mod qr;
+pub(crate) mod qr;
 mod state;
+pub mod table;
 
 pub use panel::{internal_users_panel, poll_internal_users_responses};
 pub use state::InternalUsersState;

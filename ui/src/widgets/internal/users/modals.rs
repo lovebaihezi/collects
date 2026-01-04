@@ -5,83 +5,9 @@ use collects_states::StateCtx;
 use egui::{Color32, RichText, Ui, Window};
 use ustr::Ustr;
 
-use super::api::{delete_user, fetch_user_qr_code, revoke_otp, update_username};
+use super::api::{delete_user, revoke_otp, update_username};
 use super::qr::generate_qr_image;
 use super::state::InternalUsersState;
-
-/// Shows the QR code modal for an existing user.
-pub fn show_qr_code_modal(
-    state_ctx: &mut StateCtx,
-    api_base_url: &str,
-    username: Ustr,
-    ui: &mut Ui,
-) {
-    let mut open = true;
-    let state = state_ctx.state_mut::<InternalUsersState>();
-
-    Window::new(format!("QR Code - {}", username))
-        .open(&mut open)
-        .collapsible(false)
-        .resizable(false)
-        .show(ui.ctx(), |ui| {
-            if let Some(error) = &state.action_error {
-                ui.colored_label(Color32::RED, format!("Error: {error}"));
-                ui.add_space(8.0);
-                if ui.button("Close").clicked() {
-                    state.close_action();
-                }
-                return;
-            }
-
-            if state.action_in_progress {
-                ui.label("Loading QR code...");
-                ui.spinner();
-                return;
-            }
-
-            if let Some(otpauth_url) = &state.qr_code_data {
-                ui.label("Scan this QR code with Google Authenticator:");
-                ui.add_space(4.0);
-
-                // Generate QR code texture if not cached
-                if state.qr_texture.is_none()
-                    && let Some(qr_image) = generate_qr_image(otpauth_url, 200)
-                {
-                    state.qr_texture = Some(ui.ctx().load_texture(
-                        "qr_code_display",
-                        qr_image,
-                        egui::TextureOptions::NEAREST,
-                    ));
-                }
-
-                // Display QR code as an image
-                egui::Frame::NONE
-                    .fill(Color32::WHITE)
-                    .inner_margin(egui::Margin::same(8))
-                    .corner_radius(4.0)
-                    .show(ui, |ui| {
-                        if let Some(texture) = &state.qr_texture {
-                            ui.image(texture);
-                        } else {
-                            ui.label(RichText::new(otpauth_url).monospace().small());
-                        }
-                    });
-
-                ui.add_space(8.0);
-                if ui.button("Close").clicked() {
-                    state.close_action();
-                }
-            } else {
-                // Fetch user data to get QR code
-                state.set_action_in_progress();
-                fetch_user_qr_code(api_base_url, &username, ui.ctx().clone());
-            }
-        });
-
-    if !open {
-        state_ctx.state_mut::<InternalUsersState>().close_action();
-    }
-}
 
 /// Shows the edit username modal.
 pub fn show_edit_username_modal(

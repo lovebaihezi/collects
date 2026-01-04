@@ -208,8 +208,13 @@ jobs:
       - name: Setup Just
         uses: extractions/setup-just@v2
 
+      - name: Install scripts dependencies (Bun)
+        working-directory: scripts
+        run: bun install --frozen-lockfile
+
       - name: Run Scripts Tests
-        run: just scripts::test
+        working-directory: scripts
+        run: bun test
 
   test:
     name: "Test: UI Unit Tests"

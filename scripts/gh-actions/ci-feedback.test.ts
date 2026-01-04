@@ -162,7 +162,7 @@ More logs`,
     expect(result).toEqual({});
   });
 
-  test("ignores comments from non-bot users", () => {
+  test("counts comments regardless of user type (PAT comments have type User)", () => {
     const comments = [
       {
         body: `<!-- CI-FEEDBACK-BOT -->
@@ -171,7 +171,8 @@ More logs`,
       },
     ];
     const result = countPreviousFailures(comments);
-    expect(result).toEqual({});
+    // Comments posted via user PAT have type "User", not "Bot", so we count them too
+    expect(result).toEqual({ build: 1 });
   });
 
   test("accumulates failures across multiple comments", () => {

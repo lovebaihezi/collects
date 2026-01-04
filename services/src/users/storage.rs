@@ -1134,4 +1134,141 @@ mod tests {
         assert!(usernames.contains(&"alice"));
         assert!(usernames.contains(&"bob"));
     }
+
+    #[tokio::test]
+    async fn test_mock_update_profile_nickname_and_avatar() {
+        let storage = MockUserStorage::new();
+
+        // Create a user first
+        storage
+            .create_user("alice", "SECRET123")
+            .await
+            .expect("should create user");
+
+        // Update profile with nickname and avatar
+        let updated = storage
+            .update_profile(
+                "alice",
+                Some(Some("Alice Nickname".to_string())),
+                Some(Some("https://example.com/avatar.png".to_string())),
+            )
+            .await
+            .expect("should update profile");
+
+        assert_eq!(updated.username, "alice");
+        assert_eq!(updated.nickname, Some("Alice Nickname".to_string()));
+        assert_eq!(
+            updated.avatar_url,
+            Some("https://example.com/avatar.png".to_string())
+        );
+    }
+
+    #[tokio::test]
+    async fn test_mock_update_profile_nickname_only() {
+        let storage = MockUserStorage::new();
+
+        // Create a user first
+        storage
+            .create_user("alice", "SECRET123")
+            .await
+            .expect("should create user");
+
+        // Update only nickname
+        let updated = storage
+            .update_profile("alice", Some(Some("New Nickname".to_string())), None)
+            .await
+            .expect("should update profile");
+
+        assert_eq!(updated.nickname, Some("New Nickname".to_string()));
+        assert_eq!(updated.avatar_url, None);
+    }
+
+    #[tokio::test]
+    async fn test_mock_update_profile_clear_fields() {
+        let storage = MockUserStorage::new();
+
+        // Create a user first
+        storage
+            .create_user("alice", "SECRET123")
+            .await
+            .expect("should create user");
+
+        // Set initial values
+        storage
+            .update_profile(
+                "alice",
+                Some(Some("Initial".to_string())),
+                Some(Some("https://example.com/initial.png".to_string())),
+            )
+            .await
+            .expect("should update profile");
+
+        // Clear fields by setting to None
+        let updated = storage
+            .update_profile("alice", Some(None), Some(None))
+            .await
+            .expect("should update profile");
+
+        assert_eq!(updated.nickname, None);
+        assert_eq!(updated.avatar_url, None);
+    }
+
+    #[tokio::test]
+    async fn test_mock_update_profile_user_not_found() {
+        let storage = MockUserStorage::new();
+
+        let result = storage
+            .update_profile(
+                "nonexistent",
+                Some(Some("Nick".to_string())),
+                Some(None),
+            )
+            .await;
+
+        assert!(result.is_err());
+        assert!(matches!(result, Err(UserStorageError::UserNotFound(_))));
+    }
+
+    #[tokio::test]
+    async fn test_mock_update_profile_no_changes() {
+        let storage = MockUserStorage::new();
+
+        // Create a user first
+        storage
+            .create_user("alice", "SECRET123")
+            .await
+            .expect("should create user");
+
+        // Call update_profile with no changes (both None)
+        let updated = storage
+            .update_profile("alice", None, None)
+            .await
+            .expect("should update profile");
+
+        assert_eq!(updated.username, "alice");
+        // User should be returned unchanged
+    }
+
+    #[tokio::test]
+    async fn test_stored_user_with_profile() {
+        let now = Utc::now();
+        let user = StoredUser::with_profile(
+            "alice",
+            "SECRET123",
+            Some("Nickname".to_string()),
+            Some("https://example.com/avatar.png".to_string()),
+            now,
+            now,
+        );
+
+        assert_eq!(user.username, "alice");
+        assert_eq!(user.secret, "SECRET123");
+        assert_eq!(user.nickname, Some("Nickname".to_string()));
+        assert_eq!(
+            user.avatar_url,
+            Some("https://example.com/avatar.png".to_string())
+        );
+        assert_eq!(user.created_at, now);
+        assert_eq!(user.updated_at, now);
+    }
 }

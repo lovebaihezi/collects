@@ -362,4 +362,95 @@ mod tests {
         // 1 - 1 = 0, which should wrap to 30
         assert_eq!(state.calculate_time_remaining(1, now), 30);
     }
+
+    #[test]
+    fn test_start_action_edit_profile_initializes_fields() {
+        let mut state = InternalUsersState::new();
+
+        // Add a user with nickname and avatar
+        state.users.push(InternalUserItem {
+            username: "testuser".to_string(),
+            current_otp: "123456".to_string(),
+            time_remaining: 25,
+            nickname: Some("Test Nickname".to_string()),
+            avatar_url: Some("https://example.com/avatar.png".to_string()),
+            created_at: "2026-01-04T08:00:00Z".to_string(),
+            updated_at: "2026-01-04T08:15:00Z".to_string(),
+        });
+
+        // Start edit profile action
+        state.start_action(UserAction::EditProfile(Ustr::from("testuser")));
+
+        // Verify profile fields are initialized from user
+        assert_eq!(state.edit_nickname_input, "Test Nickname");
+        assert_eq!(state.edit_avatar_url_input, "https://example.com/avatar.png");
+        assert_eq!(
+            state.current_action,
+            UserAction::EditProfile(Ustr::from("testuser"))
+        );
+    }
+
+    #[test]
+    fn test_start_action_edit_profile_empty_fields() {
+        let mut state = InternalUsersState::new();
+
+        // Add a user without nickname and avatar
+        state.users.push(InternalUserItem {
+            username: "testuser".to_string(),
+            current_otp: "123456".to_string(),
+            time_remaining: 25,
+            nickname: None,
+            avatar_url: None,
+            created_at: "2026-01-04T08:00:00Z".to_string(),
+            updated_at: "2026-01-04T08:15:00Z".to_string(),
+        });
+
+        // Start edit profile action
+        state.start_action(UserAction::EditProfile(Ustr::from("testuser")));
+
+        // Verify profile fields are empty when user has no values
+        assert_eq!(state.edit_nickname_input, "");
+        assert_eq!(state.edit_avatar_url_input, "");
+    }
+
+    #[test]
+    fn test_start_action_edit_profile_user_not_found() {
+        let mut state = InternalUsersState::new();
+
+        // Start edit profile action for non-existent user
+        state.start_action(UserAction::EditProfile(Ustr::from("nonexistent")));
+
+        // Verify profile fields are empty when user not found
+        assert_eq!(state.edit_nickname_input, "");
+        assert_eq!(state.edit_avatar_url_input, "");
+    }
+
+    #[test]
+    fn test_close_action_clears_profile_fields() {
+        let mut state = InternalUsersState::new();
+
+        // Set up some profile fields
+        state.edit_nickname_input = "Test Nickname".to_string();
+        state.edit_avatar_url_input = "https://example.com/avatar.png".to_string();
+        state.current_action = UserAction::EditProfile(Ustr::from("testuser"));
+
+        // Close the action
+        state.close_action();
+
+        // Verify all fields are cleared
+        assert_eq!(state.edit_nickname_input, "");
+        assert_eq!(state.edit_avatar_url_input, "");
+        assert_eq!(state.current_action, UserAction::None);
+    }
+
+    #[test]
+    fn test_user_action_edit_profile_variant() {
+        let action = UserAction::EditProfile(Ustr::from("testuser"));
+
+        // Verify the action variant
+        assert!(matches!(action, UserAction::EditProfile(_)));
+        if let UserAction::EditProfile(username) = action {
+            assert_eq!(username.as_str(), "testuser");
+        }
+    }
 }

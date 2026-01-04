@@ -173,3 +173,109 @@ pub fn render_action_buttons(ui: &mut Ui, username: Ustr) -> Option<UserAction> 
 
     action
 }
+
+#[cfg(test)]
+mod cells_test {
+    use super::*;
+    use egui_kittest::Harness;
+
+    #[test]
+    fn test_format_timestamp_rfc3339() {
+        // Test valid RFC3339 format
+        let timestamp = "2026-01-04T08:21:57.005Z";
+        let result = format_timestamp(timestamp);
+        assert_eq!(result, "2026-01-04 08:21");
+    }
+
+    #[test]
+    fn test_format_timestamp_with_offset() {
+        // Test RFC3339 with timezone offset
+        let timestamp = "2026-01-04T10:21:57+02:00";
+        let result = format_timestamp(timestamp);
+        assert_eq!(result, "2026-01-04 10:21");
+    }
+
+    #[test]
+    fn test_format_timestamp_invalid_truncates() {
+        // Test invalid format (should truncate to 16 chars)
+        let timestamp = "some invalid timestamp string";
+        let result = format_timestamp(timestamp);
+        assert_eq!(result, "some invalid tim");
+    }
+
+    #[test]
+    fn test_format_timestamp_short_invalid() {
+        // Test short invalid string (should return as-is)
+        let timestamp = "short";
+        let result = format_timestamp(timestamp);
+        assert_eq!(result, "short");
+    }
+
+    #[test]
+    fn test_get_time_color_critical() {
+        // 5 seconds or less should be red
+        assert_eq!(get_time_color(0), Color32::RED);
+        assert_eq!(get_time_color(5), Color32::RED);
+    }
+
+    #[test]
+    fn test_get_time_color_warning() {
+        // 6-10 seconds should be orange
+        let orange = Color32::from_rgb(255, 165, 0);
+        assert_eq!(get_time_color(6), orange);
+        assert_eq!(get_time_color(10), orange);
+    }
+
+    #[test]
+    fn test_get_time_color_safe() {
+        // More than 10 seconds should be green
+        let green = Color32::from_rgb(34, 139, 34);
+        assert_eq!(get_time_color(11), green);
+        assert_eq!(get_time_color(30), green);
+    }
+
+    #[test]
+    fn test_render_nickname_cell_with_value() {
+        let mut harness = Harness::new_ui(|ui| {
+            render_nickname_cell(ui, Some("TestNickname"));
+        });
+        harness.run();
+        // Verify the cell renders without panicking
+    }
+
+    #[test]
+    fn test_render_nickname_cell_empty() {
+        let mut harness = Harness::new_ui(|ui| {
+            render_nickname_cell(ui, None);
+        });
+        harness.run();
+        // Verify the cell renders without panicking (shows "-")
+    }
+
+    #[test]
+    fn test_render_avatar_cell_with_url() {
+        let mut harness = Harness::new_ui(|ui| {
+            render_avatar_cell(ui, Some("https://example.com/avatar.png"));
+        });
+        harness.run();
+        // Verify the cell renders without panicking (shows "🖼️")
+    }
+
+    #[test]
+    fn test_render_avatar_cell_empty() {
+        let mut harness = Harness::new_ui(|ui| {
+            render_avatar_cell(ui, None);
+        });
+        harness.run();
+        // Verify the cell renders without panicking (shows "👤")
+    }
+
+    #[test]
+    fn test_render_timestamp_cell() {
+        let mut harness = Harness::new_ui(|ui| {
+            render_timestamp_cell(ui, "2026-01-04T08:21:57.005Z");
+        });
+        harness.run();
+        // Verify the cell renders without panicking
+    }
+}

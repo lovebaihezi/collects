@@ -3,6 +3,7 @@
 //! These tests verify the complete flow for user management operations:
 //! - Get user details (including QR code)
 //! - Update username
+//! - Update profile (nickname, avatar URL)
 //! - Delete user
 //! - Revoke OTP
 //!
@@ -11,7 +12,8 @@
 #![cfg(any(feature = "env_internal", feature = "env_test_internal"))]
 
 use collects_business::{
-    DeleteUserResponse, GetUserResponse, RevokeOtpResponse, UpdateUsernameResponse,
+    DeleteUserResponse, GetUserResponse, RevokeOtpResponse, UpdateProfileResponse,
+    UpdateUsernameResponse,
 };
 use wiremock::matchers::{body_json, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -329,6 +331,167 @@ async fn test_revoke_otp_user_not_found() {
         .expect("Failed to send request");
 
     assert_eq!(response.status(), 404);
+}
+
+// ===========================================
+// Tests for PUT /api/internal/users/{username}/profile
+// ===========================================
+
+/// Test that update profile succeeds with nickname and avatar URL.
+#[tokio::test]
+async fn test_update_profile_success() {
+    let ctx = setup_user_management_test().await;
+
+    // Mock successful update profile response
+    Mock::given(method("PUT"))
+        .and(path("/api/internal/users/testuser/profile"))
+        .and(body_json(serde_json::json!({
+            "nickname": "Test User",
+            "avatar_url": "https://example.com/avatar.png"
+        })))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "username": "testuser",
+            "nickname": "Test User",
+            "avatar_url": "https://example.com/avatar.png"
+        })))
+        .mount(ctx.mock_server())
+        .await;
+
+    // Verify mock server is ready
+    let client = reqwest::Client::new();
+    let response = client
+        .put(&format!(
+            "{}/api/internal/users/testuser/profile",
+            ctx.mock_server.uri()
+        ))
+        .header("Content-Type", "application/json")
+        .body(r#"{"nickname": "Test User", "avatar_url": "https://example.com/avatar.png"}"#)
+        .send()
+        .await
+        .expect("Failed to send request");
+
+    assert_eq!(response.status(), 200);
+
+    let profile_response: UpdateProfileResponse =
+        response.json().await.expect("Failed to parse response");
+    assert_eq!(profile_response.username, "testuser");
+    assert_eq!(profile_response.nickname, Some("Test User".to_string()));
+    assert_eq!(
+        profile_response.avatar_url,
+        Some("https://example.com/avatar.png".to_string())
+    );
+}
+
+/// Test that update profile with only nickname works.
+#[tokio::test]
+async fn test_update_profile_nickname_only() {
+    let ctx = setup_user_management_test().await;
+
+    // Mock response for nickname-only update
+    Mock::given(method("PUT"))
+        .and(path("/api/internal/users/testuser/profile"))
+        .and(body_json(serde_json::json!({
+            "nickname": "New Nickname",
+            "avatar_url": null
+        })))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "username": "testuser",
+            "nickname": "New Nickname",
+            "avatar_url": null
+        })))
+        .mount(ctx.mock_server())
+        .await;
+
+    let client = reqwest::Client::new();
+    let response = client
+        .put(&format!(
+            "{}/api/internal/users/testuser/profile",
+            ctx.mock_server.uri()
+        ))
+        .header("Content-Type", "application/json")
+        .body(r#"{"nickname": "New Nickname", "avatar_url": null}"#)
+        .send()
+        .await
+        .expect("Failed to send request");
+
+    assert_eq!(response.status(), 200);
+
+    let profile_response: UpdateProfileResponse =
+        response.json().await.expect("Failed to parse response");
+    assert_eq!(profile_response.username, "testuser");
+    assert_eq!(profile_response.nickname, Some("New Nickname".to_string()));
+    assert_eq!(profile_response.avatar_url, None);
+}
+
+/// Test that update profile returns 404 for non-existent user.
+#[tokio::test]
+async fn test_update_profile_user_not_found() {
+    let ctx = setup_user_management_test().await;
+
+    // Mock 404 response
+    Mock::given(method("PUT"))
+        .and(path("/api/internal/users/nonexistent/profile"))
+        .respond_with(ResponseTemplate::new(404).set_body_json(serde_json::json!({
+            "error": "user_not_found",
+            "message": "User not found"
+        })))
+        .mount(ctx.mock_server())
+        .await;
+
+    let client = reqwest::Client::new();
+    let response = client
+        .put(&format!(
+            "{}/api/internal/users/nonexistent/profile",
+            ctx.mock_server.uri()
+        ))
+        .header("Content-Type", "application/json")
+        .body(r#"{"nickname": "Test", "avatar_url": null}"#)
+        .send()
+        .await
+        .expect("Failed to send request");
+
+    assert_eq!(response.status(), 404);
+}
+
+/// Test clearing profile fields by setting them to null.
+#[tokio::test]
+async fn test_update_profile_clear_fields() {
+    let ctx = setup_user_management_test().await;
+
+    // Mock response for clearing fields
+    Mock::given(method("PUT"))
+        .and(path("/api/internal/users/testuser/profile"))
+        .and(body_json(serde_json::json!({
+            "nickname": null,
+            "avatar_url": null
+        })))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "username": "testuser",
+            "nickname": null,
+            "avatar_url": null
+        })))
+        .mount(ctx.mock_server())
+        .await;
+
+    let client = reqwest::Client::new();
+    let response = client
+        .put(&format!(
+            "{}/api/internal/users/testuser/profile",
+            ctx.mock_server.uri()
+        ))
+        .header("Content-Type", "application/json")
+        .body(r#"{"nickname": null, "avatar_url": null}"#)
+        .send()
+        .await
+        .expect("Failed to send request");
+
+    assert_eq!(response.status(), 200);
+
+    let profile_response: UpdateProfileResponse =
+        response.json().await.expect("Failed to parse response");
+    assert_eq!(profile_response.username, "testuser");
+    assert_eq!(profile_response.nickname, None);
+    assert_eq!(profile_response.avatar_url, None);
 }
 
 // ===========================================

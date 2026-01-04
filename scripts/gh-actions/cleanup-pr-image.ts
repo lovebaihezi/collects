@@ -1,5 +1,5 @@
 import { appendFileSync } from "fs";
-import { execSync } from "child_process";
+import { execFileSync } from "child_process";
 
 /**
  * Cleanup PR Image - Deletes Docker images for closed PRs from GCloud Artifact Registry
@@ -22,11 +22,12 @@ export interface CleanupResult {
 }
 
 /**
- * Executes gcloud command and returns output
+ * Executes gcloud command using execFileSync for security
+ * This prevents command injection by passing arguments as an array
  */
 function runGcloudCommand(args: string[]): { success: boolean; output: string } {
   try {
-    const output = execSync(`gcloud ${args.join(" ")}`, {
+    const output = execFileSync("gcloud", args, {
       encoding: "utf-8",
       stdio: ["pipe", "pipe", "pipe"],
     });
@@ -37,15 +38,23 @@ function runGcloudCommand(args: string[]): { success: boolean; output: string } 
   }
 }
 
+// Cached project ID to avoid redundant gcloud calls
+let cachedProjectId: string | null = null;
+
 /**
- * Gets the current GCP project ID from gcloud config
+ * Gets the current GCP project ID from gcloud config (cached)
  */
 function getProjectId(): string {
+  if (cachedProjectId !== null) {
+    return cachedProjectId;
+  }
+
   const result = runGcloudCommand(["config", "get-value", "project"]);
   if (!result.success) {
     throw new Error(`Failed to get GCP project ID: ${result.output}`);
   }
-  return result.output;
+  cachedProjectId = result.output;
+  return cachedProjectId;
 }
 
 /**

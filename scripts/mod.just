@@ -49,3 +49,10 @@ r2-list *args: install
 # Requires environment variables: GITHUB_TOKEN, WORKFLOW_RUN_ID, HEAD_SHA, WORKFLOW_RUN_URL
 ci-feedback: install
     bun run main.ts ci-feedback
+
+# Cleanup old Docker images from Artifact Registry (for GitHub Actions)
+# Environment variables:
+#   - GCP_PROJECT_ID: Google Cloud Project ID (optional)
+#   - DRY_RUN: Set to "true" for preview mode
+artifact-cleanup: install
+    bun run main.ts artifact-cleanup

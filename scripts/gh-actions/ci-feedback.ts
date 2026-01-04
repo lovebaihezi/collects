@@ -31,7 +31,7 @@ interface PRInfo {
  * @param text - The text containing potential ANSI escape codes
  * @returns Clean text with all ANSI escape codes removed
  */
-function stripAnsiCodes(text: string): string {
+export function stripAnsiCodes(text: string): string {
   // Matches ANSI escape sequences: ESC[ followed by any number of parameters and a final byte
   // This covers color codes, cursor movement, and other terminal control sequences
   // eslint-disable-next-line no-control-regex
@@ -41,7 +41,7 @@ function stripAnsiCodes(text: string): string {
 /**
  * Extract relevant error lines from job logs
  */
-function extractErrorLines(logs: string): string {
+export function extractErrorLines(logs: string): string {
   // Strip ANSI escape codes first to get clean log lines
   const cleanLogs = stripAnsiCodes(logs);
   const logLines = cleanLogs.split("\n");
@@ -83,7 +83,7 @@ function extractErrorLines(logs: string): string {
 /**
  * Count previous failures per job from existing comments
  */
-function countPreviousFailures(
+export function countPreviousFailures(
   comments: Array<{ body?: string | null; user?: { type?: string } | null }>,
 ): Record<string, number> {
   const jobFailureCounts: Record<string, number> = {};
@@ -119,7 +119,7 @@ function countPreviousFailures(
 /**
  * Build the comment body for CI failure report
  */
-function buildCommentBody(
+export function buildCommentBody(
   runId: number,
   workflowRunUrl: string,
   headSha: string,

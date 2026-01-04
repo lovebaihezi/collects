@@ -117,25 +117,20 @@ mod non_internal_tests {
 }
 
 /// Tests for internal builds: user is authenticated via Zero Trust.
-/// Login form should NOT be displayed; user sees authenticated content directly.
+/// Login form should NOT be displayed; user sees the internal users table directly.
+/// The internal env is focused on the data table without the App title or signed-in headers.
 #[cfg(any(feature = "env_internal", feature = "env_test_internal"))]
 mod internal_tests {
     use super::*;
 
-    /// Tests that internal builds skip the login page (Zero Trust authentication).
-    /// The login form has a "Login" button which should NOT appear for internal builds.
+    /// Tests that internal builds skip the login page (Zero Trust authentication)
+    /// and show only the internal users table without the App title.
     #[tokio::test]
     async fn test_internal_build_skips_login_page() {
         let mut ctx = TestCtx::new_app().await;
 
         let harness = ctx.harness_mut();
         harness.step();
-
-        // Check that the heading is displayed
-        assert!(
-            harness.query_by_label_contains("Collects App").is_some(),
-            "Collects App heading should be displayed"
-        );
 
         // The "Login" button is unique to the login form and should NOT appear
         // for internal builds since they use Zero Trust authentication
@@ -144,34 +139,58 @@ mod internal_tests {
             "Login button should NOT be displayed for internal builds (Zero Trust auth)"
         );
 
-        // The username input with "Username:" label should not be in login form context
-        // (note: internal panel may have username column but not a login-style input)
+        // App title should NOT be displayed in internal builds (clean data-centric view)
+        assert!(
+            harness.query_by_label_contains("Collects App").is_none(),
+            "Collects App heading should NOT be displayed in internal builds"
+        );
+
+        // Control buttons should be present (table controls)
+        assert!(
+            harness.query_by_label_contains("Refresh").is_some(),
+            "Refresh button should be displayed for internal builds"
+        );
     }
 
-    /// Tests that internal builds show the authenticated user welcome message.
+    /// Tests that internal builds show only the table, without signed-in header.
+    /// This is the Typora-like clean table view requirement.
     #[tokio::test]
-    async fn test_internal_build_shows_authenticated_content() {
+    async fn test_internal_build_shows_table_only() {
         let mut ctx = TestCtx::new_app().await;
 
         let harness = ctx.harness_mut();
         harness.step();
 
-        // Check that the signed-in status is displayed
+        // Signed-in status should NOT be displayed (clean table view)
         assert!(
-            harness.query_by_label_contains("Signed").is_some(),
-            "Signed status should be displayed for internal builds"
+            harness.query_by_label_contains("Signed").is_none(),
+            "Signed status should NOT be displayed in internal builds (table-only view)"
         );
 
-        // Check that the Zero Trust user name is shown
+        // Welcome message should NOT be displayed (clean table view)
         assert!(
-            harness.query_by_label_contains("Zero Trust User").is_some(),
-            "Zero Trust User should be displayed for internal builds"
+            harness.query_by_label_contains("Welcome").is_none(),
+            "Welcome message should NOT be displayed in internal builds (table-only view)"
         );
 
-        // Check welcome message is shown
+        // Table headers should be displayed (Typora-like table)
         assert!(
-            harness.query_by_label_contains("Welcome").is_some(),
-            "Welcome message should be displayed for authenticated internal users"
+            harness.query_by_label_contains("Username").is_some(),
+            "Username column header should be displayed in the table"
+        );
+        assert!(
+            harness.query_by_label_contains("OTP Code").is_some(),
+            "OTP Code column header should be displayed in the table"
+        );
+        assert!(
+            harness.query_by_label_contains("Time Left").is_some(),
+            "Time Left column header should be displayed in the table"
+        );
+
+        // Create User button should be present
+        assert!(
+            harness.query_by_label_contains("Create User").is_some(),
+            "Create User button should be displayed for internal builds"
         );
     }
 }

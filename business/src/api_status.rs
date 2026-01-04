@@ -212,3 +212,70 @@ impl Command for ToggleApiStatusCommand {
         });
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Tests that ApiStatus defaults with is_fetching = false
+    #[test]
+    fn test_api_status_default_is_fetching_false() {
+        let status = ApiStatus::default();
+        assert!(!status.is_fetching, "is_fetching should default to false");
+    }
+
+    /// Tests that is_fetching flag can be set to true
+    #[test]
+    fn test_api_status_is_fetching_can_be_set() {
+        let status = ApiStatus {
+            last_update_time: None,
+            last_error: None,
+            service_version: None,
+            retry_count: 0,
+            show_status: false,
+            is_fetching: true,
+        };
+        assert!(status.is_fetching, "is_fetching should be settable to true");
+    }
+
+    /// Tests that api_availability returns Unknown when is_fetching is true but no data
+    #[test]
+    fn test_api_availability_unknown_when_fetching() {
+        let status = ApiStatus {
+            last_update_time: None,
+            last_error: None,
+            service_version: None,
+            retry_count: 0,
+            show_status: false,
+            is_fetching: true,
+        };
+        assert!(
+            matches!(status.api_availability(), APIAvailability::Unknown),
+            "Should return Unknown when fetching with no data"
+        );
+    }
+
+    /// Tests that show_status returns correct value
+    #[test]
+    fn test_show_status_getter() {
+        let status_hidden = ApiStatus {
+            last_update_time: None,
+            last_error: None,
+            service_version: None,
+            retry_count: 0,
+            show_status: false,
+            is_fetching: false,
+        };
+        assert!(!status_hidden.show_status(), "show_status should return false");
+
+        let status_shown = ApiStatus {
+            last_update_time: None,
+            last_error: None,
+            service_version: None,
+            retry_count: 0,
+            show_status: true,
+            is_fetching: false,
+        };
+        assert!(status_shown.show_status(), "show_status should return true");
+    }
+}

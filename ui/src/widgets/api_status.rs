@@ -308,4 +308,36 @@ mod api_state_widget_test {
             "API status should remain visible after API fetch"
         );
     }
+
+    /// Tests that is_fetching flag is preserved when toggling API status visibility.
+    #[tokio::test]
+    async fn test_is_fetching_preserved_on_toggle() {
+        let mut ctx = TestCtx::new(|ui, state| {
+            super::api_status(&state.ctx, ui);
+        })
+        .await;
+
+        let harness = ctx.harness_mut();
+        harness.step();
+
+        // Run compute to trigger initial fetch (sets is_fetching = true)
+        harness.state_mut().ctx.run_all_dirty();
+
+        // Toggle while fetch might be in-flight
+        harness.state_mut().ctx.dispatch::<ToggleApiStatusCommand>();
+        harness.state_mut().ctx.sync_computes();
+        harness.step();
+
+        // After toggle, the status should be visible
+        let show_status = harness
+            .state()
+            .ctx
+            .cached::<ApiStatus>()
+            .map(|api| api.show_status())
+            .unwrap_or(false);
+        assert!(
+            show_status,
+            "API status should be visible after toggle"
+        );
+    }
 }

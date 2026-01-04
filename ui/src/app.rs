@@ -5,7 +5,8 @@ use collects_states::Time;
 
 /// Main application state and logic for the Collects app.
 pub struct CollectsApp {
-    state: State,
+    /// The application state (public for testing access).
+    pub state: State,
 }
 
 impl CollectsApp {

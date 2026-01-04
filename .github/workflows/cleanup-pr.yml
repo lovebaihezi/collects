@@ -6,7 +6,7 @@ on:
 
 jobs:
   cleanup:
-    name: Cleanup PR Resources
+    name: "Cleanup: PR Resources"
     runs-on: ubuntu-latest
     permissions:
       contents: read

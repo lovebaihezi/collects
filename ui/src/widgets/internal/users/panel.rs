@@ -2,188 +2,182 @@
 
 use collects_business::{CreateUserCommand, CreateUserCompute, CreateUserInput, InternalUserItem};
 use collects_states::{StateCtx, Time};
-use egui::{Color32, Response, RichText, Ui};
-use egui_extras::{Column, TableBuilder};
+use egui::{Color32, Response, Ui};
+use egui_extras::TableBuilder;
 use std::any::TypeId;
 use ustr::Ustr;
 
 use super::api::fetch_users;
 use super::modals::{
-    show_create_user_modal, show_delete_user_modal, show_edit_username_modal, show_qr_code_modal,
+    show_create_user_modal, show_delete_user_modal, show_edit_username_modal,
     show_revoke_otp_modal,
 };
 use super::state::{InternalUsersState, UserAction};
-
-// Fixed column widths for consistent table layout
-const OTP_CODE_WIDTH: f32 = 100.0;
-const TIME_LEFT_WIDTH: f32 = 80.0;
-const OTP_BUTTON_WIDTH: f32 = 70.0;
-const ACTIONS_WIDTH: f32 = 180.0;
-const ROW_HEIGHT: f32 = 30.0;
-const HEADER_HEIGHT: f32 = 24.0;
+use super::table::columns::{table_columns, HEADER_HEIGHT, QR_ROW_HEIGHT, ROW_HEIGHT};
+use super::table::header::render_table_header;
+use super::table::row::{prepare_user_row_data, render_qr_expansion, render_user_row};
 
 /// Displays the internal users panel with a table and create button.
 pub fn internal_users_panel(state_ctx: &mut StateCtx, api_base_url: &str, ui: &mut Ui) -> Response {
     let response = ui.vertical(|ui| {
         // Controls row: Refresh and Create buttons
-        let should_open_create = ui
-            .horizontal(|ui| {
-                let state = state_ctx.state_mut::<InternalUsersState>();
-                if ui.button("🔄 Refresh").clicked() && !state.is_fetching {
-                    state.set_fetching();
-                    fetch_users(api_base_url, ui.ctx().clone());
-                }
-
-                let should_open_create = ui.button("➕ Create User").clicked();
-                if state.is_fetching {
-                    ui.spinner();
-                    ui.label("Loading...");
-                }
-                should_open_create
-            })
-            .inner;
+        render_controls_row(state_ctx, api_base_url, ui);
 
         // Error display
-        let state = state_ctx.state_mut::<InternalUsersState>();
-        if let Some(error) = &state.error {
-            ui.colored_label(Color32::RED, format!("Error: {error}"));
-        }
+        render_error_display(state_ctx, ui);
 
         ui.add_space(8.0);
 
-        // Collect actions (avoiding borrow issues)
-        let mut username_to_toggle: Option<Ustr> = None;
-        let mut action_to_start: Option<UserAction> = None;
-
-        // Get current time for calculating real-time OTP time remaining
-        let now = *state_ctx.state_mut::<Time>().as_ref();
-
-        // Users table using native egui_extras TableBuilder
-        let state = state_ctx.state_mut::<InternalUsersState>();
-
-        TableBuilder::new(ui)
-            .striped(true) // Native egui striping adapts to light/dark theme
-            .column(Column::remainder().at_least(100.0)) // Username - flexible, fills remaining space
-            .column(Column::exact(OTP_CODE_WIDTH)) // OTP Code - fixed
-            .column(Column::exact(TIME_LEFT_WIDTH)) // Time Left - fixed
-            .column(Column::exact(OTP_BUTTON_WIDTH)) // OTP button - fixed
-            .column(Column::exact(ACTIONS_WIDTH)) // Actions - fixed
-            .header(HEADER_HEIGHT, |mut header| {
-                header.col(|ui| {
-                    ui.strong("Username");
-                });
-                header.col(|ui| {
-                    ui.strong("OTP Code");
-                });
-                header.col(|ui| {
-                    ui.strong("Time Left");
-                });
-                header.col(|ui| {
-                    ui.strong("OTP");
-                });
-                header.col(|ui| {
-                    ui.strong("Actions");
-                });
-            })
-            .body(|mut body| {
-                for user in &state.users {
-                    let username_ustr = Ustr::from(&user.username);
-                    let is_revealed = state.is_otp_revealed(&user.username);
-                    let time_remaining = state.calculate_time_remaining(user.time_remaining, now);
-
-                    body.row(ROW_HEIGHT, |mut row| {
-                        // Username cell - flexible width
-                        row.col(|ui| {
-                            ui.label(&user.username);
-                        });
-
-                        // OTP code with reveal/hide
-                        row.col(|ui| {
-                            if is_revealed {
-                                ui.label(RichText::new(&user.current_otp).monospace());
-                            } else {
-                                ui.label(RichText::new("••••••").monospace());
-                            }
-                        });
-
-                        // Time remaining indicator with color coding
-                        let time_color = if time_remaining <= 5 {
-                            Color32::RED // Critical: 5 seconds or less
-                        } else if time_remaining <= 10 {
-                            Color32::from_rgb(255, 165, 0) // Warning: 10 seconds or less
-                        } else {
-                            Color32::from_rgb(34, 139, 34) // Safe: more than 10 seconds
-                        };
-
-                        row.col(|ui| {
-                            ui.label(
-                                RichText::new(format!("{time_remaining}s"))
-                                    .monospace()
-                                    .color(time_color),
-                            );
-                        });
-
-                        // Reveal/hide button
-                        row.col(|ui| {
-                            let button_text = if is_revealed { "Hide" } else { "Reveal" };
-                            if ui.button(button_text).clicked() {
-                                username_to_toggle = Some(username_ustr);
-                            }
-                        });
-
-                        // Action buttons
-                        row.col(|ui| {
-                            ui.horizontal(|ui| {
-                                if ui.button("📱 QR").on_hover_text("Show QR Code").clicked() {
-                                    action_to_start = Some(UserAction::ShowQrCode(username_ustr));
-                                }
-                                if ui.button("✏️").on_hover_text("Edit Username").clicked() {
-                                    action_to_start = Some(UserAction::EditUsername(username_ustr));
-                                }
-                                if ui.button("🔄").on_hover_text("Revoke OTP").clicked() {
-                                    action_to_start = Some(UserAction::RevokeOtp(username_ustr));
-                                }
-                                if ui.button("🗑️").on_hover_text("Delete User").clicked() {
-                                    action_to_start = Some(UserAction::DeleteUser(username_ustr));
-                                }
-                            });
-                        });
-                    });
-                }
-            });
+        // Render the users table
+        let (username_to_toggle, action_to_start) = render_users_table(state_ctx, ui);
 
         // Apply toggle action after table iteration
         if let Some(username) = username_to_toggle {
-            state.toggle_otp_visibility(username);
+            state_ctx
+                .state_mut::<InternalUsersState>()
+                .toggle_otp_visibility(username);
         }
 
         // Start action if requested
         if let Some(action) = action_to_start {
-            state.start_action(action);
-        }
-
-        // Handle create modal open (after borrowing issues resolved)
-        if should_open_create {
-            // Reset the compute state when opening modal
-            reset_create_user_compute(state_ctx);
             state_ctx
                 .state_mut::<InternalUsersState>()
-                .open_create_modal();
+                .start_action(action);
         }
+
+        // Render QR code expansion inline (after table) if ShowQrCode action is active
+        render_inline_qr_expansion(state_ctx, api_base_url, ui);
     });
 
+    // Create user modal
+    render_modals(state_ctx, api_base_url, ui);
+
+    response.response
+}
+
+/// Renders the controls row with Refresh and Create buttons.
+#[inline]
+fn render_controls_row(state_ctx: &mut StateCtx, api_base_url: &str, ui: &mut Ui) -> bool {
+    let should_open_create = ui
+        .horizontal(|ui| {
+            let state = state_ctx.state_mut::<InternalUsersState>();
+            if ui.button("🔄 Refresh").clicked() && !state.is_fetching {
+                state.set_fetching();
+                fetch_users(api_base_url, ui.ctx().clone());
+            }
+
+            let should_open_create = ui.button("➕ Create User").clicked();
+            if state.is_fetching {
+                ui.spinner();
+                ui.label("Loading...");
+            }
+            should_open_create
+        })
+        .inner;
+
+    // Handle create modal open
+    if should_open_create {
+        reset_create_user_compute(state_ctx);
+        state_ctx
+            .state_mut::<InternalUsersState>()
+            .open_create_modal();
+    }
+
+    should_open_create
+}
+
+/// Renders error display if present.
+#[inline]
+fn render_error_display(state_ctx: &mut StateCtx, ui: &mut Ui) {
+    let state = state_ctx.state_mut::<InternalUsersState>();
+    if let Some(error) = &state.error {
+        ui.colored_label(Color32::RED, format!("Error: {error}"));
+    }
+}
+
+/// Renders the users table and returns any pending actions.
+#[inline]
+fn render_users_table(
+    state_ctx: &mut StateCtx,
+    ui: &mut Ui,
+) -> (Option<Ustr>, Option<UserAction>) {
+    let mut username_to_toggle: Option<Ustr> = None;
+    let mut action_to_start: Option<UserAction> = None;
+
+    // Get current time for calculating real-time OTP time remaining
+    let now = *state_ctx.state_mut::<Time>().as_ref();
+
+    // Users table using native egui_extras TableBuilder
+    let state = state_ctx.state_mut::<InternalUsersState>();
+
+    // Prepare user row data outside the table body closure
+    let user_data: Vec<_> = state
+        .users
+        .iter()
+        .enumerate()
+        .map(|(i, user)| prepare_user_row_data(i, user, state, now))
+        .collect();
+
+    // Build table with columns
+    let columns = table_columns();
+    let mut table = TableBuilder::new(ui).striped(true);
+    for col in columns {
+        table = table.column(col);
+    }
+
+    table
+        .header(HEADER_HEIGHT, |mut header| {
+            render_table_header(&mut header);
+        })
+        .body(|mut body| {
+            for data in &user_data {
+                let username_ustr = Ustr::from(&data.user.username);
+
+                // Determine row height - taller if QR is expanded
+                let row_height = if data.is_qr_expanded {
+                    ROW_HEIGHT + QR_ROW_HEIGHT
+                } else {
+                    ROW_HEIGHT
+                };
+
+                body.row(row_height, |mut row| {
+                    let result = render_user_row(&mut row, data);
+
+                    if result.toggle_otp {
+                        username_to_toggle = Some(username_ustr);
+                    }
+                    if result.action.is_some() {
+                        action_to_start = result.action;
+                    }
+                });
+            }
+        });
+
+    (username_to_toggle, action_to_start)
+}
+
+/// Renders the inline QR code expansion if ShowQrCode action is active.
+#[inline]
+fn render_inline_qr_expansion(state_ctx: &mut StateCtx, api_base_url: &str, ui: &mut Ui) {
+    let state = state_ctx.state_mut::<InternalUsersState>();
+
+    if let UserAction::ShowQrCode(username) = &state.current_action.clone() {
+        render_qr_expansion(state, api_base_url, username, ui);
+    }
+}
+
+/// Renders all modal dialogs.
+#[inline]
+fn render_modals(state_ctx: &mut StateCtx, api_base_url: &str, ui: &mut Ui) {
     // Create user modal
     let state = state_ctx.state_mut::<InternalUsersState>();
     if state.create_modal_open {
         show_create_user_modal(state_ctx, ui);
     }
 
-    // Action modals
+    // Action modals (except QR code which is now inline)
     let state = state_ctx.state_mut::<InternalUsersState>();
     match &state.current_action.clone() {
-        UserAction::ShowQrCode(username) => {
-            show_qr_code_modal(state_ctx, api_base_url, *username, ui);
-        }
         UserAction::EditUsername(username) => {
             show_edit_username_modal(state_ctx, api_base_url, *username, ui);
         }
@@ -193,10 +187,8 @@ pub fn internal_users_panel(state_ctx: &mut StateCtx, api_base_url: &str, ui: &m
         UserAction::RevokeOtp(username) => {
             show_revoke_otp_modal(state_ctx, api_base_url, *username, ui);
         }
-        UserAction::None => {}
+        UserAction::ShowQrCode(_) | UserAction::None => {}
     }
-
-    response.response
 }
 
 /// Poll for async responses and update state.

@@ -1,4 +1,4 @@
-use collects_business::version_info::RuntimeEnv;
+use collects_utils::version_info::RuntimeEnv;
 use serde::Deserialize;
 use std::env::vars;
 use std::fmt::Display;

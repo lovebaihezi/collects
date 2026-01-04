@@ -3,6 +3,7 @@
 use collects_business::{CreateUserCompute, CreateUserResult};
 use collects_states::StateCtx;
 use egui::{Color32, RichText, Ui, Window};
+use ustr::Ustr;
 
 use super::api::{delete_user, fetch_user_qr_code, revoke_otp, update_username};
 use super::qr::generate_qr_image;
@@ -12,7 +13,7 @@ use super::state::InternalUsersState;
 pub fn show_qr_code_modal(
     state_ctx: &mut StateCtx,
     api_base_url: &str,
-    username: String,
+    username: Ustr,
     ui: &mut Ui,
 ) {
     let mut open = true;
@@ -86,7 +87,7 @@ pub fn show_qr_code_modal(
 pub fn show_edit_username_modal(
     state_ctx: &mut StateCtx,
     api_base_url: &str,
-    username: String,
+    username: Ustr,
     ui: &mut Ui,
 ) {
     let mut open = true;
@@ -119,8 +120,8 @@ pub fn show_edit_username_modal(
             ui.add_space(16.0);
 
             ui.horizontal(|ui| {
-                let can_update =
-                    !state.edit_username_input.is_empty() && state.edit_username_input != username;
+                let can_update = !state.edit_username_input.is_empty()
+                    && state.edit_username_input != username.as_str();
 
                 if ui
                     .add_enabled(can_update, egui::Button::new("Update"))
@@ -150,7 +151,7 @@ pub fn show_edit_username_modal(
 pub fn show_delete_user_modal(
     state_ctx: &mut StateCtx,
     api_base_url: &str,
-    username: String,
+    username: Ustr,
     ui: &mut Ui,
 ) {
     let mut open = true;
@@ -206,7 +207,7 @@ pub fn show_delete_user_modal(
 pub fn show_revoke_otp_modal(
     state_ctx: &mut StateCtx,
     api_base_url: &str,
-    username: String,
+    username: Ustr,
     ui: &mut Ui,
 ) {
     let mut open = true;

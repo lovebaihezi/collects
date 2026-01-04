@@ -20,6 +20,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 log = { workspace = true }
 qrcode = "0.14"
+ustr = { workspace = true }
 collects-business = { path = "../business" }
 collects-states = { path = "../states" }
 

@@ -179,7 +179,7 @@ impl Command for ToggleApiStatusCommand {
     fn run(&self, deps: Dep, updater: Updater) {
         let current = deps.get_compute_ref::<ApiStatus>();
         let new_show_status = !current.show_status;
-        
+
         updater.set(ApiStatus {
             last_update_time: current.last_update_time,
             last_error: current.last_error.clone(),

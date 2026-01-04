@@ -32,9 +32,7 @@ async fn setup_toggle_test<'a>(
 
     Mock::given(method("GET"))
         .and(path("/api/is-health"))
-        .respond_with(
-            ResponseTemplate::new(200).insert_header("x-service-version", "0.1.0+test"),
-        )
+        .respond_with(ResponseTemplate::new(200).insert_header("x-service-version", "0.1.0+test"))
         .mount(&mock_server)
         .await;
 
@@ -174,7 +172,8 @@ async fn test_multiple_toggles() {
             .unwrap_or(!expected);
 
         assert_eq!(
-            actual, expected,
+            actual,
+            expected,
             "After {} toggles, show_status should be {}",
             i + 1,
             expected

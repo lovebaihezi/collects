@@ -6,8 +6,7 @@
 //! 3. The show_status flag persists through API compute updates
 
 use crate::common::TestCtx;
-use collects_business::ApiStatus;
-use collects_ui::CollectsApp;
+use kittest::Queryable;
 
 mod common;
 
@@ -15,16 +14,10 @@ mod common;
 // HELPER FUNCTION
 // =============================================================================
 
-/// Helper function to get the show_status from the CollectsApp's state.
-fn get_show_status(harness: &egui_kittest::Harness<'_, CollectsApp>) -> bool {
-    // Access the internal state through the app's public state field
-    harness
-        .state()
-        .state
-        .ctx
-        .cached::<ApiStatus>()
-        .map(|api| api.show_status())
-        .unwrap_or(false)
+/// Helper function to check if the API status panel is visible via kittest query.
+/// The panel contains a label "API Status" which we can query for.
+fn is_api_status_visible(harness: &egui_kittest::Harness<'_, collects_ui::CollectsApp>) -> bool {
+    harness.query_by_label_contains("API Status").is_some()
 }
 
 // =============================================================================
@@ -40,9 +33,11 @@ async fn test_api_status_hidden_by_default() {
     // Run the first frame
     harness.step();
 
-    // By default, show_status should be false
-    let show_status = get_show_status(harness);
-    assert!(!show_status, "API status should be hidden by default");
+    // By default, the API status panel should not be visible
+    assert!(
+        !is_api_status_visible(harness),
+        "API status panel should be hidden by default"
+    );
 }
 
 /// Tests that F1 key press toggles the visibility from off to on.
@@ -51,20 +46,32 @@ async fn test_f1_key_shows_api_status() {
     let mut ctx = TestCtx::new_app().await;
     let harness = ctx.harness_mut();
 
-    // Run the first frame
-    harness.step();
+    // Run several frames to let initial API fetch complete
+    for _ in 0..10 {
+        harness.step();
+    }
+    // Wait for async API fetch to complete
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    for _ in 0..5 {
+        harness.step();
+    }
 
     // Verify initially hidden
-    let initial = get_show_status(harness);
-    assert!(!initial, "Should be hidden initially");
+    assert!(
+        !is_api_status_visible(harness),
+        "Should be hidden initially"
+    );
 
     // Press F1 key to toggle
     harness.key_press(egui::Key::F1);
     harness.step();
+    harness.step();
 
-    // Should now be visible
-    let after_toggle = get_show_status(harness);
-    assert!(after_toggle, "API status should be visible after F1 press");
+    // Should now be visible - query for the "API Status" label
+    assert!(
+        is_api_status_visible(harness),
+        "API status panel should be visible after F1 press"
+    );
 }
 
 /// Tests that F1 key press toggles the visibility from on to off.
@@ -73,28 +80,43 @@ async fn test_f1_key_hides_api_status() {
     let mut ctx = TestCtx::new_app().await;
     let harness = ctx.harness_mut();
 
-    // Run the first frame
-    harness.step();
+    // Run several frames to let initial API fetch complete
+    for _ in 0..10 {
+        harness.step();
+    }
+    // Wait for async API fetch to complete
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    for _ in 0..5 {
+        harness.step();
+    }
 
     // Verify initially hidden
-    let initial = get_show_status(harness);
-    assert!(!initial, "Should be hidden initially");
+    assert!(
+        !is_api_status_visible(harness),
+        "Should be hidden initially"
+    );
 
     // Press F1 to show
     harness.key_press(egui::Key::F1);
     harness.step();
+    harness.step();
 
     // Verify visible
-    let visible = get_show_status(harness);
-    assert!(visible, "Should be visible after first F1 press");
+    assert!(
+        is_api_status_visible(harness),
+        "Should be visible after first F1 press"
+    );
 
     // Press F1 again to hide
     harness.key_press(egui::Key::F1);
     harness.step();
+    harness.step();
 
     // Should now be hidden
-    let hidden = get_show_status(harness);
-    assert!(!hidden, "API status should be hidden after second F1 press");
+    assert!(
+        !is_api_status_visible(harness),
+        "API status panel should be hidden after second F1 press"
+    );
 }
 
 /// Tests multiple F1 key presses toggle correctly.
@@ -103,27 +125,41 @@ async fn test_multiple_f1_toggles() {
     let mut ctx = TestCtx::new_app().await;
     let harness = ctx.harness_mut();
 
-    // Run the first frame
-    harness.step();
+    // Run several frames to let initial API fetch complete
+    for _ in 0..10 {
+        harness.step();
+    }
+    // Wait for async API fetch to complete
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    for _ in 0..5 {
+        harness.step();
+    }
 
     // Verify initially hidden
-    let initial = get_show_status(harness);
-    assert!(!initial, "Should be hidden initially");
+    assert!(
+        !is_api_status_visible(harness),
+        "Should be hidden initially"
+    );
 
-    // Toggle 10 times and verify the state alternates correctly
+    // Toggle 10 times and verify the UI state alternates correctly
     for i in 0..10 {
         harness.key_press(egui::Key::F1);
         harness.step();
+        harness.step();
 
-        let expected = (i + 1) % 2 == 1; // odd iterations: visible, even: hidden
-        let actual = get_show_status(harness);
+        let expected_visible = (i + 1) % 2 == 1; // odd iterations: visible, even: hidden
+        let actual_visible = is_api_status_visible(harness);
 
         assert_eq!(
-            actual,
-            expected,
-            "After {} F1 presses, show_status should be {}",
+            actual_visible,
+            expected_visible,
+            "After {} F1 presses, API status panel should be {}",
             i + 1,
-            expected
+            if expected_visible {
+                "visible"
+            } else {
+                "hidden"
+            }
         );
     }
 }

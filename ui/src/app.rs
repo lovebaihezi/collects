@@ -61,6 +61,8 @@ impl eframe::App for CollectsApp {
         if show_api_status {
             egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
                 egui::MenuBar::new().ui(ui, |ui| {
+                    // Label for accessibility and kittest queries
+                    ui.label("API Status");
                     // API status dots (includes internal API for internal builds)
                     widgets::api_status(&self.state.ctx, ui);
                 });

@@ -354,8 +354,22 @@ A Personal Access Token (PAT) from a user account is required. Comments from the
 (using the default \`GITHUB_TOKEN\`) cannot invoke Copilot - only user account comments can.
 
 **Setup Instructions:**
-1. Create a Personal Access Token (PAT) with \`repo\` scope
-2. Add the PAT as a repository secret named \`COPILOT_INVOKER_TOKEN\`
+
+**Option 1: Fine-grained Token (Recommended)**
+1. Go to GitHub Settings → Developer settings → Personal access tokens → Fine-grained tokens
+2. Click "Generate new token"
+3. Set token name (e.g., "Copilot Invoker") and expiration
+4. Select "Only select repositories" and choose this repository
+5. Under "Repository permissions", set:
+   - **Pull requests**: Read and write (to post comments)
+   - **Actions**: Read (to access workflow run info)
+   - **Contents**: Read (to checkout code)
+6. Generate token and add as repository secret named \`COPILOT_INVOKER_TOKEN\`
+
+**Option 2: Classic PAT**
+1. Go to GitHub Settings → Developer settings → Personal access tokens → Tokens (classic)
+2. Generate new token with \`repo\` scope
+3. Add as repository secret named \`COPILOT_INVOKER_TOKEN\`
 
 **Example:**
 \`\`\`bash

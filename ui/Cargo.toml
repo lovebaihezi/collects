@@ -12,7 +12,6 @@ targets = ["x86_64-unknown-linux-gnu", "wasm32-unknown-unknown"]
 [dependencies]
 egui = { workspace = true }
 egui_extras = { workspace = true }
-eframe = { workspace = true }
 ehttp = { workspace = true }
 flume = { workspace = true }
 chrono = { workspace = true }
@@ -32,12 +31,14 @@ mimalloc = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 reqwest = { workspace = true, default-features = true }
 arboard = "3.6"
+eframe = { workspace = true, features = ["wgpu", "wayland"] }
 
 # web:
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen-futures = "0.4.50"
 web-sys = "0.3.70"
 getrandom = { version = "0.2", features = ["js"] }
+eframe = { workspace = true, features = ["glow"] }
 
 [dev-dependencies]
 kittest = "0.3"

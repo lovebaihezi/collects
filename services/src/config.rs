@@ -47,6 +47,7 @@ mod tests {
             ("ENV", "pr"),
             ("DATABASE_URL", "postgres://example"),
             ("PORT", "8080"),
+            ("JWT_SECRET", "test-jwt-secret"),
         ])
         .expect("RawConfig should deserialize");
 
@@ -102,6 +103,8 @@ pub struct Config {
     // Cloudflare Zero Trust configuration
     cf_access_team_domain: Option<String>,
     cf_access_aud: Option<String>,
+    // JWT token secret for session tokens
+    jwt_secret: String,
 }
 
 // An intermediate struct for deserializing environment variables
@@ -122,6 +125,8 @@ struct RawConfig {
     // Cloudflare Zero Trust configuration
     cf_access_team_domain: Option<String>,
     cf_access_aud: Option<String>,
+    // JWT token secret (optional, default generated for local/test)
+    jwt_secret: Option<String>,
 }
 
 impl Config {
@@ -143,6 +148,7 @@ impl Config {
             gcs_credentials: None,
             cf_access_team_domain: None,
             cf_access_aud: None,
+            jwt_secret: "test-jwt-secret-key-for-local-development".to_string(),
         }
     }
 
@@ -217,6 +223,11 @@ impl Config {
         self.cf_access_aud.as_deref()
     }
 
+    /// Get the JWT secret for signing session tokens.
+    pub fn jwt_secret(&self) -> &str {
+        &self.jwt_secret
+    }
+
     /// Initializes configuration by reading from environment variables
     /// and applying environment-aware defaults.
     pub fn init() -> anyhow::Result<Self> {
@@ -241,6 +252,7 @@ impl Config {
             gcs_credentials,
             cf_access_team_domain,
             cf_access_aud,
+            jwt_secret,
         } = raw_config;
 
         // Apply the default logic for `server_addr` based on the environment
@@ -271,6 +283,16 @@ impl Config {
             None => anyhow::bail!("PORT must be set for {} environment", env),
         };
 
+        // JWT secret is required for production, optional for local/test
+        let jwt_secret = match jwt_secret {
+            Some(secret) => secret,
+            None if matches!(env, Env::Local | Env::Test | Env::TestInternal) => {
+                info!("JWT_SECRET not set, using default for {} environment", env);
+                "default-jwt-secret-for-local-development-only".to_string()
+            }
+            None => anyhow::bail!("JWT_SECRET must be set for {} environment", env),
+        };
+
         // Construct the final, validated Config struct
         Ok(Config {
             env,
@@ -285,6 +307,7 @@ impl Config {
             gcs_credentials,
             cf_access_team_domain,
             cf_access_aud,
+            jwt_secret,
         })
     }
 }

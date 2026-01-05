@@ -599,3 +599,134 @@ async fn test_multiple_compute_cycles_same_minute_no_duplicate_fetch() {
         "Multiple compute cycles within same interval should not trigger duplicate fetches"
     );
 }
+
+// =============================================================================
+// IN-FLIGHT REQUEST TESTS (is_fetching flag behavior)
+// =============================================================================
+
+/// Helper to run compute WITHOUT waiting for async response.
+/// This simulates the scenario where compute runs again before the first fetch completes.
+fn run_compute_only(harness: &mut Harness<'_, State>) {
+    harness.state_mut().ctx.run_all_dirty();
+    // Note: NO sleep or sync_computes - this simulates in-flight state
+}
+
+#[tokio::test]
+async fn test_no_duplicate_requests_during_in_flight_fetch() {
+    let mut ctx = setup_api_status_test(|_ui, _state| {}, 200).await;
+    let harness = ctx.harness_mut();
+
+    // Start initial fetch WITHOUT waiting for response
+    run_compute_only(harness);
+
+    // Immediately trigger another compute cycle (simulating Time update every second)
+    // This should NOT trigger another request because is_fetching is true
+    run_compute_only(harness);
+    run_compute_only(harness);
+    run_compute_only(harness);
+
+    // Wait for async response
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    harness.state_mut().ctx.sync_computes();
+
+    // Should only have 1 request despite multiple compute cycles
+    let request_count = count_health_requests(ctx.mock_server()).await;
+    assert_eq!(
+        request_count, 1,
+        "Should only have 1 request even with multiple compute cycles during in-flight fetch"
+    );
+}
+
+#[tokio::test]
+async fn test_is_fetching_resets_after_successful_response() {
+    let mut ctx = setup_api_status_test(|_ui, _state| {}, 200).await;
+    let harness = ctx.harness_mut();
+
+    // Initial fetch
+    run_compute_cycle(harness).await;
+    assert_eq!(count_health_requests(ctx.mock_server()).await, 1);
+
+    // Verify status is now available (is_fetching should be false)
+    assert_eq!(
+        get_api_availability(ctx.harness_mut()),
+        Some(true),
+        "API should be available after successful fetch"
+    );
+
+    // Advance time by 5 minutes
+    advance_time_by_minutes(ctx.harness_mut(), 5);
+
+    // Should be able to fetch again (is_fetching was reset to false)
+    run_compute_cycle(ctx.harness_mut()).await;
+
+    assert_eq!(
+        count_health_requests(ctx.mock_server()).await,
+        2,
+        "Should fetch again after 5 minutes (is_fetching was properly reset)"
+    );
+}
+
+#[tokio::test]
+async fn test_is_fetching_resets_after_failed_response() {
+    let mut ctx = setup_api_status_test(|_ui, _state| {}, 500).await;
+    let harness = ctx.harness_mut();
+
+    // Initial fetch (will fail)
+    run_compute_cycle(harness).await;
+    assert_eq!(count_health_requests(ctx.mock_server()).await, 1);
+    assert!(
+        has_api_error(ctx.harness_mut()),
+        "Should have error after 500"
+    );
+
+    // Advance time by 1 minute
+    advance_time_by_minutes(ctx.harness_mut(), 1);
+
+    // Should retry (is_fetching was reset to false on error)
+    run_compute_cycle(ctx.harness_mut()).await;
+
+    assert_eq!(
+        count_health_requests(ctx.mock_server()).await,
+        2,
+        "Should retry after error (is_fetching was properly reset)"
+    );
+}
+
+#[tokio::test]
+async fn test_rapid_time_updates_no_duplicate_fetch_with_sync() {
+    let mut ctx = setup_api_status_test(|_ui, _state| {}, 200).await;
+
+    // Initial fetch
+    run_compute_cycle(ctx.harness_mut()).await;
+
+    // Verify initial fetch completed
+    assert_eq!(
+        count_health_requests(ctx.mock_server()).await,
+        1,
+        "Should have 1 initial request"
+    );
+
+    // Simulate rapid Time updates like in the actual app (every second)
+    // With sync calls between, this should NOT trigger additional requests
+    // because the is_fetching flag will be properly synced
+    for _ in 0..10 {
+        advance_time_by_seconds(ctx.harness_mut(), 1);
+        ctx.harness_mut().state_mut().ctx.run_all_dirty();
+        ctx.harness_mut().state_mut().ctx.sync_computes();
+    }
+
+    // Should still be only 1 request despite 10 time updates
+    // (not enough time passed for another fetch)
+    let request_count = count_health_requests(ctx.mock_server()).await;
+    assert_eq!(
+        request_count, 1,
+        "Rapid time updates (within 5 min interval) should not trigger additional requests"
+    );
+
+    // Verify the fetch completed successfully
+    assert_eq!(
+        get_api_availability(ctx.harness_mut()),
+        Some(true),
+        "API should be available after fetch completes"
+    );
+}

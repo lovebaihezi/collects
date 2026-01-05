@@ -31,8 +31,10 @@ mimalloc = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 reqwest = { workspace = true, default-features = true }
 arboard = "3.6"
-eframe = { workspace = true, features = ["wgpu", "wayland"] }
+eframe = { workspace = true, features = ["wgpu", "wayland", "x11"] }
 image = "0.25"
+# Enable wgpu backends for native platforms (Vulkan for Linux, DX12 for Windows, Metal for macOS)
+wgpu = { version = "27", features = ["vulkan", "metal", "dx12"] }
 
 # web:
 [target.'cfg(target_arch = "wasm32")'.dependencies]

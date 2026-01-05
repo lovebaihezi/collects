@@ -54,7 +54,7 @@ fn generate_otp_code(secret_base32: &str) -> Option<String> {
     )
     .ok()?;
 
-    Some(totp.generate_current().ok()?)
+    totp.generate_current().ok()
 }
 
 /// E2E test: User can log in and see welcome message.

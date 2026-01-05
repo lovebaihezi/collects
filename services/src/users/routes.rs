@@ -124,6 +124,7 @@ impl From<OtpError> for (StatusCode, Json<ErrorResponse>) {
         let (status, error_type) = match &err {
             OtpError::InvalidUsername(_) => (StatusCode::BAD_REQUEST, "invalid_username"),
             OtpError::InvalidCode => (StatusCode::UNAUTHORIZED, "invalid_code"),
+            OtpError::TokenValidation(_) => (StatusCode::UNAUTHORIZED, "token_validation_error"),
             OtpError::SecretGeneration(_) | OtpError::TotpCreation(_) => {
                 (StatusCode::INTERNAL_SERVER_ERROR, "internal_error")
             }
@@ -573,7 +574,7 @@ where
 {
     tracing::info!("Validating session token");
 
-    if payload.token.is_empty() {
+    if payload.token.trim().is_empty() {
         return (
             StatusCode::BAD_REQUEST,
             Json(ValidateTokenResponse {

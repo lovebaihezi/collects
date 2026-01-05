@@ -442,19 +442,27 @@ impl Command for ValidateTokenCommand {
                     match serde_json::from_slice::<ValidateTokenResponse>(&response.bytes) {
                         Ok(validate_response) => {
                             if validate_response.valid {
-                                let username = validate_response
-                                    .username
-                                    .unwrap_or_else(|| "Unknown".to_string());
-                                info!(
-                                    "ValidateTokenCommand: token validated successfully for user '{}'",
-                                    username
-                                );
-                                updater.set(AuthCompute {
-                                    status: AuthStatus::Authenticated {
-                                        username,
-                                        token: Some(token),
-                                    },
-                                });
+                                // Username must be present for a valid token response
+                                match validate_response.username {
+                                    Some(username) => {
+                                        info!(
+                                            "ValidateTokenCommand: token validated successfully for user '{}'",
+                                            username
+                                        );
+                                        updater.set(AuthCompute {
+                                            status: AuthStatus::Authenticated {
+                                                username,
+                                                token: Some(token),
+                                            },
+                                        });
+                                    }
+                                    None => {
+                                        error!("ValidateTokenCommand: token valid but username missing");
+                                        updater.set(AuthCompute {
+                                            status: AuthStatus::NotAuthenticated,
+                                        });
+                                    }
+                                }
                             } else {
                                 info!("ValidateTokenCommand: token is invalid");
                                 updater.set(AuthCompute {

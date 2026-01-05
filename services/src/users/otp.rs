@@ -58,6 +58,8 @@ pub enum OtpError {
     InvalidUsername(String),
     #[error("Invalid OTP code")]
     InvalidCode,
+    #[error("Token validation error: {0}")]
+    TokenValidation(String),
 }
 
 /// The issuer name used in TOTP configuration.
@@ -341,7 +343,7 @@ pub fn validate_session_token(token: &str, jwt_secret: &str) -> Result<String, O
         &DecodingKey::from_secret(jwt_secret.as_bytes()),
         &validation,
     )
-    .map_err(|e| OtpError::TotpCreation(format!("Token validation error: {}", e)))?;
+    .map_err(|e| OtpError::TokenValidation(e.to_string()))?;
 
     Ok(token_data.claims.sub)
 }

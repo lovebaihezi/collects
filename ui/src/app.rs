@@ -58,18 +58,17 @@ impl<P: PasteHandler, D: DropHandler> eframe::App for CollectsApp<P, D> {
         if !self.token_validation_started {
             self.token_validation_started = true;
             // Try to load token from storage and validate it
-            if let Some(storage) = _frame.storage() {
-                if let Some(token) = storage.get_string(AUTH_TOKEN_STORAGE_KEY) {
-                    if !token.is_empty() {
-                        log::info!("Found stored auth token, validating...");
-                        // Set the pending token for validation
-                        self.state.ctx.update::<PendingTokenValidation>(|pending| {
-                            pending.token = Some(token);
-                        });
-                        // Dispatch token validation command
-                        self.state.ctx.dispatch::<ValidateTokenCommand>();
-                    }
-                }
+            if let Some(storage) = _frame.storage()
+                && let Some(token) = storage.get_string(AUTH_TOKEN_STORAGE_KEY)
+                && !token.is_empty()
+            {
+                log::info!("Found stored auth token, validating...");
+                // Set the pending token for validation
+                self.state.ctx.update::<PendingTokenValidation>(|pending| {
+                    pending.token = Some(token);
+                });
+                // Dispatch token validation command
+                self.state.ctx.dispatch::<ValidateTokenCommand>();
             }
         }
 

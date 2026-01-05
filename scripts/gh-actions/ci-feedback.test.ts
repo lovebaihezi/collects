@@ -70,7 +70,7 @@ line 5
 line 6
 line 7`;
     const result = extractErrorLines(logs);
-    // Should include 2 lines before and 2 lines after
+    // Should include context lines around error
     expect(result).toContain("line 2");
     expect(result).toContain("line 3");
     expect(result).toContain("error: failure here");
@@ -124,6 +124,47 @@ FAILURE in test`;
     expect(result).toContain("exception thrown");
     expect(result).toContain("panic occurred");
     expect(result).toContain("FAILURE in test");
+  });
+
+  test("detects Rust compiler errors", () => {
+    const logs = `Compiling myproject v0.1.0
+warning: unused import
+error[E0433]: failed to resolve: use of undeclared crate or module
+--> src/main.rs:1:5
+error: aborting due to previous error`;
+    const result = extractErrorLines(logs);
+    expect(result).toContain("error[E0433]");
+    expect(result).toContain("error: aborting due to previous error");
+  });
+
+  test("detects Rust panic messages", () => {
+    const logs = `running 1 test
+test my_test ... FAILED
+thread 'my_test' panicked at src/lib.rs:10:5:
+assertion \`left == right\` failed
+left: 1
+right: 2`;
+    const result = extractErrorLines(logs);
+    expect(result).toContain("panicked at");
+    expect(result).toContain("FAILED");
+  });
+
+  test("prioritizes errors from the end of the log", () => {
+    // In a typical CI log, the actual failure is at the end
+    const logs = `Build started
+[info] downloading dependencies
+[error] Some old warning (not the actual failure)
+[info] compiling module A
+[info] compiling module B
+[info] compiling module C
+[info] running tests
+error: test failed
+note: the actual failure message
+Exited with code 1`;
+    const result = extractErrorLines(logs);
+    // Should include the final error
+    expect(result).toContain("error: test failed");
+    expect(result).toContain("note: the actual failure message");
   });
 });
 
@@ -224,7 +265,7 @@ describe("buildCommentBody", () => {
       { test: 1 },
     );
 
-    expect(result).toContain("**Failure #2/3**");
+    expect(result).toContain("**Attempt 2 of 3**");
   });
 
   test("includes skipped jobs note", () => {

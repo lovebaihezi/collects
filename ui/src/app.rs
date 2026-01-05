@@ -75,25 +75,47 @@ impl<P: PasteHandler, D: DropHandler> eframe::App for CollectsApp<P, D> {
         // Handle paste shortcut (Ctrl+V / Cmd+V) for clipboard image
         // If an image was pasted, replace the current displayed image
         if let Some(clipboard_image) = self.paste_handler.handle_paste(ctx) {
+            log::info!(
+                "Processing pasted image: {}x{}, {} bytes",
+                clipboard_image.width,
+                clipboard_image.height,
+                clipboard_image.bytes.len()
+            );
             let image_state = self.state.ctx.state_mut::<widgets::ImagePreviewState>();
-            image_state.set_image_rgba(
+            let success = image_state.set_image_rgba(
                 ctx,
                 clipboard_image.width,
                 clipboard_image.height,
                 clipboard_image.bytes,
             );
+            if success {
+                log::info!("Pasted image set successfully");
+            } else {
+                log::warn!("Failed to set pasted image");
+            }
         }
 
         // Handle drag-and-drop files for image preview
         // If an image was dropped, replace the current displayed image
         if let Some(dropped_image) = self.drop_handler.handle_drop(ctx) {
+            log::info!(
+                "Processing dropped image: {}x{}, {} bytes",
+                dropped_image.width,
+                dropped_image.height,
+                dropped_image.bytes.len()
+            );
             let image_state = self.state.ctx.state_mut::<widgets::ImagePreviewState>();
-            image_state.set_image_rgba(
+            let success = image_state.set_image_rgba(
                 ctx,
                 dropped_image.width,
                 dropped_image.height,
                 dropped_image.bytes,
             );
+            if success {
+                log::info!("Dropped image set successfully");
+            } else {
+                log::warn!("Failed to set dropped image");
+            }
         }
 
         // Toggle API status display when F1 is pressed
@@ -147,6 +169,10 @@ impl<P: PasteHandler, D: DropHandler> eframe::App for CollectsApp<P, D> {
             // Render the appropriate page based on current route
             self.render_page(ui);
         });
+
+        // Show drop zone overlay when files are being dragged over the window
+        // This provides visual feedback to the user that they can drop files here
+        preview_file_being_dropped(ctx);
 
         // Run background jobs
         self.state.ctx.run_all_dirty();
@@ -216,4 +242,98 @@ impl<P: PasteHandler, D: DropHandler> CollectsApp<P, D> {
             }
         }
     }
+}
+
+/// Shows a drop zone overlay when files are being dragged over the window.
+///
+/// This function provides visual feedback to users when they drag files over
+/// the application window, indicating that they can drop image files to display them.
+fn preview_file_being_dropped(ctx: &egui::Context) {
+    use egui::{Align2, Area, Color32, Frame, Id, Order, RichText, Stroke, StrokeKind};
+
+    // Check if there are any files being hovered
+    let hovered_files = ctx.input(|i| i.raw.hovered_files.clone());
+    if hovered_files.is_empty() {
+        return;
+    }
+
+    // Show overlay with drop zone indicator - get screen rect from raw input or viewport
+    let screen_rect = ctx
+        .input(|i| i.viewport().outer_rect)
+        .or_else(|| ctx.input(|i| i.raw.screen_rect))
+        .unwrap_or_else(|| egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(800.0, 600.0)));
+
+    // Semi-transparent dark overlay
+    let painter = ctx.layer_painter(egui::LayerId::new(
+        Order::Foreground,
+        Id::new("drop_overlay"),
+    ));
+    painter.rect_filled(screen_rect, 0.0, Color32::from_black_alpha(180));
+
+    // Draw border
+    painter.rect_stroke(
+        screen_rect.shrink(8.0),
+        8.0,
+        Stroke::new(3.0, Color32::from_rgb(100, 200, 255)),
+        StrokeKind::Outside,
+    );
+
+    // Show drop zone message in center
+    Area::new(Id::new("drop_zone_message"))
+        .order(Order::Foreground)
+        .anchor(Align2::CENTER_CENTER, [0.0, 0.0])
+        .show(ctx, |ui| {
+            Frame::NONE
+                .fill(Color32::from_rgb(40, 40, 50))
+                .inner_margin(20.0)
+                .outer_margin(10.0)
+                .corner_radius(12.0)
+                .stroke(Stroke::new(2.0, Color32::from_rgb(100, 200, 255)))
+                .show(ui, |ui| {
+                    ui.vertical_centered(|ui| {
+                        ui.label(
+                            RichText::new("📷")
+                                .size(48.0)
+                                .color(Color32::from_rgb(100, 200, 255)),
+                        );
+                        ui.add_space(8.0);
+                        ui.label(
+                            RichText::new("Drop Image Here")
+                                .size(24.0)
+                                .color(Color32::WHITE),
+                        );
+                        ui.add_space(4.0);
+
+                        // Show names of files being dragged
+                        let file_names: Vec<_> = hovered_files
+                            .iter()
+                            .filter_map(|f| {
+                                if f.path.is_some() || !f.mime.is_empty() {
+                                    Some(
+                                        f.path
+                                            .as_ref()
+                                            .map(|p| p.file_name().unwrap_or_default().to_string_lossy().to_string())
+                                            .unwrap_or_else(|| format!("({})", f.mime)),
+                                    )
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect();
+
+                        if !file_names.is_empty() {
+                            let display_text = if file_names.len() == 1 {
+                                file_names[0].clone()
+                            } else {
+                                format!("{} files", file_names.len())
+                            };
+                            ui.label(
+                                RichText::new(display_text)
+                                    .size(14.0)
+                                    .color(Color32::LIGHT_GRAY),
+                            );
+                        }
+                    });
+                });
+        });
 }

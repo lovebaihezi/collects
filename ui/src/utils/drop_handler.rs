@@ -64,13 +64,25 @@ pub fn handle_dropped_files(ctx: &egui::Context) -> Option<ImageData> {
         return None;
     }
 
+    log::debug!("Processing {} dropped file(s)", dropped_files.len());
+
     // Process only the first dropped file (replace behavior like paste)
-    for file in dropped_files {
-        if let Some(image) = load_image_from_dropped_file(&file) {
+    for file in &dropped_files {
+        log::debug!(
+            "Dropped file: name={}, path={:?}, has_bytes={}",
+            file.name,
+            file.path,
+            file.bytes.is_some()
+        );
+        if let Some(image) = load_image_from_dropped_file(file) {
             return Some(image);
         }
     }
 
+    log::warn!(
+        "No valid image found in {} dropped file(s)",
+        dropped_files.len()
+    );
     None
 }
 
@@ -112,9 +124,14 @@ fn load_image_from_dropped_file(file: &egui::DroppedFile) -> Option<ImageData> {
 fn load_image_from_path(path: &std::path::Path) -> Option<ImageData> {
     use std::fs;
 
+    log::debug!("Loading image from path: {:?}", path);
+
     // Read file contents
     let bytes = match fs::read(path) {
-        Ok(b) => b,
+        Ok(b) => {
+            log::debug!("Read {} bytes from file", b.len());
+            b
+        }
         Err(e) => {
             log::warn!("Failed to read dropped file {:?}: {}", path, e);
             return None;

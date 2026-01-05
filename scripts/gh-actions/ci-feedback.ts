@@ -483,7 +483,9 @@ export async function runPostJobFeedback(
     body: commentBody,
   });
 
-  console.log(`Posted CI feedback comment for job "${jobName}" on PR #${prNumber}`);
+  console.log(
+    `Posted CI feedback comment for job "${jobName}" on PR #${prNumber}`,
+  );
 }
 
 /**

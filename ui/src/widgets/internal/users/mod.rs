@@ -16,7 +16,7 @@ mod state;
 pub mod table;
 
 pub use panel::{internal_users_panel, poll_internal_users_responses};
-pub use state::InternalUsersState;
+pub use state::{InternalUsersState, UserAction};
 
 // Re-export internal functions for use by modals
 pub(crate) use panel::{reset_create_user_compute, trigger_create_user};

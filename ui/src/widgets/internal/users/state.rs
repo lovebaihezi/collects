@@ -201,6 +201,50 @@ impl InternalUsersState {
         self.action_in_progress = false;
     }
 
+    // =====================
+    // Getter methods for testing
+    // =====================
+
+    /// Get the current action.
+    pub fn current_action(&self) -> &UserAction {
+        &self.current_action
+    }
+
+    /// Get the edit nickname input.
+    pub fn edit_nickname_input(&self) -> &str {
+        &self.edit_nickname_input
+    }
+
+    /// Get the edit avatar URL input.
+    pub fn edit_avatar_url_input(&self) -> &str {
+        &self.edit_avatar_url_input
+    }
+
+    /// Get whether action is in progress.
+    pub fn is_action_in_progress(&self) -> bool {
+        self.action_in_progress
+    }
+
+    /// Get the action error.
+    pub fn action_error(&self) -> Option<&str> {
+        self.action_error.as_deref()
+    }
+
+    /// Get the users list.
+    pub fn users(&self) -> &[InternalUserItem] {
+        &self.users
+    }
+
+    /// Get mutable reference to users list for testing.
+    pub fn users_mut(&mut self) -> &mut Vec<InternalUserItem> {
+        &mut self.users
+    }
+
+    /// Get whether currently fetching.
+    pub fn is_fetching(&self) -> bool {
+        self.is_fetching
+    }
+
     /// Calculate real-time time remaining for a user's OTP code.
     ///
     /// OTP codes operate on a 30-second cycle. This method calculates the actual

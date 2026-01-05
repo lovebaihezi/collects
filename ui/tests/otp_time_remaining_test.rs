@@ -94,6 +94,10 @@ async fn test_otp_time_remaining_updates_with_time() {
         username: "testuser".to_string(),
         current_otp: "123456".to_string(),
         time_remaining: 25,
+        nickname: None,
+        avatar_url: None,
+        created_at: "2026-01-01T00:00:00Z".to_string(),
+        updated_at: "2026-01-01T00:00:00Z".to_string(),
     };
 
     let mut ctx = setup_otp_test(
@@ -146,6 +150,10 @@ async fn test_otp_time_remaining_wraps_after_30_seconds() {
         username: "testuser".to_string(),
         current_otp: "123456".to_string(),
         time_remaining: 10,
+        nickname: None,
+        avatar_url: None,
+        created_at: "2026-01-01T00:00:00Z".to_string(),
+        updated_at: "2026-01-01T00:00:00Z".to_string(),
     };
 
     let mut ctx = setup_otp_test(
@@ -198,6 +206,10 @@ async fn test_otp_time_remaining_color_changes() {
         username: "testuser".to_string(),
         current_otp: "123456".to_string(),
         time_remaining: 15,
+        nickname: None,
+        avatar_url: None,
+        created_at: "2026-01-01T00:00:00Z".to_string(),
+        updated_at: "2026-01-01T00:00:00Z".to_string(),
     };
 
     let mut ctx = setup_otp_test(

@@ -16,8 +16,6 @@ ehttp = { workspace = true }
 chrono = { workspace = true }
 log = { workspace = true }
 ustr = { workspace = true }
-zerocopy = { workspace = true }
-zerocopy-derive = { workspace = true }
 
 collects-states = { path = "../states" }
 collects-utils = { path = "../utils" }

@@ -1031,8 +1031,6 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.17",
  "ustr",
- "zerocopy",
- "zerocopy-derive",
 ]
 
 [[package]]
@@ -1075,15 +1073,12 @@ dependencies = [
 name = "collects-states"
 version = "0.1.0"
 dependencies = [
- "bumpalo",
  "chrono",
  "flume",
  "log",
  "serde",
  "thiserror 2.0.17",
  "ustr",
- "zerocopy",
- "zerocopy-derive",
 ]
 
 [[package]]

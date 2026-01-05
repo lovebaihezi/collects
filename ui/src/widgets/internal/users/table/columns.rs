@@ -31,15 +31,15 @@ pub const QR_ROW_HEIGHT: f32 = 240.0;
 #[inline]
 pub fn table_columns() -> Vec<Column> {
     vec![
-        Column::exact(ID_WIDTH),             // ID
-        Column::exact(AVATAR_WIDTH),         // Avatar - fixed
-        Column::remainder().at_least(80.0),  // Username - flexible
-        Column::exact(NICKNAME_WIDTH),       // Nickname - fixed
-        Column::exact(OTP_CODE_WIDTH),       // OTP Code - fixed
-        Column::exact(TIME_LEFT_WIDTH),      // Time Left - fixed
-        Column::exact(OTP_BUTTON_WIDTH),     // OTP button - fixed
-        Column::exact(TIMESTAMP_WIDTH),      // Created At - fixed
-        Column::exact(TIMESTAMP_WIDTH),      // Updated At - fixed
-        Column::exact(ACTIONS_WIDTH),        // Actions - fixed
+        Column::exact(ID_WIDTH),            // ID
+        Column::exact(AVATAR_WIDTH),        // Avatar - fixed
+        Column::remainder().at_least(80.0), // Username - flexible
+        Column::exact(NICKNAME_WIDTH),      // Nickname - fixed
+        Column::exact(OTP_CODE_WIDTH),      // OTP Code - fixed
+        Column::exact(TIME_LEFT_WIDTH),     // Time Left - fixed
+        Column::exact(OTP_BUTTON_WIDTH),    // OTP button - fixed
+        Column::exact(TIMESTAMP_WIDTH),     // Created At - fixed
+        Column::exact(TIMESTAMP_WIDTH),     // Updated At - fixed
+        Column::exact(ACTIONS_WIDTH),       // Actions - fixed
     ]
 }

@@ -783,52 +783,46 @@ impl UserStorage for PgUserStorage {
     ) -> Result<StoredUser, Self::Error> {
         // Build the query dynamically based on which fields are being updated
         let result: Option<UserRow> = match (nickname, avatar_url) {
-            (Some(nick), Some(avatar)) => {
-                sqlx::query_as(
-                    r#"
+            (Some(nick), Some(avatar)) => sqlx::query_as(
+                r#"
                     UPDATE users
                     SET nickname = $2, avatar_url = $3
                     WHERE username = $1 AND status = 'active'
                     RETURNING username, otp_secret, nickname, avatar_url, created_at, updated_at
                     "#,
-                )
-                .bind(username)
-                .bind(nick)
-                .bind(avatar)
-                .fetch_optional(&self.storage.pool)
-                .await
-                .map_err(|e| UserStorageError::StorageError(e.to_string()))?
-            }
-            (Some(nick), None) => {
-                sqlx::query_as(
-                    r#"
+            )
+            .bind(username)
+            .bind(nick)
+            .bind(avatar)
+            .fetch_optional(&self.storage.pool)
+            .await
+            .map_err(|e| UserStorageError::StorageError(e.to_string()))?,
+            (Some(nick), None) => sqlx::query_as(
+                r#"
                     UPDATE users
                     SET nickname = $2
                     WHERE username = $1 AND status = 'active'
                     RETURNING username, otp_secret, nickname, avatar_url, created_at, updated_at
                     "#,
-                )
-                .bind(username)
-                .bind(nick)
-                .fetch_optional(&self.storage.pool)
-                .await
-                .map_err(|e| UserStorageError::StorageError(e.to_string()))?
-            }
-            (None, Some(avatar)) => {
-                sqlx::query_as(
-                    r#"
+            )
+            .bind(username)
+            .bind(nick)
+            .fetch_optional(&self.storage.pool)
+            .await
+            .map_err(|e| UserStorageError::StorageError(e.to_string()))?,
+            (None, Some(avatar)) => sqlx::query_as(
+                r#"
                     UPDATE users
                     SET avatar_url = $2
                     WHERE username = $1 AND status = 'active'
                     RETURNING username, otp_secret, nickname, avatar_url, created_at, updated_at
                     "#,
-                )
-                .bind(username)
-                .bind(avatar)
-                .fetch_optional(&self.storage.pool)
-                .await
-                .map_err(|e| UserStorageError::StorageError(e.to_string()))?
-            }
+            )
+            .bind(username)
+            .bind(avatar)
+            .fetch_optional(&self.storage.pool)
+            .await
+            .map_err(|e| UserStorageError::StorageError(e.to_string()))?,
             (None, None) => {
                 // No updates, just fetch the user
                 return self
@@ -1218,11 +1212,7 @@ mod tests {
         let storage = MockUserStorage::new();
 
         let result = storage
-            .update_profile(
-                "nonexistent",
-                Some(Some("Nick".to_string())),
-                Some(None),
-            )
+            .update_profile("nonexistent", Some(Some("Nick".to_string())), Some(None))
             .await;
 
         assert!(result.is_err());

@@ -160,10 +160,8 @@ impl InternalUsersState {
             UserAction::EditProfile(username) => {
                 // Initialize with current values from the user
                 if let Some(user) = self.users.iter().find(|u| u.username == username.as_str()) {
-                    self.edit_nickname_input =
-                        user.nickname.clone().unwrap_or_default();
-                    self.edit_avatar_url_input =
-                        user.avatar_url.clone().unwrap_or_default();
+                    self.edit_nickname_input = user.nickname.clone().unwrap_or_default();
+                    self.edit_avatar_url_input = user.avatar_url.clone().unwrap_or_default();
                 } else {
                     self.edit_nickname_input.clear();
                     self.edit_avatar_url_input.clear();
@@ -383,7 +381,10 @@ mod tests {
 
         // Verify profile fields are initialized from user
         assert_eq!(state.edit_nickname_input, "Test Nickname");
-        assert_eq!(state.edit_avatar_url_input, "https://example.com/avatar.png");
+        assert_eq!(
+            state.edit_avatar_url_input,
+            "https://example.com/avatar.png"
+        );
         assert_eq!(
             state.current_action,
             UserAction::EditProfile(Ustr::from("testuser"))

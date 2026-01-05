@@ -115,7 +115,11 @@ pub fn show_edit_profile_modal(
             });
 
             ui.add_space(4.0);
-            ui.label(RichText::new("Leave fields empty to clear them.").weak().small());
+            ui.label(
+                RichText::new("Leave fields empty to clear them.")
+                    .weak()
+                    .small(),
+            );
 
             ui.add_space(16.0);
 
@@ -132,7 +136,13 @@ pub fn show_edit_profile_modal(
                     } else {
                         Some(state.edit_avatar_url_input.clone())
                     };
-                    update_profile(api_base_url, &username, nickname, avatar_url, ui.ctx().clone());
+                    update_profile(
+                        api_base_url,
+                        &username,
+                        nickname,
+                        avatar_url,
+                        ui.ctx().clone(),
+                    );
                 }
 
                 if ui.button("Cancel").clicked() {

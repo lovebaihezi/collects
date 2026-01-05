@@ -99,7 +99,7 @@ fn test_internal_create_user_modal_structure_e2e() {
 
     // In a full e2e test, we would click the button and verify the modal opens
     // For now, we just verify the button exists and is accessible
-    println!("E2E internal test: Create User button found and accessible");
+    log::info!("E2E internal test: Create User button found and accessible");
 }
 
 /// E2E test: Internal page shows no login form.

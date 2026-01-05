@@ -46,7 +46,8 @@ kittest = "0.3"
 wiremock = "0.6"
 egui_kittest = { version = "0.33", features = ["snapshot", "eframe"] }
 tokio = { workspace = true, features = ["full", "test-util"] }
-env_logger = "0.11.8"
+env_logger = "0.11"
+totp-rs = { version = "5.7", features = ["otpauth", "gen_secret"] }
 
 [build-dependencies]
 ico = "0.3"

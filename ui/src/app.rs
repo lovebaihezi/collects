@@ -305,20 +305,9 @@ fn preview_file_being_dropped(ctx: &egui::Context) {
                         ui.add_space(4.0);
 
                         // Show names of files being dragged
-                        let file_names: Vec<_> = hovered_files
+                        let file_names: Vec<String> = hovered_files
                             .iter()
-                            .filter_map(|f| {
-                                if f.path.is_some() || !f.mime.is_empty() {
-                                    Some(
-                                        f.path
-                                            .as_ref()
-                                            .map(|p| p.file_name().unwrap_or_default().to_string_lossy().to_string())
-                                            .unwrap_or_else(|| format!("({})", f.mime)),
-                                    )
-                                } else {
-                                    None
-                                }
-                            })
+                            .filter_map(|f| get_hovered_file_display_name(f))
                             .collect();
 
                         if !file_names.is_empty() {
@@ -336,4 +325,29 @@ fn preview_file_being_dropped(ctx: &egui::Context) {
                     });
                 });
         });
+}
+
+/// Gets a display name for a hovered file during drag-and-drop.
+///
+/// Returns the filename if a path is available, the MIME type if available,
+/// or None if neither is present.
+fn get_hovered_file_display_name(file: &egui::HoveredFile) -> Option<String> {
+    // Try to get filename from path
+    if let Some(path) = &file.path {
+        let filename = path
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
+        if !filename.is_empty() {
+            return Some(filename);
+        }
+    }
+
+    // Fall back to MIME type
+    if !file.mime.is_empty() {
+        return Some(format!("({})", file.mime));
+    }
+
+    None
 }

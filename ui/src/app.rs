@@ -261,7 +261,9 @@ fn preview_file_being_dropped(ctx: &egui::Context) {
     let screen_rect = ctx
         .input(|i| i.viewport().outer_rect)
         .or_else(|| ctx.input(|i| i.raw.screen_rect))
-        .unwrap_or_else(|| egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(800.0, 600.0)));
+        .unwrap_or_else(|| {
+            egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(800.0, 600.0))
+        });
 
     // Semi-transparent dark overlay
     let painter = ctx.layer_painter(egui::LayerId::new(
@@ -307,7 +309,7 @@ fn preview_file_being_dropped(ctx: &egui::Context) {
                         // Show names of files being dragged
                         let file_names: Vec<String> = hovered_files
                             .iter()
-                            .filter_map(|f| get_hovered_file_display_name(f))
+                            .filter_map(get_hovered_file_display_name)
                             .collect();
 
                         if !file_names.is_empty() {

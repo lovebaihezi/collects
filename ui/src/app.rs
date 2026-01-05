@@ -97,7 +97,8 @@ impl<P: PasteHandler, D: DropHandler> eframe::App for CollectsApp<P, D> {
         }
 
         // Toggle API status display when F1 is pressed
-        if ctx.input(|i| i.key_pressed(egui::Key::F1)) {
+        // Use consume_key to prevent browser default behavior (e.g., Chrome help) in WASM
+        if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::F1)) {
             self.state.ctx.dispatch::<ToggleApiStatusCommand>();
         }
 
@@ -125,7 +126,7 @@ impl<P: PasteHandler, D: DropHandler> eframe::App for CollectsApp<P, D> {
         // Update route based on authentication state
         self.update_route();
 
-        // Show top panel with API status only when F1 is pressed (toggled)
+        // Show API status window only when F1 is pressed (toggled)
         let show_api_status = self
             .state
             .ctx
@@ -133,14 +134,16 @@ impl<P: PasteHandler, D: DropHandler> eframe::App for CollectsApp<P, D> {
             .map(|api| api.show_status())
             .unwrap_or(false);
         if show_api_status {
-            egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
-                egui::MenuBar::new().ui(ui, |ui| {
-                    // Label for accessibility and kittest queries
-                    ui.label("API Status");
+            egui::Window::new("API Status")
+                .anchor(egui::Align2::RIGHT_TOP, egui::vec2(-8.0, 8.0))
+                .collapsible(false)
+                .resizable(false)
+                .title_bar(false)
+                .show(ctx, |ui| {
                     // API status dots (includes internal API for internal builds)
+                    // The Window name "API Status" is used for accessibility/kittest queries
                     widgets::api_status(&self.state.ctx, ui);
                 });
-            });
         }
 
         egui::CentralPanel::default().show(ctx, |ui| {

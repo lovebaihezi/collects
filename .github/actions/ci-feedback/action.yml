@@ -5,7 +5,7 @@ inputs:
     description: 'GitHub token with PR write permissions (use COPILOT_INVOKER_TOKEN for @copilot mentions)'
     required: true
   job-name:
-    description: 'Name of the failed job'
+    description: 'Display name of the failed job (the "name:" value in the workflow YAML, NOT the job ID). Example: "Lint: Format Check"'
     required: true
 
 runs:

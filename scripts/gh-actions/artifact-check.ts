@@ -155,7 +155,11 @@ export async function checkArtifacts(
       pr: { name: "PR builds", images: [], retentionDays: null },
       nightly: { name: "Nightly builds", images: [], retentionDays: 7 },
       main: { name: "Main branch builds", images: [], retentionDays: 1 },
-      production: { name: "Production releases", images: [], retentionDays: 30 },
+      production: {
+        name: "Production releases",
+        images: [],
+        retentionDays: 30,
+      },
       unknown: { name: "Unknown/Untagged", images: [], retentionDays: null },
     },
     violations: [],

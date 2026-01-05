@@ -36,6 +36,8 @@ pub struct VerifyOtpResponse {
     pub valid: bool,
     /// Optional message with details.
     pub message: Option<String>,
+    /// Session token for authenticated API calls (present on success).
+    pub token: Option<String>,
 }
 
 /// Input state for login form.
@@ -264,9 +266,8 @@ impl Command for LoginCommand {
                                 updater.set(AuthCompute {
                                     status: AuthStatus::Authenticated {
                                         username: username.clone(),
-                                        // Note: In a full implementation, the backend could return a session token
-                                        // For now, we don't have a token since OTP verification doesn't return one
-                                        token: None,
+                                        // Use the session token returned by the backend
+                                        token: verify_response.token,
                                     },
                                 });
                             } else {
@@ -411,6 +412,16 @@ mod tests {
         let response: VerifyOtpResponse = serde_json::from_str(json).expect("Should deserialize");
         assert!(response.valid);
         assert!(response.message.is_none());
+        assert!(response.token.is_none());
+    }
+
+    #[test]
+    fn test_verify_otp_response_deserialization_valid_with_token() {
+        let json = r#"{"valid": true, "token": "test-jwt-token"}"#;
+        let response: VerifyOtpResponse = serde_json::from_str(json).expect("Should deserialize");
+        assert!(response.valid);
+        assert!(response.message.is_none());
+        assert_eq!(response.token, Some("test-jwt-token".to_string()));
     }
 
     #[test]
@@ -419,5 +430,6 @@ mod tests {
         let response: VerifyOtpResponse = serde_json::from_str(json).expect("Should deserialize");
         assert!(!response.valid);
         assert_eq!(response.message, Some("Invalid OTP code".to_string()));
+        assert!(response.token.is_none());
     }
 }

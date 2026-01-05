@@ -3,6 +3,7 @@
 //! This module provides TOTP (Time-based One-Time Password) functionality
 //! for user authentication using Google Authenticator or similar apps.
 
+use jsonwebtoken::{Algorithm as JwtAlgorithm, EncodingKey, Header, encode};
 use serde::{Deserialize, Serialize};
 use totp_rs::{Algorithm, Secret, TOTP};
 
@@ -41,6 +42,9 @@ pub struct VerifyOtpResponse {
     /// Optional message with details.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub message: Option<String>,
+    /// Session token for authenticated API calls (only present when valid=true).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub token: Option<String>,
 }
 
 /// Error types for OTP operations.
@@ -238,6 +242,63 @@ pub fn generate_current_otp_with_time(secret_base32: &str) -> Result<(String, u8
     let code = generate_current_otp(secret_base32)?;
     let time_remaining = get_time_remaining();
     Ok((code, time_remaining))
+}
+
+/// Default session token expiration time in seconds (24 hours).
+const SESSION_TOKEN_EXPIRY_SECS: i64 = 24 * 60 * 60;
+
+/// Claims for the session JWT token.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SessionClaims {
+    /// Subject (username).
+    pub sub: String,
+    /// Issued at timestamp.
+    pub iat: i64,
+    /// Expiration timestamp.
+    pub exp: i64,
+    /// Issuer.
+    pub iss: String,
+}
+
+/// Generates a session JWT token for an authenticated user.
+///
+/// This token can be used for authenticated API calls after successful OTP verification.
+///
+/// # Arguments
+///
+/// * `username` - The username of the authenticated user
+/// * `jwt_secret` - The secret key for signing the token
+///
+/// # Returns
+///
+/// Returns the encoded JWT token string.
+///
+/// # Errors
+///
+/// Returns an error if token encoding fails.
+pub fn generate_session_token(username: &str, jwt_secret: &str) -> Result<String, OtpError> {
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|e| OtpError::TotpCreation(format!("System time error: {}", e)))?
+        .as_secs() as i64;
+
+    let claims = SessionClaims {
+        sub: username.to_string(),
+        iat: now,
+        exp: now + SESSION_TOKEN_EXPIRY_SECS,
+        iss: ISSUER.to_string(),
+    };
+
+    let token = encode(
+        &Header::new(JwtAlgorithm::HS256),
+        &claims,
+        &EncodingKey::from_secret(jwt_secret.as_bytes()),
+    )
+    .map_err(|e| OtpError::TotpCreation(format!("Token encoding error: {}", e)))?;
+
+    Ok(token)
 }
 
 #[cfg(test)]

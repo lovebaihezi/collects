@@ -66,7 +66,7 @@ async fn setup_with_verify_otp_success<'a>(
 ) -> LoginTestCtx<'a> {
     let ctx = setup_login_test(app).await;
 
-    // Mock successful OTP verification
+    // Mock successful OTP verification with token
     Mock::given(method("POST"))
         .and(path("/api/auth/verify-otp"))
         .and(body_json(serde_json::json!({
@@ -74,7 +74,8 @@ async fn setup_with_verify_otp_success<'a>(
             "code": expected_code
         })))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-            "valid": true
+            "valid": true,
+            "token": "test-session-token-jwt"
         })))
         .mount(ctx.mock_server())
         .await;
@@ -780,7 +781,11 @@ async fn test_auth_compute_helper_methods() {
             Some("helpertest"),
             "Should have correct username"
         );
-        // Token is None since backend verify-otp doesn't return a token
-        assert!(compute.token().is_none(), "Token should be None");
+        // Token should be present from the backend response
+        assert_eq!(
+            compute.token(),
+            Some("test-session-token-jwt"),
+            "Token should be present after successful login"
+        );
     }
 }

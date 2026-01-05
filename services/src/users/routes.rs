@@ -38,9 +38,10 @@ use serde::{Deserialize, Serialize};
 
 use super::otp::{
     CreateUserRequest, CreateUserResponse, OtpError, VerifyOtpRequest, VerifyOtpResponse,
-    generate_current_otp_with_time, generate_otp_secret, verify_otp,
+    generate_current_otp_with_time, generate_otp_secret, generate_session_token, verify_otp,
 };
 use super::storage::{UserStorage, UserStorageError};
+use crate::config::Config;
 use crate::database::SqlStorage;
 
 /// Response for listing users with their current OTP codes.
@@ -395,12 +396,14 @@ where
 ///
 /// ```json
 /// {
-///     "valid": true
+///     "valid": true,
+///     "token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9..."
 /// }
 /// ```
 #[tracing::instrument(skip_all, fields(username = %payload.username))]
 async fn verify_otp_handler<S, U>(
     State(state): State<AppState<S, U>>,
+    axum::extract::Extension(config): axum::extract::Extension<Config>,
     Json(payload): Json<VerifyOtpRequest>,
 ) -> impl IntoResponse
 where
@@ -416,6 +419,7 @@ where
             Json(VerifyOtpResponse {
                 valid: false,
                 message: Some("Username cannot be empty".to_string()),
+                token: None,
             }),
         )
             .into_response();
@@ -431,6 +435,7 @@ where
             Json(VerifyOtpResponse {
                 valid: false,
                 message: Some("Invalid OTP code format. Code must be 6 digits.".to_string()),
+                token: None,
             }),
         )
             .into_response();
@@ -446,6 +451,7 @@ where
                 Json(VerifyOtpResponse {
                     valid: false,
                     message: Some("Invalid username or code".to_string()),
+                    token: None,
                 }),
             )
                 .into_response();
@@ -457,6 +463,7 @@ where
                 Json(VerifyOtpResponse {
                     valid: false,
                     message: Some("Internal server error".to_string()),
+                    token: None,
                 }),
             )
                 .into_response();
@@ -467,11 +474,28 @@ where
     match verify_otp(&secret, &payload.code) {
         Ok(true) => {
             tracing::info!("OTP verification successful");
+            // Generate session token for the authenticated user
+            let token = match generate_session_token(&payload.username, config.jwt_secret()) {
+                Ok(t) => Some(t),
+                Err(e) => {
+                    tracing::error!("Failed to generate session token: {}", e);
+                    return (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(VerifyOtpResponse {
+                            valid: false,
+                            message: Some("Failed to generate session token".to_string()),
+                            token: None,
+                        }),
+                    )
+                        .into_response();
+                }
+            };
             (
                 StatusCode::OK,
                 Json(VerifyOtpResponse {
                     valid: true,
                     message: None,
+                    token,
                 }),
             )
                 .into_response()
@@ -483,6 +507,7 @@ where
                 Json(VerifyOtpResponse {
                     valid: false,
                     message: Some("Invalid username or code".to_string()),
+                    token: None,
                 }),
             )
                 .into_response()
@@ -494,6 +519,7 @@ where
                 Json(VerifyOtpResponse {
                     valid: false,
                     message: Some("Internal server error".to_string()),
+                    token: None,
                 }),
             )
                 .into_response()
@@ -824,6 +850,7 @@ mod tests {
         let sql_storage = MockSqlStorage { is_connected: true };
         let user_storage = MockUserStorage::new();
         let state = AppState::new(sql_storage, user_storage);
+        let config = Config::new_for_test();
 
         Router::new()
             .nest(
@@ -831,6 +858,7 @@ mod tests {
                 internal_routes::<MockSqlStorage, MockUserStorage>(),
             )
             .nest("/auth", auth_routes::<MockSqlStorage, MockUserStorage>())
+            .layer(axum::extract::Extension(config))
             .with_state(state)
     }
 
@@ -838,6 +866,7 @@ mod tests {
         let sql_storage = MockSqlStorage { is_connected: true };
         let user_storage = MockUserStorage::with_users(users);
         let state = AppState::new(sql_storage, user_storage);
+        let config = Config::new_for_test();
 
         Router::new()
             .nest(
@@ -845,6 +874,7 @@ mod tests {
                 internal_routes::<MockSqlStorage, MockUserStorage>(),
             )
             .nest("/auth", auth_routes::<MockSqlStorage, MockUserStorage>())
+            .layer(axum::extract::Extension(config))
             .with_state(state)
     }
 
@@ -1028,6 +1058,7 @@ mod tests {
         // Create a user and get their secret
         let sql_storage = MockSqlStorage { is_connected: true };
         let user_storage = MockUserStorage::new();
+        let config = Config::new_for_test();
 
         // First create a user to get a valid secret
         let (secret, _) = generate_otp_secret("testuser").expect("Should generate secret");
@@ -1043,6 +1074,7 @@ mod tests {
 
         let app = Router::new()
             .nest("/auth", auth_routes::<MockSqlStorage, MockUserStorage>())
+            .layer(axum::extract::Extension(config))
             .with_state(state);
 
         let request = Request::builder()
@@ -1067,6 +1099,10 @@ mod tests {
             serde_json::from_slice(&body).expect("Failed to parse response");
 
         assert!(response.valid);
+        assert!(
+            response.token.is_some(),
+            "Should return a session token on successful login"
+        );
     }
 
     #[tokio::test]
@@ -1074,6 +1110,7 @@ mod tests {
         // Create a user with a known secret
         let sql_storage = MockSqlStorage { is_connected: true };
         let user_storage = MockUserStorage::new();
+        let config = Config::new_for_test();
 
         let (secret, _) = generate_otp_secret("testuser").expect("Should generate secret");
         user_storage
@@ -1085,6 +1122,7 @@ mod tests {
 
         let app = Router::new()
             .nest("/auth", auth_routes::<MockSqlStorage, MockUserStorage>())
+            .layer(axum::extract::Extension(config))
             .with_state(state);
 
         // Use an invalid code (all zeros is statistically almost never valid)
@@ -1107,6 +1145,7 @@ mod tests {
 
         let sql_storage = MockSqlStorage { is_connected: true };
         let user_storage = MockUserStorage::new();
+        let config = Config::new_for_test();
         let state = AppState::new(sql_storage, user_storage.clone());
 
         let app = Router::new()
@@ -1115,6 +1154,7 @@ mod tests {
                 internal_routes::<MockSqlStorage, MockUserStorage>(),
             )
             .nest("/auth", auth_routes::<MockSqlStorage, MockUserStorage>())
+            .layer(axum::extract::Extension(config))
             .with_state(state);
 
         // Step 1: Create a user
@@ -1562,6 +1602,7 @@ mod tests {
 
         let sql_storage = MockSqlStorage { is_connected: true };
         let user_storage = MockUserStorage::new();
+        let config = Config::new_for_test();
         let state = AppState::new(sql_storage, user_storage.clone());
 
         let app = Router::new()
@@ -1570,6 +1611,7 @@ mod tests {
                 internal_routes::<MockSqlStorage, MockUserStorage>(),
             )
             .nest("/auth", auth_routes::<MockSqlStorage, MockUserStorage>())
+            .layer(axum::extract::Extension(config))
             .with_state(state);
 
         // Step 1: Create a user

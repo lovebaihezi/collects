@@ -13,6 +13,11 @@ use collects_business::{ApiStatus, AuthCompute, Route, ToggleApiStatusCommand};
 use collects_business::{PendingTokenValidation, ValidateTokenCommand};
 use collects_states::Time;
 
+/// Horizontal offset for the API status window from the right edge (in pixels)
+const API_STATUS_WINDOW_OFFSET_X: f32 = -8.0;
+/// Vertical offset for the API status window from the top edge (in pixels)
+const API_STATUS_WINDOW_OFFSET_Y: f32 = 8.0;
+
 /// Main application state and logic for the Collects app.
 pub struct CollectsApp<P: PasteHandler = SystemPasteHandler, D: DropHandler = SystemDropHandler> {
     /// The application state (public for testing access).
@@ -135,7 +140,10 @@ impl<P: PasteHandler, D: DropHandler> eframe::App for CollectsApp<P, D> {
             .unwrap_or(false);
         if show_api_status {
             egui::Window::new("API Status")
-                .anchor(egui::Align2::RIGHT_TOP, egui::vec2(-8.0, 8.0))
+                .anchor(
+                    egui::Align2::RIGHT_TOP,
+                    egui::vec2(API_STATUS_WINDOW_OFFSET_X, API_STATUS_WINDOW_OFFSET_Y),
+                )
                 .collapsible(false)
                 .resizable(false)
                 .title_bar(false)

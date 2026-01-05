@@ -109,7 +109,16 @@ mod tests {
 
     #[test]
     fn test_bytes_per_pixel_zero_dimensions() {
+        // Width is 0
         let data = ImageData::new(0, 100, vec![]);
+        assert_eq!(data.bytes_per_pixel(), None);
+
+        // Height is 0
+        let data = ImageData::new(100, 0, vec![]);
+        assert_eq!(data.bytes_per_pixel(), None);
+
+        // Both are 0
+        let data = ImageData::new(0, 0, vec![]);
         assert_eq!(data.bytes_per_pixel(), None);
     }
 }

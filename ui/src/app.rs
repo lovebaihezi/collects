@@ -1,15 +1,16 @@
+#[cfg(not(any(feature = "env_internal", feature = "env_test_internal")))]
+use crate::state::AUTH_TOKEN_STORAGE_KEY;
 use crate::{
     pages,
-    state::{State, AUTH_TOKEN_STORAGE_KEY},
+    state::State,
     utils::drop_handler::{DropHandler, SystemDropHandler},
     utils::paste_handler::{PasteHandler, SystemPasteHandler},
     widgets,
 };
 use chrono::{Timelike, Utc};
-use collects_business::{
-    ApiStatus, AuthCompute, PendingTokenValidation, Route, ToggleApiStatusCommand,
-    ValidateTokenCommand,
-};
+use collects_business::{ApiStatus, AuthCompute, Route, ToggleApiStatusCommand};
+#[cfg(not(any(feature = "env_internal", feature = "env_test_internal")))]
+use collects_business::{PendingTokenValidation, ValidateTokenCommand};
 use collects_states::Time;
 
 /// Main application state and logic for the Collects app.
@@ -18,6 +19,7 @@ pub struct CollectsApp<P: PasteHandler = SystemPasteHandler, D: DropHandler = Sy
     pub state: State,
     paste_handler: P,
     /// Whether token validation has been triggered on startup.
+    #[cfg(not(any(feature = "env_internal", feature = "env_test_internal")))]
     token_validation_started: bool,
     drop_handler: D,
 }
@@ -28,6 +30,7 @@ impl CollectsApp<SystemPasteHandler, SystemDropHandler> {
         Self {
             state,
             paste_handler: SystemPasteHandler,
+            #[cfg(not(any(feature = "env_internal", feature = "env_test_internal")))]
             token_validation_started: false,
             drop_handler: SystemDropHandler,
         }
@@ -40,6 +43,7 @@ impl<P: PasteHandler, D: DropHandler> CollectsApp<P, D> {
         Self {
             state,
             paste_handler,
+            #[cfg(not(any(feature = "env_internal", feature = "env_test_internal")))]
             token_validation_started: false,
             drop_handler,
         }
@@ -150,16 +154,16 @@ impl<P: PasteHandler, D: DropHandler> eframe::App for CollectsApp<P, D> {
     }
 
     /// Called by the framework to save state before shutdown.
-    fn save(&mut self, storage: &mut dyn eframe::Storage) {
+    fn save(&mut self, _storage: &mut dyn eframe::Storage) {
         // Save the auth token to storage if authenticated
         #[cfg(not(any(feature = "env_internal", feature = "env_test_internal")))]
         if let Some(auth) = self.state.ctx.cached::<AuthCompute>() {
             if let Some(token) = auth.token() {
-                storage.set_string(AUTH_TOKEN_STORAGE_KEY, token.to_string());
+                _storage.set_string(AUTH_TOKEN_STORAGE_KEY, token.to_string());
                 log::info!("Saved auth token to storage");
             } else {
                 // Clear the stored token if not authenticated
-                storage.set_string(AUTH_TOKEN_STORAGE_KEY, String::new());
+                _storage.set_string(AUTH_TOKEN_STORAGE_KEY, String::new());
             }
         }
     }

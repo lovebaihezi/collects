@@ -417,7 +417,9 @@ impl Command for ValidateTokenCommand {
 
         // Build the request payload
         let url = format!("{}/auth/validate-token", config.api_url());
-        let body = match serde_json::to_vec(&ValidateTokenRequest { token: token.clone() }) {
+        let body = match serde_json::to_vec(&ValidateTokenRequest {
+            token: token.clone(),
+        }) {
             Ok(body) => body,
             Err(e) => {
                 error!(
@@ -457,7 +459,9 @@ impl Command for ValidateTokenCommand {
                                         });
                                     }
                                     None => {
-                                        error!("ValidateTokenCommand: token valid but username missing");
+                                        error!(
+                                            "ValidateTokenCommand: token valid but username missing"
+                                        );
                                         updater.set(AuthCompute {
                                             status: AuthStatus::NotAuthenticated,
                                         });

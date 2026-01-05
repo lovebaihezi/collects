@@ -62,13 +62,13 @@ impl Default for State {
             // Cloudflare Access token (manual input) + compute cache
             ctx.add_state(CFTokenInput::default());
             ctx.record_compute(CFTokenCompute::default());
-            ctx.record_command(SetCFTokenCommand::default());
+            ctx.record_command(SetCFTokenCommand);
 
             // Create user flow
             ctx.add_state(CreateUserInput::default());
             ctx.record_compute(InternalApiStatus::default());
             ctx.record_compute(CreateUserCompute::default());
-            ctx.record_command(CreateUserCommand::default());
+            ctx.record_command(CreateUserCommand);
 
             // Internal users state
             ctx.add_state(InternalUsersState::new());
@@ -112,13 +112,13 @@ impl State {
             // Cloudflare Access token (manual input) + compute cache
             ctx.add_state(CFTokenInput::default());
             ctx.record_compute(CFTokenCompute::default());
-            ctx.record_command(SetCFTokenCommand::default());
+            ctx.record_command(SetCFTokenCommand);
 
             // Create user flow
             ctx.add_state(CreateUserInput::default());
             ctx.record_compute(InternalApiStatus::default());
             ctx.record_compute(CreateUserCompute::default());
-            ctx.record_command(CreateUserCommand::default());
+            ctx.record_command(CreateUserCommand);
 
             // Internal users state
             ctx.add_state(InternalUsersState::new());

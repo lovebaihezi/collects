@@ -214,7 +214,7 @@ where
 {
     Router::new()
         .route("/verify-otp", post(verify_otp_handler::<S, U>))
-        .route("/validate-token", post(validate_token_handler::<S, U>))
+        .route("/validate-token", post(validate_token_handler))
 }
 
 /// Handler for creating a new user with OTP authentication.
@@ -564,14 +564,10 @@ where
 /// }
 /// ```
 #[tracing::instrument(skip_all)]
-async fn validate_token_handler<S, U>(
+async fn validate_token_handler(
     axum::extract::Extension(config): axum::extract::Extension<Config>,
     Json(payload): Json<ValidateTokenRequest>,
-) -> impl IntoResponse
-where
-    S: SqlStorage,
-    U: UserStorage,
-{
+) -> impl IntoResponse {
     tracing::info!("Validating session token");
 
     if payload.token.trim().is_empty() {

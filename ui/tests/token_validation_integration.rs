@@ -10,9 +10,7 @@
 
 mod common;
 
-use collects_business::{
-    AuthCompute, AuthStatus, PendingTokenValidation, ValidateTokenCommand,
-};
+use collects_business::{AuthCompute, AuthStatus, PendingTokenValidation, ValidateTokenCommand};
 use collects_ui::state::State;
 use egui_kittest::Harness;
 use wiremock::matchers::{body_json, method, path};
@@ -75,7 +73,10 @@ async fn test_validate_token_success() {
         // Just a placeholder UI for testing
         if let Some(auth) = state.ctx.cached::<AuthCompute>() {
             if auth.is_authenticated() {
-                ui.label(format!("Authenticated as: {}", auth.username().unwrap_or("unknown")));
+                ui.label(format!(
+                    "Authenticated as: {}",
+                    auth.username().unwrap_or("unknown")
+                ));
             } else {
                 ui.label("Not authenticated");
             }

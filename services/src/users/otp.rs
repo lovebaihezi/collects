@@ -3,7 +3,9 @@
 //! This module provides TOTP (Time-based One-Time Password) functionality
 //! for user authentication using Google Authenticator or similar apps.
 
-use jsonwebtoken::{Algorithm as JwtAlgorithm, DecodingKey, EncodingKey, Header, Validation, decode, encode};
+use jsonwebtoken::{
+    Algorithm as JwtAlgorithm, DecodingKey, EncodingKey, Header, Validation, decode, encode,
+};
 use serde::{Deserialize, Serialize};
 use totp_rs::{Algorithm, Secret, TOTP};
 
@@ -522,11 +524,7 @@ mod tests {
         let token_str = token.expect("Should have token");
         assert!(!token_str.is_empty(), "Token should not be empty");
         // JWT tokens have 3 parts separated by dots
-        assert_eq!(
-            token_str.matches('.').count(),
-            2,
-            "JWT should have 3 parts"
-        );
+        assert_eq!(token_str.matches('.').count(), 2, "JWT should have 3 parts");
     }
 
     #[test]

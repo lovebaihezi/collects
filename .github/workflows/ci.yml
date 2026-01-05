@@ -282,8 +282,13 @@ jobs:
       - name: Cache Rust dependencies
         uses: swatinem/rust-cache@v2
 
-      - name: Run Tests
-        run: just ui::test
+      - name: Run Non-Internal Tests
+        working-directory: ui
+        run: cargo test
+
+      - name: Run Internal Tests (all features)
+        working-directory: ui
+        run: cargo test --all-features
 
       - name: Post CI Feedback on Failure
         if: failure() && github.event_name == 'pull_request'

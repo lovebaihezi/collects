@@ -7,6 +7,10 @@ pub mod utils;
 pub mod widgets;
 
 pub use app::CollectsApp;
+#[cfg(not(target_arch = "wasm32"))]
+pub use utils::paste_handler::{GenericPasteHandler, PasteHandler, SystemPasteHandler};
+#[cfg(target_arch = "wasm32")]
+pub use utils::paste_handler::{PasteHandler, SystemPasteHandler};
 
 // TODO: share test utils with integration tests
 #[cfg(test)]

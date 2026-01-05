@@ -26,6 +26,26 @@ test-all log_level="DEBUG":
     @echo "Running tests with all features (includes internal)..."
     RUST_LOG={{log_level}} cargo test --all-features
 
+# Run e2e tests for non-internal builds (login happy path)
+# Requires E2E_TEST_USERNAME and E2E_TEST_OTP_SECRET environment variables
+# for full login flow testing
+e2e-test log_level="DEBUG":
+    @echo "Running e2e tests for non-internal builds..."
+    RUST_LOG={{log_level}} cargo test --test e2e_login_happy_path --features env_test -- --nocapture
+
+# Run e2e tests for internal builds (user management)
+e2e-test-internal log_level="DEBUG":
+    @echo "Running e2e tests for internal builds..."
+    RUST_LOG={{log_level}} cargo test --test e2e_internal_happy_path --features env_test_internal -- --nocapture
+
+# Run all e2e tests (both normal and internal)
+e2e-test-all log_level="DEBUG":
+    @echo "Running e2e tests for non-internal builds..."
+    RUST_LOG={{log_level}} cargo test --test e2e_login_happy_path --features env_test -- --nocapture
+    @echo ""
+    @echo "Running e2e tests for internal builds..."
+    RUST_LOG={{log_level}} cargo test --test e2e_internal_happy_path --features env_test_internal -- --nocapture
+
 lint:
     cargo clippy
     trunk fmt --check

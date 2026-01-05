@@ -46,6 +46,7 @@ kittest = "0.3"
 wiremock = "0.6"
 egui_kittest = { version = "0.33", features = ["snapshot", "eframe"] }
 tokio = { workspace = true, features = ["full", "test-util"] }
+env_logger = "0.11.8"
 
 [build-dependencies]
 ico = "0.3"
@@ -58,3 +59,12 @@ env_test_internal = ["collects-business/env_test_internal"]
 env_internal = ["collects-business/env_internal"]
 env_nightly = ["collects-business/env_nightly"]
 env_pr = ["collects-business/env_pr"]
+
+# E2E test binaries
+[[test]]
+name = "e2e_login_happy_path"
+path = "e2e_tests/e2e_login_happy_path.rs"
+
+[[test]]
+name = "e2e_internal_happy_path"
+path = "e2e_tests/e2e_internal_happy_path.rs"

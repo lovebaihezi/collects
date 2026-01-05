@@ -15,7 +15,7 @@
 //! - `DropHandler` trait: Generic interface for handling dropped files
 //! - `SystemDropHandler`: Production implementation using egui's input events
 
-use super::clipboard::ClipboardImage;
+use super::image_data::ImageData;
 
 /// Trait for handling dropped files, enabling mock implementations for testing.
 ///
@@ -30,8 +30,8 @@ pub trait DropHandler {
     ///
     /// # Returns
     ///
-    /// The dropped `ClipboardImage` (using same struct for consistency) if one was found.
-    fn handle_drop(&self, ctx: &egui::Context) -> Option<ClipboardImage>;
+    /// The dropped `ImageData` if an image file was found.
+    fn handle_drop(&self, ctx: &egui::Context) -> Option<ImageData>;
 }
 
 /// Default drop handler using system drag-and-drop events.
@@ -39,7 +39,7 @@ pub trait DropHandler {
 pub struct SystemDropHandler;
 
 impl DropHandler for SystemDropHandler {
-    fn handle_drop(&self, ctx: &egui::Context) -> Option<ClipboardImage> {
+    fn handle_drop(&self, ctx: &egui::Context) -> Option<ImageData> {
         handle_dropped_files(ctx)
     }
 }
@@ -55,9 +55,9 @@ impl DropHandler for SystemDropHandler {
 ///
 /// # Returns
 ///
-/// The dropped `ClipboardImage` if an image file was successfully loaded.
+/// The dropped `ImageData` if an image file was successfully loaded.
 #[cfg(not(target_arch = "wasm32"))]
-pub fn handle_dropped_files(ctx: &egui::Context) -> Option<ClipboardImage> {
+pub fn handle_dropped_files(ctx: &egui::Context) -> Option<ImageData> {
     let dropped_files = ctx.input(|i| i.raw.dropped_files.clone());
 
     if dropped_files.is_empty() {
@@ -82,9 +82,9 @@ pub fn handle_dropped_files(ctx: &egui::Context) -> Option<ClipboardImage> {
 ///
 /// # Returns
 ///
-/// The `ClipboardImage` if the file is a valid image.
+/// The `ImageData` if the file is a valid image.
 #[cfg(not(target_arch = "wasm32"))]
-fn load_image_from_dropped_file(file: &egui::DroppedFile) -> Option<ClipboardImage> {
+fn load_image_from_dropped_file(file: &egui::DroppedFile) -> Option<ImageData> {
     // Try to load from file path (native platforms)
     if let Some(path) = &file.path {
         return load_image_from_path(path);
@@ -107,9 +107,9 @@ fn load_image_from_dropped_file(file: &egui::DroppedFile) -> Option<ClipboardIma
 ///
 /// # Returns
 ///
-/// The `ClipboardImage` if the file is a valid image.
+/// The `ImageData` if the file is a valid image.
 #[cfg(not(target_arch = "wasm32"))]
-fn load_image_from_path(path: &std::path::Path) -> Option<ClipboardImage> {
+fn load_image_from_path(path: &std::path::Path) -> Option<ImageData> {
     use std::fs;
 
     // Read file contents
@@ -132,9 +132,9 @@ fn load_image_from_path(path: &std::path::Path) -> Option<ClipboardImage> {
 ///
 /// # Returns
 ///
-/// The `ClipboardImage` if the bytes represent a valid image.
+/// The `ImageData` if the bytes represent a valid image.
 #[cfg(not(target_arch = "wasm32"))]
-fn load_image_from_bytes(bytes: &[u8]) -> Option<ClipboardImage> {
+fn load_image_from_bytes(bytes: &[u8]) -> Option<ImageData> {
     use image::GenericImageView;
 
     // Try to decode the image
@@ -157,11 +157,7 @@ fn load_image_from_bytes(bytes: &[u8]) -> Option<ClipboardImage> {
         rgba_bytes.len()
     );
 
-    Some(ClipboardImage {
-        width: width as usize,
-        height: height as usize,
-        bytes: rgba_bytes,
-    })
+    Some(ImageData::new(width as usize, height as usize, rgba_bytes))
 }
 
 /// Stub implementation for WASM target.
@@ -169,7 +165,7 @@ fn load_image_from_bytes(bytes: &[u8]) -> Option<ClipboardImage> {
 /// Web drag-and-drop support may work via the browser's drag-and-drop API,
 /// but image decoding requires additional handling.
 #[cfg(target_arch = "wasm32")]
-pub fn handle_dropped_files(_ctx: &egui::Context) -> Option<ClipboardImage> {
+pub fn handle_dropped_files(_ctx: &egui::Context) -> Option<ImageData> {
     // Web drag-and-drop image support requires:
     // 1. Browser drag-and-drop API integration
     // 2. Image decoding via web-sys or a WASM-compatible image library
@@ -185,18 +181,18 @@ mod tests {
     struct MockDropHandlerEmpty;
 
     impl DropHandler for MockDropHandlerEmpty {
-        fn handle_drop(&self, _ctx: &egui::Context) -> Option<ClipboardImage> {
+        fn handle_drop(&self, _ctx: &egui::Context) -> Option<ImageData> {
             None
         }
     }
 
     /// Mock drop handler that returns a predefined image
     struct MockDropHandlerWithImage {
-        image: ClipboardImage,
+        image: ImageData,
     }
 
     impl DropHandler for MockDropHandlerWithImage {
-        fn handle_drop(&self, _ctx: &egui::Context) -> Option<ClipboardImage> {
+        fn handle_drop(&self, _ctx: &egui::Context) -> Option<ImageData> {
             Some(self.image.clone())
         }
     }
@@ -211,11 +207,7 @@ mod tests {
     #[test]
     fn test_mock_drop_handler_with_image() {
         let handler = MockDropHandlerWithImage {
-            image: ClipboardImage {
-                width: 100,
-                height: 100,
-                bytes: vec![255u8; 100 * 100 * 4],
-            },
+            image: ImageData::new(100, 100, vec![255u8; 100 * 100 * 4]),
         };
         let ctx = egui::Context::default();
         let result = handler.handle_drop(&ctx);

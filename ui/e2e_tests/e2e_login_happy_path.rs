@@ -68,7 +68,7 @@ fn generate_otp_code(secret_base32: &str) -> Option<String> {
 #[test]
 fn test_login_happy_path_e2e() {
     let username = get_test_username();
-    let otp_code = match get_valid_otp_code() {
+    let _otp_code = match get_valid_otp_code() {
         Some(code) => code,
         None => {
             log::info!(
@@ -120,9 +120,6 @@ fn test_login_happy_path_e2e() {
         "E2E login test: Would log in as '{}' (OTP code generated successfully)",
         username
     );
-
-    // Suppress unused variable warning for otp_code
-    let _ = otp_code;
 }
 
 /// E2E test: Verify the login form has correct structure.

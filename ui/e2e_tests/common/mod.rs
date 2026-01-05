@@ -23,7 +23,6 @@ impl<'a> E2eTestCtx<'a> {
     /// - `env_test_internal` -> https://collects-test-internal.lqxclqxc.com
     ///
     /// For e2e tests, we typically use the `env_test` or `env_test_internal` environments.
-    #[allow(unused)]
     pub fn new_app() -> Self {
         let _ = env_logger::builder().is_test(true).try_init();
 
@@ -49,7 +48,6 @@ impl<'a> E2eTestCtx<'a> {
     }
 
     /// Gets a mutable reference to the test harness.
-    #[allow(unused)]
     pub fn harness_mut(&mut self) -> &mut Harness<'a, CollectsApp> {
         &mut self.harness
     }

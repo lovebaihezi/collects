@@ -1,3 +1,5 @@
+#[cfg(not(any(feature = "env_internal", feature = "env_test_internal")))]
+use crate::state::AUTH_TOKEN_STORAGE_KEY;
 use crate::{
     pages,
     state::State,
@@ -7,6 +9,8 @@ use crate::{
 };
 use chrono::{Timelike, Utc};
 use collects_business::{ApiStatus, AuthCompute, Route, ToggleApiStatusCommand};
+#[cfg(not(any(feature = "env_internal", feature = "env_test_internal")))]
+use collects_business::{PendingTokenValidation, ValidateTokenCommand};
 use collects_states::Time;
 
 /// Main application state and logic for the Collects app.
@@ -14,6 +18,9 @@ pub struct CollectsApp<P: PasteHandler = SystemPasteHandler, D: DropHandler = Sy
     /// The application state (public for testing access).
     pub state: State,
     paste_handler: P,
+    /// Whether token validation has been triggered on startup.
+    #[cfg(not(any(feature = "env_internal", feature = "env_test_internal")))]
+    token_validation_started: bool,
     drop_handler: D,
 }
 
@@ -23,6 +30,8 @@ impl CollectsApp<SystemPasteHandler, SystemDropHandler> {
         Self {
             state,
             paste_handler: SystemPasteHandler,
+            #[cfg(not(any(feature = "env_internal", feature = "env_test_internal")))]
+            token_validation_started: false,
             drop_handler: SystemDropHandler,
         }
     }
@@ -34,6 +43,8 @@ impl<P: PasteHandler, D: DropHandler> CollectsApp<P, D> {
         Self {
             state,
             paste_handler,
+            #[cfg(not(any(feature = "env_internal", feature = "env_test_internal")))]
+            token_validation_started: false,
             drop_handler,
         }
     }
@@ -42,6 +53,25 @@ impl<P: PasteHandler, D: DropHandler> CollectsApp<P, D> {
 impl<P: PasteHandler, D: DropHandler> eframe::App for CollectsApp<P, D> {
     /// Called each time the UI needs repainting, which may be many times per second.
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // On first frame (for non-internal builds), try to restore auth from storage
+        #[cfg(not(any(feature = "env_internal", feature = "env_test_internal")))]
+        if !self.token_validation_started {
+            self.token_validation_started = true;
+            // Try to load token from storage and validate it
+            if let Some(storage) = _frame.storage()
+                && let Some(token) = storage.get_string(AUTH_TOKEN_STORAGE_KEY)
+                && !token.is_empty()
+            {
+                log::info!("Found stored auth token, validating...");
+                // Set the pending token for validation
+                self.state.ctx.update::<PendingTokenValidation>(|pending| {
+                    pending.token = Some(token);
+                });
+                // Dispatch token validation command
+                self.state.ctx.dispatch::<ValidateTokenCommand>();
+            }
+        }
+
         // Handle paste shortcut (Ctrl+V / Cmd+V) for clipboard image
         // If an image was pasted, replace the current displayed image
         if let Some(clipboard_image) = self.paste_handler.handle_paste(ctx) {
@@ -120,6 +150,21 @@ impl<P: PasteHandler, D: DropHandler> eframe::App for CollectsApp<P, D> {
 
         // Run background jobs
         self.state.ctx.run_all_dirty();
+    }
+
+    /// Called by the framework to save state before shutdown.
+    fn save(&mut self, _storage: &mut dyn eframe::Storage) {
+        // Save the auth token to storage if authenticated
+        #[cfg(not(any(feature = "env_internal", feature = "env_test_internal")))]
+        if let Some(auth) = self.state.ctx.cached::<AuthCompute>() {
+            if let Some(token) = auth.token() {
+                _storage.set_string(AUTH_TOKEN_STORAGE_KEY, token.to_string());
+                log::info!("Saved auth token to storage");
+            } else {
+                // Clear the stored token if not authenticated
+                _storage.set_string(AUTH_TOKEN_STORAGE_KEY, String::new());
+            }
+        }
     }
 }
 

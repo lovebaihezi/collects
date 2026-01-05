@@ -11,6 +11,7 @@ pub struct TestCtx<'a, T = State> {
 }
 
 impl<'a, T> TestCtx<'a, T> {
+    #[allow(unused)]
     pub fn harness_mut(&mut self) -> &mut Harness<'a, T> {
         &mut self.harness
     }
@@ -36,6 +37,7 @@ impl<'a> TestCtx<'a, State> {
 }
 
 impl<'a> TestCtx<'a, CollectsApp> {
+    #[allow(unused)]
     pub async fn new_app() -> Self {
         let (mock_server, state) = setup_test_state().await;
         let app = CollectsApp::new(state);

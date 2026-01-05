@@ -37,10 +37,12 @@ use axum::{
 use serde::{Deserialize, Serialize};
 
 use super::otp::{
-    CreateUserRequest, CreateUserResponse, OtpError, VerifyOtpRequest, VerifyOtpResponse,
-    generate_current_otp_with_time, generate_otp_secret, verify_otp,
+    CreateUserRequest, CreateUserResponse, OtpError, ValidateTokenRequest, ValidateTokenResponse,
+    VerifyOtpRequest, VerifyOtpResponse, generate_current_otp_with_time, generate_otp_secret,
+    generate_session_token, validate_session_token, verify_otp,
 };
 use super::storage::{UserStorage, UserStorageError};
+use crate::config::Config;
 use crate::database::SqlStorage;
 
 /// Response for listing users with their current OTP codes.
@@ -122,6 +124,7 @@ impl From<OtpError> for (StatusCode, Json<ErrorResponse>) {
         let (status, error_type) = match &err {
             OtpError::InvalidUsername(_) => (StatusCode::BAD_REQUEST, "invalid_username"),
             OtpError::InvalidCode => (StatusCode::UNAUTHORIZED, "invalid_code"),
+            OtpError::TokenValidation(_) => (StatusCode::UNAUTHORIZED, "token_validation_error"),
             OtpError::SecretGeneration(_) | OtpError::TotpCreation(_) => {
                 (StatusCode::INTERNAL_SERVER_ERROR, "internal_error")
             }
@@ -209,7 +212,9 @@ where
     S: SqlStorage + Clone + Send + Sync + 'static,
     U: UserStorage + Clone + Send + Sync + 'static,
 {
-    Router::new().route("/verify-otp", post(verify_otp_handler::<S, U>))
+    Router::new()
+        .route("/verify-otp", post(verify_otp_handler::<S, U>))
+        .route("/validate-token", post(validate_token_handler))
 }
 
 /// Handler for creating a new user with OTP authentication.
@@ -395,12 +400,14 @@ where
 ///
 /// ```json
 /// {
-///     "valid": true
+///     "valid": true,
+///     "token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9..."
 /// }
 /// ```
 #[tracing::instrument(skip_all, fields(username = %payload.username))]
 async fn verify_otp_handler<S, U>(
     State(state): State<AppState<S, U>>,
+    axum::extract::Extension(config): axum::extract::Extension<Config>,
     Json(payload): Json<VerifyOtpRequest>,
 ) -> impl IntoResponse
 where
@@ -416,6 +423,7 @@ where
             Json(VerifyOtpResponse {
                 valid: false,
                 message: Some("Username cannot be empty".to_string()),
+                token: None,
             }),
         )
             .into_response();
@@ -431,6 +439,7 @@ where
             Json(VerifyOtpResponse {
                 valid: false,
                 message: Some("Invalid OTP code format. Code must be 6 digits.".to_string()),
+                token: None,
             }),
         )
             .into_response();
@@ -446,6 +455,7 @@ where
                 Json(VerifyOtpResponse {
                     valid: false,
                     message: Some("Invalid username or code".to_string()),
+                    token: None,
                 }),
             )
                 .into_response();
@@ -457,6 +467,7 @@ where
                 Json(VerifyOtpResponse {
                     valid: false,
                     message: Some("Internal server error".to_string()),
+                    token: None,
                 }),
             )
                 .into_response();
@@ -467,11 +478,28 @@ where
     match verify_otp(&secret, &payload.code) {
         Ok(true) => {
             tracing::info!("OTP verification successful");
+            // Generate session token for the authenticated user
+            let token = match generate_session_token(&payload.username, config.jwt_secret()) {
+                Ok(t) => Some(t),
+                Err(e) => {
+                    tracing::error!("Failed to generate session token: {}", e);
+                    return (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(VerifyOtpResponse {
+                            valid: false,
+                            message: Some("Failed to generate session token".to_string()),
+                            token: None,
+                        }),
+                    )
+                        .into_response();
+                }
+            };
             (
                 StatusCode::OK,
                 Json(VerifyOtpResponse {
                     valid: true,
                     message: None,
+                    token,
                 }),
             )
                 .into_response()
@@ -483,6 +511,7 @@ where
                 Json(VerifyOtpResponse {
                     valid: false,
                     message: Some("Invalid username or code".to_string()),
+                    token: None,
                 }),
             )
                 .into_response()
@@ -494,6 +523,86 @@ where
                 Json(VerifyOtpResponse {
                     valid: false,
                     message: Some("Internal server error".to_string()),
+                    token: None,
+                }),
+            )
+                .into_response()
+        }
+    }
+}
+
+/// Handler for validating a session token.
+///
+/// This endpoint validates a JWT session token and returns the username if valid.
+/// It's used to restore authentication state on app startup.
+///
+/// # Request
+///
+/// POST /auth/validate-token
+///
+/// ```json
+/// {
+///     "token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9..."
+/// }
+/// ```
+///
+/// # Response
+///
+/// Success:
+/// ```json
+/// {
+///     "valid": true,
+///     "username": "john_doe"
+/// }
+/// ```
+///
+/// Invalid token:
+/// ```json
+/// {
+///     "valid": false,
+///     "message": "Token expired"
+/// }
+/// ```
+#[tracing::instrument(skip_all)]
+async fn validate_token_handler(
+    axum::extract::Extension(config): axum::extract::Extension<Config>,
+    Json(payload): Json<ValidateTokenRequest>,
+) -> impl IntoResponse {
+    tracing::info!("Validating session token");
+
+    if payload.token.trim().is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(ValidateTokenResponse {
+                valid: false,
+                username: None,
+                message: Some("Token cannot be empty".to_string()),
+            }),
+        )
+            .into_response();
+    }
+
+    match validate_session_token(&payload.token, config.jwt_secret()) {
+        Ok(username) => {
+            tracing::info!("Token validated successfully for user: {}", username);
+            (
+                StatusCode::OK,
+                Json(ValidateTokenResponse {
+                    valid: true,
+                    username: Some(username),
+                    message: None,
+                }),
+            )
+                .into_response()
+        }
+        Err(e) => {
+            tracing::warn!("Token validation failed: {}", e);
+            (
+                StatusCode::UNAUTHORIZED,
+                Json(ValidateTokenResponse {
+                    valid: false,
+                    username: None,
+                    message: Some("Invalid or expired token".to_string()),
                 }),
             )
                 .into_response()
@@ -824,6 +933,7 @@ mod tests {
         let sql_storage = MockSqlStorage { is_connected: true };
         let user_storage = MockUserStorage::new();
         let state = AppState::new(sql_storage, user_storage);
+        let config = Config::new_for_test();
 
         Router::new()
             .nest(
@@ -831,6 +941,7 @@ mod tests {
                 internal_routes::<MockSqlStorage, MockUserStorage>(),
             )
             .nest("/auth", auth_routes::<MockSqlStorage, MockUserStorage>())
+            .layer(axum::extract::Extension(config))
             .with_state(state)
     }
 
@@ -838,6 +949,7 @@ mod tests {
         let sql_storage = MockSqlStorage { is_connected: true };
         let user_storage = MockUserStorage::with_users(users);
         let state = AppState::new(sql_storage, user_storage);
+        let config = Config::new_for_test();
 
         Router::new()
             .nest(
@@ -845,6 +957,7 @@ mod tests {
                 internal_routes::<MockSqlStorage, MockUserStorage>(),
             )
             .nest("/auth", auth_routes::<MockSqlStorage, MockUserStorage>())
+            .layer(axum::extract::Extension(config))
             .with_state(state)
     }
 
@@ -1028,6 +1141,7 @@ mod tests {
         // Create a user and get their secret
         let sql_storage = MockSqlStorage { is_connected: true };
         let user_storage = MockUserStorage::new();
+        let config = Config::new_for_test();
 
         // First create a user to get a valid secret
         let (secret, _) = generate_otp_secret("testuser").expect("Should generate secret");
@@ -1043,6 +1157,7 @@ mod tests {
 
         let app = Router::new()
             .nest("/auth", auth_routes::<MockSqlStorage, MockUserStorage>())
+            .layer(axum::extract::Extension(config))
             .with_state(state);
 
         let request = Request::builder()
@@ -1067,6 +1182,10 @@ mod tests {
             serde_json::from_slice(&body).expect("Failed to parse response");
 
         assert!(response.valid);
+        assert!(
+            response.token.is_some(),
+            "Should return a session token on successful login"
+        );
     }
 
     #[tokio::test]
@@ -1074,6 +1193,7 @@ mod tests {
         // Create a user with a known secret
         let sql_storage = MockSqlStorage { is_connected: true };
         let user_storage = MockUserStorage::new();
+        let config = Config::new_for_test();
 
         let (secret, _) = generate_otp_secret("testuser").expect("Should generate secret");
         user_storage
@@ -1085,6 +1205,7 @@ mod tests {
 
         let app = Router::new()
             .nest("/auth", auth_routes::<MockSqlStorage, MockUserStorage>())
+            .layer(axum::extract::Extension(config))
             .with_state(state);
 
         // Use an invalid code (all zeros is statistically almost never valid)
@@ -1107,6 +1228,7 @@ mod tests {
 
         let sql_storage = MockSqlStorage { is_connected: true };
         let user_storage = MockUserStorage::new();
+        let config = Config::new_for_test();
         let state = AppState::new(sql_storage, user_storage.clone());
 
         let app = Router::new()
@@ -1115,6 +1237,7 @@ mod tests {
                 internal_routes::<MockSqlStorage, MockUserStorage>(),
             )
             .nest("/auth", auth_routes::<MockSqlStorage, MockUserStorage>())
+            .layer(axum::extract::Extension(config))
             .with_state(state);
 
         // Step 1: Create a user
@@ -1562,6 +1685,7 @@ mod tests {
 
         let sql_storage = MockSqlStorage { is_connected: true };
         let user_storage = MockUserStorage::new();
+        let config = Config::new_for_test();
         let state = AppState::new(sql_storage, user_storage.clone());
 
         let app = Router::new()
@@ -1570,6 +1694,7 @@ mod tests {
                 internal_routes::<MockSqlStorage, MockUserStorage>(),
             )
             .nest("/auth", auth_routes::<MockSqlStorage, MockUserStorage>())
+            .layer(axum::extract::Extension(config))
             .with_state(state);
 
         // Step 1: Create a user
@@ -1722,5 +1847,93 @@ mod tests {
             .expect("Failed to get response");
 
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_validate_token_valid() {
+        let app = create_test_app();
+        let config = Config::new_for_test();
+
+        // Generate a valid token
+        let token =
+            generate_session_token("testuser", config.jwt_secret()).expect("Should generate token");
+
+        let request = Request::builder()
+            .method("POST")
+            .uri("/auth/validate-token")
+            .header("content-type", "application/json")
+            .body(Body::from(format!(r#"{{"token": "{}"}}"#, token)))
+            .expect("Failed to create request");
+
+        let response = app.oneshot(request).await.expect("Failed to get response");
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("Failed to read body");
+
+        let response: ValidateTokenResponse =
+            serde_json::from_slice(&body).expect("Failed to parse response");
+
+        assert!(response.valid, "Token should be valid");
+        assert_eq!(
+            response.username,
+            Some("testuser".to_string()),
+            "Should return username"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_validate_token_invalid() {
+        let app = create_test_app();
+
+        let request = Request::builder()
+            .method("POST")
+            .uri("/auth/validate-token")
+            .header("content-type", "application/json")
+            .body(Body::from(r#"{"token": "invalid.token.here"}"#))
+            .expect("Failed to create request");
+
+        let response = app.oneshot(request).await.expect("Failed to get response");
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("Failed to read body");
+
+        let response: ValidateTokenResponse =
+            serde_json::from_slice(&body).expect("Failed to parse response");
+
+        assert!(!response.valid, "Token should be invalid");
+        assert!(response.username.is_none(), "Should not return username");
+        assert!(response.message.is_some(), "Should return error message");
+    }
+
+    #[tokio::test]
+    async fn test_validate_token_empty() {
+        let app = create_test_app();
+
+        let request = Request::builder()
+            .method("POST")
+            .uri("/auth/validate-token")
+            .header("content-type", "application/json")
+            .body(Body::from(r#"{"token": ""}"#))
+            .expect("Failed to create request");
+
+        let response = app.oneshot(request).await.expect("Failed to get response");
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("Failed to read body");
+
+        let response: ValidateTokenResponse =
+            serde_json::from_slice(&body).expect("Failed to parse response");
+
+        assert!(!response.valid, "Token should be invalid");
+        assert!(response.message.is_some(), "Should return error message");
     }
 }

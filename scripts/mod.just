@@ -60,3 +60,10 @@ ci-feedback: install
 #   - DRY_RUN: Set to "true" for preview mode
 artifact-cleanup: install
     bun run main.ts artifact-cleanup
+
+# Check Docker images in Artifact Registry and verify cleanup status
+# Environment variables:
+#   - GCP_PROJECT_ID: Google Cloud Project ID (optional)
+# Usage: just scripts::artifact-check
+artifact-check: install
+    bun run main.ts artifact-check

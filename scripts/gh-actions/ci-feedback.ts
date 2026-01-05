@@ -51,44 +51,76 @@ export function stripAnsiCodes(text: string): string {
 
 /**
  * Extract relevant error lines from job logs
+ *
+ * Prioritizes errors from the end of the log, as those are typically
+ * the actual failure causes. The function:
+ * 1. Scans the log from the end to find error blocks
+ * 2. Includes context lines around each error
+ * 3. Returns the most relevant errors (those closest to the end of the log)
  */
 export function extractErrorLines(logs: string): string {
   // Strip ANSI escape codes first to get clean log lines
   const cleanLogs = stripAnsiCodes(logs);
   const logLines = cleanLogs.split("\n");
-  const seenLines = new Set<string>();
-  const errorLines: string[] = [];
-  const relevantPatterns = [
+
+  // Patterns for error detection - includes common build/test failure indicators
+  // More specific patterns are checked first (higher priority)
+  const errorPatterns = [
+    // Rust-specific errors (high priority)
+    /error\[E\d+\]/i, // Rust compiler errors like error[E0433]
+    /panicked at/i, // Rust panic messages
+    /thread .+ panicked/i, // Thread panic
+    // General errors (medium priority)
+    /^error:/i, // Lines starting with "error:"
+    /^error\s/i, // Lines starting with "error "
+    /:\s*error:/i, // "file.rs: error:" style
+    /FAILED/i, // Test failures
+    /FAILURE/i, // General failures
+    // Lower priority patterns
     /error/i,
     /failed/i,
-    /failure/i,
     /exception/i,
     /panic/i,
   ];
 
-  // Get lines around errors
-  for (let i = 0; i < logLines.length; i++) {
+  // Find all error line indices, prioritizing from the end
+  const errorIndices: number[] = [];
+  for (let i = logLines.length - 1; i >= 0; i--) {
     const line = logLines[i];
-    if (relevantPatterns.some((pattern) => pattern.test(line))) {
-      // Add context: 2 lines before and 2 lines after
-      const start = Math.max(0, i - 2);
-      const end = Math.min(logLines.length, i + 3);
-      for (let j = start; j < end; j++) {
-        if (!seenLines.has(logLines[j])) {
-          seenLines.add(logLines[j]);
-          errorLines.push(logLines[j]);
-        }
-      }
+    if (errorPatterns.some((pattern) => pattern.test(line))) {
+      errorIndices.push(i);
     }
   }
 
-  // If no specific errors found, get last 30 lines
-  if (errorLines.length === 0) {
+  // If no errors found, return last 30 lines
+  if (errorIndices.length === 0) {
     return logLines.slice(-30).join("\n");
   }
 
+  // Build error blocks with context, prioritizing errors from the end
+  // Use a Set to track included line indices to preserve order and avoid duplicates
+  const includedIndices = new Set<number>();
+  const targetLineCount = 50;
+
+  // Process errors from end to beginning (errorIndices is already reverse order)
+  for (const errorIdx of errorIndices) {
+    if (includedIndices.size >= targetLineCount) break;
+
+    // Add context: 3 lines before and 3 lines after for better context
+    const start = Math.max(0, errorIdx - 3);
+    const end = Math.min(logLines.length, errorIdx + 4);
+
+    for (let j = start; j < end; j++) {
+      includedIndices.add(j);
+    }
+  }
+
+  // Convert to sorted array and extract lines (preserves original order)
+  const sortedIndices = Array.from(includedIndices).sort((a, b) => a - b);
+  const resultLines = sortedIndices.map((i) => logLines[i]);
+
   // Limit to 50 lines to avoid huge comments
-  return errorLines.slice(0, 50).join("\n");
+  return resultLines.slice(0, 50).join("\n");
 }
 
 /**
@@ -160,7 +192,7 @@ export function buildCommentBody(
   for (const summary of jobsToReport) {
     const failureCount = (jobFailureCounts[summary.name] || 0) + 1;
     commentBody += `### ❌ Job: \`${summary.name}\`\n\n`;
-    commentBody += `**Failure #${failureCount}/3** | [View Full Logs](${summary.url})\n\n`;
+    commentBody += `**Attempt ${failureCount} of 3** | [View Full Logs](${summary.url})\n\n`;
     commentBody += `<details>\n<summary>Error Summary</summary>\n\n`;
     commentBody += `\`\`\`\n${summary.logs}\n\`\`\`\n\n`;
     commentBody += `</details>\n\n`;

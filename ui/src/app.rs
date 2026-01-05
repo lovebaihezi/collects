@@ -1,43 +1,77 @@
+#[cfg(not(any(feature = "env_internal", feature = "env_test_internal")))]
+use crate::state::AUTH_TOKEN_STORAGE_KEY;
 use crate::{
     pages,
     state::State,
+    utils::drop_handler::{DropHandler, SystemDropHandler},
     utils::paste_handler::{PasteHandler, SystemPasteHandler},
     widgets,
 };
 use chrono::{Timelike, Utc};
 use collects_business::{ApiStatus, AuthCompute, Route, ToggleApiStatusCommand};
+#[cfg(not(any(feature = "env_internal", feature = "env_test_internal")))]
+use collects_business::{PendingTokenValidation, ValidateTokenCommand};
 use collects_states::Time;
 
 /// Main application state and logic for the Collects app.
-pub struct CollectsApp<P: PasteHandler = SystemPasteHandler> {
+pub struct CollectsApp<P: PasteHandler = SystemPasteHandler, D: DropHandler = SystemDropHandler> {
     /// The application state (public for testing access).
     pub state: State,
     paste_handler: P,
+    /// Whether token validation has been triggered on startup.
+    #[cfg(not(any(feature = "env_internal", feature = "env_test_internal")))]
+    token_validation_started: bool,
+    drop_handler: D,
 }
 
-impl CollectsApp<SystemPasteHandler> {
+impl CollectsApp<SystemPasteHandler, SystemDropHandler> {
     /// Called once before the first frame.
     pub fn new(state: State) -> Self {
         Self {
             state,
             paste_handler: SystemPasteHandler,
+            #[cfg(not(any(feature = "env_internal", feature = "env_test_internal")))]
+            token_validation_started: false,
+            drop_handler: SystemDropHandler,
         }
     }
 }
 
-impl<P: PasteHandler> CollectsApp<P> {
-    /// Create a new app with a custom paste handler (for testing).
-    pub fn with_paste_handler(state: State, paste_handler: P) -> Self {
+impl<P: PasteHandler, D: DropHandler> CollectsApp<P, D> {
+    /// Create a new app with custom paste and drop handlers (for testing).
+    pub fn with_handlers(state: State, paste_handler: P, drop_handler: D) -> Self {
         Self {
             state,
             paste_handler,
+            #[cfg(not(any(feature = "env_internal", feature = "env_test_internal")))]
+            token_validation_started: false,
+            drop_handler,
         }
     }
 }
 
-impl<P: PasteHandler> eframe::App for CollectsApp<P> {
+impl<P: PasteHandler, D: DropHandler> eframe::App for CollectsApp<P, D> {
     /// Called each time the UI needs repainting, which may be many times per second.
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // On first frame (for non-internal builds), try to restore auth from storage
+        #[cfg(not(any(feature = "env_internal", feature = "env_test_internal")))]
+        if !self.token_validation_started {
+            self.token_validation_started = true;
+            // Try to load token from storage and validate it
+            if let Some(storage) = _frame.storage()
+                && let Some(token) = storage.get_string(AUTH_TOKEN_STORAGE_KEY)
+                && !token.is_empty()
+            {
+                log::info!("Found stored auth token, validating...");
+                // Set the pending token for validation
+                self.state.ctx.update::<PendingTokenValidation>(|pending| {
+                    pending.token = Some(token);
+                });
+                // Dispatch token validation command
+                self.state.ctx.dispatch::<ValidateTokenCommand>();
+            }
+        }
+
         // Handle paste shortcut (Ctrl+V / Cmd+V) for clipboard image
         // If an image was pasted, replace the current displayed image
         if let Some(clipboard_image) = self.paste_handler.handle_paste(ctx) {
@@ -47,6 +81,18 @@ impl<P: PasteHandler> eframe::App for CollectsApp<P> {
                 clipboard_image.width,
                 clipboard_image.height,
                 clipboard_image.bytes,
+            );
+        }
+
+        // Handle drag-and-drop files for image preview
+        // If an image was dropped, replace the current displayed image
+        if let Some(dropped_image) = self.drop_handler.handle_drop(ctx) {
+            let image_state = self.state.ctx.state_mut::<widgets::ImagePreviewState>();
+            image_state.set_image_rgba(
+                ctx,
+                dropped_image.width,
+                dropped_image.height,
+                dropped_image.bytes,
             );
         }
 
@@ -105,9 +151,24 @@ impl<P: PasteHandler> eframe::App for CollectsApp<P> {
         // Run background jobs
         self.state.ctx.run_all_dirty();
     }
+
+    /// Called by the framework to save state before shutdown.
+    fn save(&mut self, _storage: &mut dyn eframe::Storage) {
+        // Save the auth token to storage if authenticated
+        #[cfg(not(any(feature = "env_internal", feature = "env_test_internal")))]
+        if let Some(auth) = self.state.ctx.cached::<AuthCompute>() {
+            if let Some(token) = auth.token() {
+                _storage.set_string(AUTH_TOKEN_STORAGE_KEY, token.to_string());
+                log::info!("Saved auth token to storage");
+            } else {
+                // Clear the stored token if not authenticated
+                _storage.set_string(AUTH_TOKEN_STORAGE_KEY, String::new());
+            }
+        }
+    }
 }
 
-impl<P: PasteHandler> CollectsApp<P> {
+impl<P: PasteHandler, D: DropHandler> CollectsApp<P, D> {
     /// Updates the route based on authentication state.
     fn update_route(&mut self) {
         let is_authenticated = self

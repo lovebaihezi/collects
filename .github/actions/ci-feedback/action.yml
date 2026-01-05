@@ -39,6 +39,7 @@ runs:
         PR_NUMBER: ${{ github.event.pull_request.number }}
         JOB_NAME: ${{ inputs.job-name }}
         RUN_ID: ${{ github.run_id }}
+        # Use PR head SHA; fallback to github.sha for non-PR events (though this action is PR-only)
         HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         WORKFLOW_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
       run: bun run main.ts ci-feedback-post-job

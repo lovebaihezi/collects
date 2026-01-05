@@ -92,6 +92,22 @@ export function extractErrorLines(logs: string): string {
 }
 
 /**
+ * Convert various response data types to string
+ * GitHub API can return string, ArrayBuffer, or Buffer depending on context
+ */
+function responseDataToString(data: unknown): string {
+  if (typeof data === "string") {
+    return data;
+  } else if (data instanceof ArrayBuffer) {
+    return new TextDecoder().decode(data);
+  } else if (Buffer.isBuffer(data)) {
+    return data.toString("utf8");
+  } else {
+    return String(data);
+  }
+}
+
+/**
  * Count previous failures per job from existing comments
  */
 export function countPreviousFailures(
@@ -256,17 +272,7 @@ async function collectJobSummaries(
         },
       );
 
-      // Convert to string - response.data can be string or ArrayBuffer
-      let logs: string;
-      if (typeof response.data === "string") {
-        logs = response.data;
-      } else if (response.data instanceof ArrayBuffer) {
-        logs = new TextDecoder().decode(response.data);
-      } else if (Buffer.isBuffer(response.data)) {
-        logs = response.data.toString("utf8");
-      } else {
-        logs = String(response.data);
-      }
+      const logs = responseDataToString(response.data);
 
       summaries.push({
         name: job.name,
@@ -414,7 +420,10 @@ export async function runPostJobFeedback(
   // Find the specific job by name
   const job = jobsData.jobs.find((j) => j.name === jobName);
   if (!job) {
-    console.log(`Job "${jobName}" not found in workflow run`);
+    const availableJobs = jobsData.jobs.map((j) => j.name).join(", ");
+    console.log(
+      `Job "${jobName}" not found in workflow run. Available jobs: ${availableJobs}`,
+    );
     return;
   }
 
@@ -427,16 +436,7 @@ export async function runPostJobFeedback(
       job_id: job.id,
     });
 
-    if (typeof response.data === "string") {
-      logs = response.data;
-    } else if (response.data instanceof ArrayBuffer) {
-      logs = new TextDecoder().decode(response.data);
-    } else if (Buffer.isBuffer(response.data)) {
-      logs = response.data.toString("utf8");
-    } else {
-      logs = String(response.data);
-    }
-    logs = extractErrorLines(logs);
+    logs = extractErrorLines(responseDataToString(response.data));
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.log(`Failed to get logs for job ${jobName}: ${message}`);

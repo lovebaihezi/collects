@@ -21,48 +21,40 @@
 //! Note: These tests are marked with `#[ignore]` by default since they require
 //! network access to real backend services.
 
-use collects_ui::state::State;
-use egui_kittest::Harness;
-use kittest::Queryable;
-
-/// Number of frames to run for route changes to propagate through the UI.
-/// This accounts for state updates, compute sync, and rendering cycles.
-const ROUTE_PROPAGATION_FRAMES: usize = 5;
-
-/// E2E test context that connects to real backend services.
-/// Unlike TestCtx, this does NOT use a mock server.
-#[allow(dead_code)]
-struct E2eTestCtx<'a> {
-    harness: Harness<'a, State>,
-}
-
-#[allow(dead_code)]
-impl<'a> E2eTestCtx<'a> {
-    /// Create a new e2e test context with default state (uses real backend URLs from feature flags).
-    fn new(app: impl FnMut(&mut egui::Ui, &mut State) + 'a) -> Self {
-        let _ = env_logger::builder().is_test(true).try_init();
-        // State::default() uses BusinessConfig::default() which picks the URL based on feature flags
-        let state = State::default();
-        let harness = Harness::new_ui_state(app, state);
-        Self { harness }
-    }
-
-    fn harness_mut(&mut self) -> &mut Harness<'a, State> {
-        &mut self.harness
-    }
-
-    fn harness(&self) -> &Harness<'a, State> {
-        &self.harness
-    }
-}
-
 /// Tests for non-internal builds (standard login flow).
 /// These tests require the `env_test` feature to connect to the test backend.
 #[cfg(all(feature = "env_test", not(feature = "env_test_internal")))]
 mod non_internal_e2e_tests {
-    use super::*;
     use collects_business::{LoginCommand, LoginInput};
     use collects_ui::CollectsApp;
+    use collects_ui::state::State;
+    use egui_kittest::Harness;
+    use kittest::Queryable;
+
+    /// Number of frames to run for route changes to propagate through the UI.
+    /// This accounts for state updates, compute sync, and rendering cycles.
+    const ROUTE_PROPAGATION_FRAMES: usize = 5;
+
+    /// E2E test context that connects to real backend services.
+    /// Unlike TestCtx, this does NOT use a mock server.
+    struct E2eTestCtx<'a> {
+        harness: Harness<'a, State>,
+    }
+
+    impl<'a> E2eTestCtx<'a> {
+        /// Create a new e2e test context with default state (uses real backend URLs from feature flags).
+        fn new(app: impl FnMut(&mut egui::Ui, &mut State) + 'a) -> Self {
+            let _ = env_logger::builder().is_test(true).try_init();
+            // State::default() uses BusinessConfig::default() which picks the URL based on feature flags
+            let state = State::default();
+            let harness = Harness::new_ui_state(app, state);
+            Self { harness }
+        }
+
+        fn harness_mut(&mut self) -> &mut Harness<'a, State> {
+            &mut self.harness
+        }
+    }
 
     /// E2E test: User login happy path with real backend.
     ///
@@ -203,13 +195,19 @@ mod non_internal_e2e_tests {
 /// These tests require the `env_test_internal` feature to connect to the test-internal backend.
 #[cfg(feature = "env_test_internal")]
 mod internal_e2e_tests {
-    use super::*;
     use chrono::Utc;
     use collects_business::{
         CFTokenInput, CreateUserCommand, CreateUserCompute, CreateUserInput, CreateUserResult,
         SetCFTokenCommand,
     };
     use collects_ui::CollectsApp;
+    use collects_ui::state::State;
+    use egui_kittest::Harness;
+    use kittest::Queryable;
+
+    /// Number of frames to run for route changes to propagate through the UI.
+    /// This accounts for state updates, compute sync, and rendering cycles.
+    const ROUTE_PROPAGATION_FRAMES: usize = 5;
 
     /// E2E test: Internal user creation and table verification.
     ///

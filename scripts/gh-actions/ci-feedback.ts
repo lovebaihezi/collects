@@ -20,6 +20,17 @@ interface CIFeedbackOptions {
   workflowRunUrl: string;
 }
 
+interface PostJobFeedbackOptions {
+  token: string;
+  owner: string;
+  repo: string;
+  prNumber: number;
+  jobName: string;
+  runId: number;
+  headSha: string;
+  workflowRunUrl: string;
+}
+
 interface PRInfo {
   hasPR: boolean;
   prNumber?: number;
@@ -372,6 +383,110 @@ export async function runCIFeedback(options: CIFeedbackOptions): Promise<void> {
 }
 
 /**
+ * Post-job feedback function - runs within the CI workflow itself
+ * This approach has direct access to PR context, avoiding PR detection issues
+ */
+export async function runPostJobFeedback(
+  options: PostJobFeedbackOptions,
+): Promise<void> {
+  const {
+    token,
+    owner,
+    repo,
+    prNumber,
+    jobName,
+    runId,
+    headSha,
+    workflowRunUrl,
+  } = options;
+
+  const octokit = new Octokit({ auth: token });
+
+  console.log(`Processing feedback for job "${jobName}" on PR #${prNumber}`);
+
+  // Get job logs for the specific failed job
+  const { data: jobsData } = await octokit.rest.actions.listJobsForWorkflowRun({
+    owner,
+    repo,
+    run_id: runId,
+  });
+
+  // Find the specific job by name
+  const job = jobsData.jobs.find((j) => j.name === jobName);
+  if (!job) {
+    console.log(`Job "${jobName}" not found in workflow run`);
+    return;
+  }
+
+  // Get job logs
+  let logs = "Unable to retrieve logs";
+  try {
+    const response = await octokit.rest.actions.downloadJobLogsForWorkflowRun({
+      owner,
+      repo,
+      job_id: job.id,
+    });
+
+    if (typeof response.data === "string") {
+      logs = response.data;
+    } else if (response.data instanceof ArrayBuffer) {
+      logs = new TextDecoder().decode(response.data);
+    } else if (Buffer.isBuffer(response.data)) {
+      logs = response.data.toString("utf8");
+    } else {
+      logs = String(response.data);
+    }
+    logs = extractErrorLines(logs);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.log(`Failed to get logs for job ${jobName}: ${message}`);
+  }
+
+  const summary: JobSummary = {
+    name: jobName,
+    url: job.html_url || "",
+    logs,
+  };
+
+  // Check existing comments to count failures
+  const { data: comments } = await octokit.rest.issues.listComments({
+    owner,
+    repo,
+    issue_number: prNumber,
+  });
+
+  const jobFailureCounts = countPreviousFailures(comments);
+  const failureCount = jobFailureCounts[jobName] || 0;
+
+  // Skip if this job has already failed 3+ times
+  if (failureCount >= 3) {
+    console.log(
+      `Job "${jobName}" has already failed ${failureCount} times. Skipping feedback.`,
+    );
+    return;
+  }
+
+  // Build and post comment for this single job
+  const commentBody = buildCommentBody(
+    runId,
+    workflowRunUrl,
+    headSha,
+    [summary],
+    [],
+    jobFailureCounts,
+  );
+
+  await octokit.rest.issues.createComment({
+    owner,
+    repo,
+    issue_number: prNumber,
+    body: commentBody,
+  });
+
+  console.log(`Posted CI feedback comment for job "${jobName}" on PR #${prNumber}`);
+}
+
+/**
  * Set output for GitHub Actions
  */
 function setOutput(name: string, value: string): void {
@@ -438,6 +553,84 @@ export function runCIFeedbackCLI(): void {
     workflowRunUrl,
   }).catch((error) => {
     console.error("CI Feedback failed:", error);
+    process.exit(1);
+  });
+}
+
+/**
+ * CLI entry point for post-job feedback (runs within CI workflow)
+ */
+export function runPostJobFeedbackCLI(): void {
+  const token = process.env.GITHUB_TOKEN;
+  const owner = process.env.GITHUB_REPOSITORY_OWNER;
+  const githubRepository = process.env.GITHUB_REPOSITORY;
+  const prNumberStr = process.env.PR_NUMBER;
+  const jobName = process.env.JOB_NAME;
+  const runIdStr = process.env.RUN_ID;
+  const headSha = process.env.HEAD_SHA;
+  const workflowRunUrl = process.env.WORKFLOW_RUN_URL;
+
+  if (!token) {
+    console.error("GITHUB_TOKEN is required");
+    process.exit(1);
+  }
+  if (!owner) {
+    console.error("GITHUB_REPOSITORY_OWNER is required");
+    process.exit(1);
+  }
+  if (!githubRepository || !githubRepository.includes("/")) {
+    console.error(
+      "GITHUB_REPOSITORY is required and must be in format 'owner/repo'",
+    );
+    process.exit(1);
+  }
+  const repo = githubRepository.split("/")[1];
+  if (!repo) {
+    console.error("GITHUB_REPOSITORY must contain a repository name");
+    process.exit(1);
+  }
+  if (!prNumberStr) {
+    console.log("PR_NUMBER not set - not a pull request event, skipping");
+    process.exit(0);
+  }
+  const prNumber = parseInt(prNumberStr, 10);
+  if (isNaN(prNumber)) {
+    console.error("PR_NUMBER must be a valid number");
+    process.exit(1);
+  }
+  if (!jobName) {
+    console.error("JOB_NAME is required");
+    process.exit(1);
+  }
+  if (!runIdStr) {
+    console.error("RUN_ID is required");
+    process.exit(1);
+  }
+  const runId = parseInt(runIdStr, 10);
+  if (isNaN(runId)) {
+    console.error("RUN_ID must be a valid number");
+    process.exit(1);
+  }
+  if (!headSha) {
+    console.error("HEAD_SHA is required");
+    process.exit(1);
+  }
+  if (!workflowRunUrl) {
+    console.error("WORKFLOW_RUN_URL is required");
+    process.exit(1);
+  }
+
+  runPostJobFeedback({
+    token,
+    owner,
+    repo,
+    prNumber,
+    jobName,
+    runId,
+    headSha,
+    workflowRunUrl,
+  }).catch((error) => {
+    console.error("Post-job CI Feedback failed:", error);
     process.exit(1);
   });
 }

@@ -8,7 +8,10 @@ import {
   type BuildSetupOptions,
 } from "./services/gcloud.ts";
 import { runVersionCheck } from "./gh-actions/version-check.ts";
-import { runCIFeedbackCLI } from "./gh-actions/ci-feedback.ts";
+import {
+  runCIFeedbackCLI,
+  runPostJobFeedbackCLI,
+} from "./gh-actions/ci-feedback.ts";
 import { runArtifactCleanupCLI } from "./gh-actions/artifact-cleanup.ts";
 import {
   getCargoFeature,
@@ -193,6 +196,15 @@ cli
   .command("ci-feedback", "Post CI failure feedback to PR (for GitHub Actions)")
   .action(() => {
     runCIFeedbackCLI();
+  });
+
+cli
+  .command(
+    "ci-feedback-post-job",
+    "Post CI failure feedback from within a job (post-job approach)",
+  )
+  .action(() => {
+    runPostJobFeedbackCLI();
   });
 
 cli

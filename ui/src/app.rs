@@ -1,6 +1,7 @@
 use crate::{
     pages,
     state::State,
+    utils::drop_handler::{DropHandler, SystemDropHandler},
     utils::paste_handler::{PasteHandler, SystemPasteHandler},
     widgets,
 };
@@ -9,33 +10,36 @@ use collects_business::{ApiStatus, AuthCompute, Route, ToggleApiStatusCommand};
 use collects_states::Time;
 
 /// Main application state and logic for the Collects app.
-pub struct CollectsApp<P: PasteHandler = SystemPasteHandler> {
+pub struct CollectsApp<P: PasteHandler = SystemPasteHandler, D: DropHandler = SystemDropHandler> {
     /// The application state (public for testing access).
     pub state: State,
     paste_handler: P,
+    drop_handler: D,
 }
 
-impl CollectsApp<SystemPasteHandler> {
+impl CollectsApp<SystemPasteHandler, SystemDropHandler> {
     /// Called once before the first frame.
     pub fn new(state: State) -> Self {
         Self {
             state,
             paste_handler: SystemPasteHandler,
+            drop_handler: SystemDropHandler,
         }
     }
 }
 
-impl<P: PasteHandler> CollectsApp<P> {
-    /// Create a new app with a custom paste handler (for testing).
-    pub fn with_paste_handler(state: State, paste_handler: P) -> Self {
+impl<P: PasteHandler, D: DropHandler> CollectsApp<P, D> {
+    /// Create a new app with custom paste and drop handlers (for testing).
+    pub fn with_handlers(state: State, paste_handler: P, drop_handler: D) -> Self {
         Self {
             state,
             paste_handler,
+            drop_handler,
         }
     }
 }
 
-impl<P: PasteHandler> eframe::App for CollectsApp<P> {
+impl<P: PasteHandler, D: DropHandler> eframe::App for CollectsApp<P, D> {
     /// Called each time the UI needs repainting, which may be many times per second.
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Handle paste shortcut (Ctrl+V / Cmd+V) for clipboard image
@@ -47,6 +51,18 @@ impl<P: PasteHandler> eframe::App for CollectsApp<P> {
                 clipboard_image.width,
                 clipboard_image.height,
                 clipboard_image.bytes,
+            );
+        }
+
+        // Handle drag-and-drop files for image preview
+        // If an image was dropped, replace the current displayed image
+        if let Some(dropped_image) = self.drop_handler.handle_drop(ctx) {
+            let image_state = self.state.ctx.state_mut::<widgets::ImagePreviewState>();
+            image_state.set_image_rgba(
+                ctx,
+                dropped_image.width,
+                dropped_image.height,
+                dropped_image.bytes,
             );
         }
 
@@ -107,7 +123,7 @@ impl<P: PasteHandler> eframe::App for CollectsApp<P> {
     }
 }
 
-impl<P: PasteHandler> CollectsApp<P> {
+impl<P: PasteHandler, D: DropHandler> CollectsApp<P, D> {
     /// Updates the route based on authentication state.
     fn update_route(&mut self) {
         let is_authenticated = self

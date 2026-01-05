@@ -2,7 +2,10 @@ use collects_business::ApiStatus;
 use collects_business::BusinessConfig;
 use collects_business::Route;
 use collects_business::ToggleApiStatusCommand;
-use collects_business::{AuthCompute, LoginCommand, LoginInput, LogoutCommand};
+use collects_business::{
+    AuthCompute, LoginCommand, LoginInput, LogoutCommand, PendingTokenValidation,
+    ValidateTokenCommand,
+};
 #[cfg(any(feature = "env_internal", feature = "env_test_internal"))]
 use collects_business::{
     CFTokenCompute, CFTokenInput, CreateUserCommand, CreateUserCompute, CreateUserInput,
@@ -14,6 +17,9 @@ use serde::{Deserialize, Serialize};
 use crate::widgets::ImagePreviewState;
 #[cfg(any(feature = "env_internal", feature = "env_test_internal"))]
 use crate::widgets::InternalUsersState;
+
+/// Key for storing the auth token in egui storage.
+pub const AUTH_TOKEN_STORAGE_KEY: &str = "collects_auth_token";
 
 #[derive(Deserialize, Serialize)]
 pub struct State {
@@ -34,6 +40,7 @@ impl Default for State {
 
         // Add login states and commands
         ctx.add_state(LoginInput::default());
+        ctx.add_state(PendingTokenValidation::default());
 
         // For internal builds, use Zero Trust authentication (skip login page)
         // For other builds, use default (not authenticated)
@@ -44,6 +51,7 @@ impl Default for State {
 
         ctx.record_command(LoginCommand);
         ctx.record_command(LogoutCommand);
+        ctx.record_command(ValidateTokenCommand);
 
         // Add image preview state for clipboard/drop image handling
         ctx.add_state(ImagePreviewState::new());
@@ -82,6 +90,7 @@ impl State {
 
         // Add login states and commands
         ctx.add_state(LoginInput::default());
+        ctx.add_state(PendingTokenValidation::default());
 
         // For internal builds, use Zero Trust authentication (skip login page)
         // For other builds, use default (not authenticated)
@@ -92,6 +101,7 @@ impl State {
 
         ctx.record_command(LoginCommand);
         ctx.record_command(LogoutCommand);
+        ctx.record_command(ValidateTokenCommand);
 
         // Add image preview state for clipboard/drop image handling
         ctx.add_state(ImagePreviewState::new());

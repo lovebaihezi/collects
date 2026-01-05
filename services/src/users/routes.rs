@@ -37,8 +37,9 @@ use axum::{
 use serde::{Deserialize, Serialize};
 
 use super::otp::{
-    CreateUserRequest, CreateUserResponse, OtpError, VerifyOtpRequest, VerifyOtpResponse,
-    generate_current_otp_with_time, generate_otp_secret, generate_session_token, verify_otp,
+    CreateUserRequest, CreateUserResponse, OtpError, ValidateTokenRequest, ValidateTokenResponse,
+    VerifyOtpRequest, VerifyOtpResponse, generate_current_otp_with_time, generate_otp_secret,
+    generate_session_token, validate_session_token, verify_otp,
 };
 use super::storage::{UserStorage, UserStorageError};
 use crate::config::Config;
@@ -210,7 +211,9 @@ where
     S: SqlStorage + Clone + Send + Sync + 'static,
     U: UserStorage + Clone + Send + Sync + 'static,
 {
-    Router::new().route("/verify-otp", post(verify_otp_handler::<S, U>))
+    Router::new()
+        .route("/verify-otp", post(verify_otp_handler::<S, U>))
+        .route("/validate-token", post(validate_token_handler::<S, U>))
 }
 
 /// Handler for creating a new user with OTP authentication.
@@ -520,6 +523,89 @@ where
                     valid: false,
                     message: Some("Internal server error".to_string()),
                     token: None,
+                }),
+            )
+                .into_response()
+        }
+    }
+}
+
+/// Handler for validating a session token.
+///
+/// This endpoint validates a JWT session token and returns the username if valid.
+/// It's used to restore authentication state on app startup.
+///
+/// # Request
+///
+/// POST /auth/validate-token
+///
+/// ```json
+/// {
+///     "token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9..."
+/// }
+/// ```
+///
+/// # Response
+///
+/// Success:
+/// ```json
+/// {
+///     "valid": true,
+///     "username": "john_doe"
+/// }
+/// ```
+///
+/// Invalid token:
+/// ```json
+/// {
+///     "valid": false,
+///     "message": "Token expired"
+/// }
+/// ```
+#[tracing::instrument(skip_all)]
+async fn validate_token_handler<S, U>(
+    axum::extract::Extension(config): axum::extract::Extension<Config>,
+    Json(payload): Json<ValidateTokenRequest>,
+) -> impl IntoResponse
+where
+    S: SqlStorage,
+    U: UserStorage,
+{
+    tracing::info!("Validating session token");
+
+    if payload.token.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(ValidateTokenResponse {
+                valid: false,
+                username: None,
+                message: Some("Token cannot be empty".to_string()),
+            }),
+        )
+            .into_response();
+    }
+
+    match validate_session_token(&payload.token, config.jwt_secret()) {
+        Ok(username) => {
+            tracing::info!("Token validated successfully for user: {}", username);
+            (
+                StatusCode::OK,
+                Json(ValidateTokenResponse {
+                    valid: true,
+                    username: Some(username),
+                    message: None,
+                }),
+            )
+                .into_response()
+        }
+        Err(e) => {
+            tracing::warn!("Token validation failed: {}", e);
+            (
+                StatusCode::UNAUTHORIZED,
+                Json(ValidateTokenResponse {
+                    valid: false,
+                    username: None,
+                    message: Some("Invalid or expired token".to_string()),
                 }),
             )
                 .into_response()
@@ -1764,5 +1850,93 @@ mod tests {
             .expect("Failed to get response");
 
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_validate_token_valid() {
+        let app = create_test_app();
+        let config = Config::new_for_test();
+
+        // Generate a valid token
+        let token =
+            generate_session_token("testuser", config.jwt_secret()).expect("Should generate token");
+
+        let request = Request::builder()
+            .method("POST")
+            .uri("/auth/validate-token")
+            .header("content-type", "application/json")
+            .body(Body::from(format!(r#"{{"token": "{}"}}"#, token)))
+            .expect("Failed to create request");
+
+        let response = app.oneshot(request).await.expect("Failed to get response");
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("Failed to read body");
+
+        let response: ValidateTokenResponse =
+            serde_json::from_slice(&body).expect("Failed to parse response");
+
+        assert!(response.valid, "Token should be valid");
+        assert_eq!(
+            response.username,
+            Some("testuser".to_string()),
+            "Should return username"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_validate_token_invalid() {
+        let app = create_test_app();
+
+        let request = Request::builder()
+            .method("POST")
+            .uri("/auth/validate-token")
+            .header("content-type", "application/json")
+            .body(Body::from(r#"{"token": "invalid.token.here"}"#))
+            .expect("Failed to create request");
+
+        let response = app.oneshot(request).await.expect("Failed to get response");
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("Failed to read body");
+
+        let response: ValidateTokenResponse =
+            serde_json::from_slice(&body).expect("Failed to parse response");
+
+        assert!(!response.valid, "Token should be invalid");
+        assert!(response.username.is_none(), "Should not return username");
+        assert!(response.message.is_some(), "Should return error message");
+    }
+
+    #[tokio::test]
+    async fn test_validate_token_empty() {
+        let app = create_test_app();
+
+        let request = Request::builder()
+            .method("POST")
+            .uri("/auth/validate-token")
+            .header("content-type", "application/json")
+            .body(Body::from(r#"{"token": ""}"#))
+            .expect("Failed to create request");
+
+        let response = app.oneshot(request).await.expect("Failed to get response");
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("Failed to read body");
+
+        let response: ValidateTokenResponse =
+            serde_json::from_slice(&body).expect("Failed to parse response");
+
+        assert!(!response.valid, "Token should be invalid");
+        assert!(response.message.is_some(), "Should return error message");
     }
 }

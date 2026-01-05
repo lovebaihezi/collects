@@ -40,6 +40,24 @@ pub struct VerifyOtpResponse {
     pub token: Option<String>,
 }
 
+/// Request payload for token validation.
+#[derive(Debug, Clone, Serialize)]
+pub struct ValidateTokenRequest {
+    /// The JWT token to validate.
+    pub token: String,
+}
+
+/// Response from token validation endpoint.
+#[derive(Debug, Clone, Deserialize)]
+pub struct ValidateTokenResponse {
+    /// Whether the token is valid.
+    pub valid: bool,
+    /// The username from the token (if valid).
+    pub username: Option<String>,
+    /// Optional message with details.
+    pub message: Option<String>,
+}
+
 /// Input state for login form.
 ///
 /// Contains the editable fields for username and OTP.
@@ -341,6 +359,139 @@ impl Command for LogoutCommand {
     }
 }
 
+/// State for holding a token to validate.
+///
+/// This is used by `ValidateTokenCommand` to validate a stored token on app startup.
+#[derive(Default, Debug, Clone)]
+pub struct PendingTokenValidation {
+    /// The token to validate.
+    pub token: Option<String>,
+}
+
+impl State for PendingTokenValidation {
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+}
+
+/// Manual-only command that validates a stored token.
+///
+/// This command validates a JWT token against the backend `/auth/validate-token` endpoint.
+/// It's used to restore authentication state on app startup from persisted storage.
+///
+/// ## Flow
+///
+/// 1. Reads the pending token from `PendingTokenValidation`
+/// 2. If no token, sets status to `NotAuthenticated`
+/// 3. Sets status to `Authenticating`
+/// 4. Makes HTTP POST to `/auth/validate-token` with the token
+/// 5. On success (valid=true), sets status to `Authenticated` with username and token
+/// 6. On failure, sets status to `NotAuthenticated`
+///
+/// Dispatch explicitly via `ctx.dispatch::<ValidateTokenCommand>()`.
+#[derive(Default, Debug)]
+pub struct ValidateTokenCommand;
+
+impl Command for ValidateTokenCommand {
+    fn run(&self, deps: Dep, updater: Updater) {
+        let pending = deps.get_state_ref::<PendingTokenValidation>();
+        let config = deps.get_state_ref::<BusinessConfig>();
+
+        let token = match &pending.token {
+            Some(t) if !t.is_empty() => t.clone(),
+            _ => {
+                info!("ValidateTokenCommand: no token to validate");
+                updater.set(AuthCompute {
+                    status: AuthStatus::NotAuthenticated,
+                });
+                return;
+            }
+        };
+
+        info!("ValidateTokenCommand: validating stored token");
+
+        // Set status to authenticating while we wait for the backend response
+        updater.set(AuthCompute {
+            status: AuthStatus::Authenticating,
+        });
+
+        // Build the request payload
+        let url = format!("{}/auth/validate-token", config.api_url());
+        let body = match serde_json::to_vec(&ValidateTokenRequest { token: token.clone() }) {
+            Ok(body) => body,
+            Err(e) => {
+                error!(
+                    "ValidateTokenCommand: Failed to serialize ValidateTokenRequest: {}",
+                    e
+                );
+                updater.set(AuthCompute {
+                    status: AuthStatus::NotAuthenticated,
+                });
+                return;
+            }
+        };
+
+        let mut request = ehttp::Request::post(&url, body);
+        request.headers.insert("Content-Type", "application/json");
+
+        // Make the API call to validate token
+        ehttp::fetch(request, move |result| match result {
+            Ok(response) => {
+                if response.status == 200 {
+                    // Parse the response
+                    match serde_json::from_slice::<ValidateTokenResponse>(&response.bytes) {
+                        Ok(validate_response) => {
+                            if validate_response.valid {
+                                let username = validate_response
+                                    .username
+                                    .unwrap_or_else(|| "Unknown".to_string());
+                                info!(
+                                    "ValidateTokenCommand: token validated successfully for user '{}'",
+                                    username
+                                );
+                                updater.set(AuthCompute {
+                                    status: AuthStatus::Authenticated {
+                                        username,
+                                        token: Some(token),
+                                    },
+                                });
+                            } else {
+                                info!("ValidateTokenCommand: token is invalid");
+                                updater.set(AuthCompute {
+                                    status: AuthStatus::NotAuthenticated,
+                                });
+                            }
+                        }
+                        Err(e) => {
+                            error!(
+                                "ValidateTokenCommand: Failed to parse ValidateTokenResponse: {}",
+                                e
+                            );
+                            updater.set(AuthCompute {
+                                status: AuthStatus::NotAuthenticated,
+                            });
+                        }
+                    }
+                } else {
+                    info!(
+                        "ValidateTokenCommand: token validation failed with status {}",
+                        response.status
+                    );
+                    updater.set(AuthCompute {
+                        status: AuthStatus::NotAuthenticated,
+                    });
+                }
+            }
+            Err(err) => {
+                error!("ValidateTokenCommand: Network error: {}", err);
+                updater.set(AuthCompute {
+                    status: AuthStatus::NotAuthenticated,
+                });
+            }
+        });
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -431,5 +582,41 @@ mod tests {
         assert!(!response.valid);
         assert_eq!(response.message, Some("Invalid OTP code".to_string()));
         assert!(response.token.is_none());
+    }
+
+    #[test]
+    fn test_validate_token_request_serialization() {
+        let request = ValidateTokenRequest {
+            token: "test-jwt-token".to_string(),
+        };
+
+        let json = serde_json::to_string(&request).expect("Should serialize");
+        assert!(json.contains("\"token\":\"test-jwt-token\""));
+    }
+
+    #[test]
+    fn test_validate_token_response_deserialization_valid() {
+        let json = r#"{"valid": true, "username": "testuser"}"#;
+        let response: ValidateTokenResponse =
+            serde_json::from_str(json).expect("Should deserialize");
+        assert!(response.valid);
+        assert_eq!(response.username, Some("testuser".to_string()));
+        assert!(response.message.is_none());
+    }
+
+    #[test]
+    fn test_validate_token_response_deserialization_invalid() {
+        let json = r#"{"valid": false, "message": "Token expired"}"#;
+        let response: ValidateTokenResponse =
+            serde_json::from_str(json).expect("Should deserialize");
+        assert!(!response.valid);
+        assert!(response.username.is_none());
+        assert_eq!(response.message, Some("Token expired".to_string()));
+    }
+
+    #[test]
+    fn test_pending_token_validation_default() {
+        let pending = PendingTokenValidation::default();
+        assert!(pending.token.is_none());
     }
 }

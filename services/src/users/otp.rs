@@ -3,7 +3,7 @@
 //! This module provides TOTP (Time-based One-Time Password) functionality
 //! for user authentication using Google Authenticator or similar apps.
 
-use jsonwebtoken::{Algorithm as JwtAlgorithm, EncodingKey, Header, encode};
+use jsonwebtoken::{Algorithm as JwtAlgorithm, DecodingKey, EncodingKey, Header, Validation, decode, encode};
 use serde::{Deserialize, Serialize};
 use totp_rs::{Algorithm, Secret, TOTP};
 
@@ -301,6 +301,51 @@ pub fn generate_session_token(username: &str, jwt_secret: &str) -> Result<String
     Ok(token)
 }
 
+/// Response from token validation.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ValidateTokenResponse {
+    /// Whether the token is valid.
+    pub valid: bool,
+    /// The username from the token (if valid).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub username: Option<String>,
+    /// Optional message with details (e.g., reason for invalidity).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+}
+
+/// Request for token validation.
+#[derive(Debug, Deserialize)]
+pub struct ValidateTokenRequest {
+    /// The JWT token to validate.
+    pub token: String,
+}
+
+/// Validates a session JWT token.
+///
+/// # Arguments
+///
+/// * `token` - The JWT token to validate
+/// * `jwt_secret` - The secret key used for signing
+///
+/// # Returns
+///
+/// Returns the username if the token is valid, or an error if invalid.
+pub fn validate_session_token(token: &str, jwt_secret: &str) -> Result<String, OtpError> {
+    let mut validation = Validation::new(JwtAlgorithm::HS256);
+    validation.set_issuer(&[ISSUER]);
+    validation.validate_exp = true;
+
+    let token_data = decode::<SessionClaims>(
+        token,
+        &DecodingKey::from_secret(jwt_secret.as_bytes()),
+        &validation,
+    )
+    .map_err(|e| OtpError::TotpCreation(format!("Token validation error: {}", e)))?;
+
+    Ok(token_data.claims.sub)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -461,6 +506,79 @@ mod tests {
             (1..=30).contains(&time_remaining),
             "Time remaining should be between 1 and 30, got {}",
             time_remaining
+        );
+    }
+
+    #[test]
+    fn test_generate_session_token_success() {
+        let username = "testuser";
+        let secret = "test-secret-key";
+
+        let token = generate_session_token(username, secret);
+        assert!(token.is_ok(), "Should successfully generate token");
+
+        let token_str = token.expect("Should have token");
+        assert!(!token_str.is_empty(), "Token should not be empty");
+        // JWT tokens have 3 parts separated by dots
+        assert_eq!(
+            token_str.matches('.').count(),
+            2,
+            "JWT should have 3 parts"
+        );
+    }
+
+    #[test]
+    fn test_validate_session_token_success() {
+        let username = "testuser";
+        let secret = "test-secret-key";
+
+        // Generate a token
+        let token = generate_session_token(username, secret).expect("Should generate token");
+
+        // Validate the token
+        let result = validate_session_token(&token, secret);
+        assert!(result.is_ok(), "Should validate successfully");
+        assert_eq!(result.expect("Should have username"), username);
+    }
+
+    #[test]
+    fn test_validate_session_token_wrong_secret() {
+        let username = "testuser";
+        let secret = "test-secret-key";
+        let wrong_secret = "wrong-secret-key";
+
+        // Generate a token
+        let token = generate_session_token(username, secret).expect("Should generate token");
+
+        // Validate with wrong secret should fail
+        let result = validate_session_token(&token, wrong_secret);
+        assert!(result.is_err(), "Should fail with wrong secret");
+    }
+
+    #[test]
+    fn test_validate_session_token_invalid_format() {
+        let secret = "test-secret-key";
+
+        // Try to validate an invalid token
+        let result = validate_session_token("invalid.token.here", secret);
+        assert!(result.is_err(), "Should fail with invalid token format");
+    }
+
+    #[test]
+    fn test_session_token_roundtrip() {
+        let username = "integration_user";
+        let secret = "integration-test-secret";
+
+        // Generate token
+        let token = generate_session_token(username, secret).expect("Should generate token");
+
+        // Validate token
+        let validated_username =
+            validate_session_token(&token, secret).expect("Should validate token");
+
+        assert_eq!(
+            validated_username, username,
+            "Validated username should match original"
         );
     }
 }

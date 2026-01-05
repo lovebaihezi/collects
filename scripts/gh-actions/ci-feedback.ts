@@ -20,6 +20,17 @@ interface CIFeedbackOptions {
   workflowRunUrl: string;
 }
 
+interface PostJobFeedbackOptions {
+  token: string;
+  owner: string;
+  repo: string;
+  prNumber: number;
+  jobName: string;
+  runId: number;
+  headSha: string;
+  workflowRunUrl: string;
+}
+
 interface PRInfo {
   hasPR: boolean;
   prNumber?: number;
@@ -40,44 +51,92 @@ export function stripAnsiCodes(text: string): string {
 
 /**
  * Extract relevant error lines from job logs
+ *
+ * Prioritizes errors from the end of the log, as those are typically
+ * the actual failure causes. The function:
+ * 1. Scans the log from the end to find error blocks
+ * 2. Includes context lines around each error
+ * 3. Returns the most relevant errors (those closest to the end of the log)
  */
 export function extractErrorLines(logs: string): string {
   // Strip ANSI escape codes first to get clean log lines
   const cleanLogs = stripAnsiCodes(logs);
   const logLines = cleanLogs.split("\n");
-  const seenLines = new Set<string>();
-  const errorLines: string[] = [];
-  const relevantPatterns = [
+
+  // Patterns for error detection - includes common build/test failure indicators
+  // More specific patterns are checked first (higher priority)
+  const errorPatterns = [
+    // Rust-specific errors (high priority)
+    /error\[E\d+\]/i, // Rust compiler errors like error[E0433]
+    /panicked at/i, // Rust panic messages
+    /thread .+ panicked/i, // Thread panic
+    // General errors (medium priority)
+    /^error:/i, // Lines starting with "error:"
+    /^error\s/i, // Lines starting with "error "
+    /:\s*error:/i, // "file.rs: error:" style
+    /FAILED/i, // Test failures
+    /FAILURE/i, // General failures
+    // Lower priority patterns
     /error/i,
     /failed/i,
-    /failure/i,
     /exception/i,
     /panic/i,
   ];
 
-  // Get lines around errors
-  for (let i = 0; i < logLines.length; i++) {
+  // Find all error line indices, prioritizing from the end
+  const errorIndices: number[] = [];
+  for (let i = logLines.length - 1; i >= 0; i--) {
     const line = logLines[i];
-    if (relevantPatterns.some((pattern) => pattern.test(line))) {
-      // Add context: 2 lines before and 2 lines after
-      const start = Math.max(0, i - 2);
-      const end = Math.min(logLines.length, i + 3);
-      for (let j = start; j < end; j++) {
-        if (!seenLines.has(logLines[j])) {
-          seenLines.add(logLines[j]);
-          errorLines.push(logLines[j]);
-        }
-      }
+    if (errorPatterns.some((pattern) => pattern.test(line))) {
+      errorIndices.push(i);
     }
   }
 
-  // If no specific errors found, get last 30 lines
-  if (errorLines.length === 0) {
+  // If no errors found, return last 30 lines
+  if (errorIndices.length === 0) {
     return logLines.slice(-30).join("\n");
   }
 
+  // Build error blocks with context, prioritizing errors from the end
+  // Use a Set to track included line indices to preserve order and avoid duplicates
+  const includedIndices = new Set<number>();
+  const targetLineCount = 50;
+
+  // Process errors from end to beginning (errorIndices is already reverse order)
+  for (const errorIdx of errorIndices) {
+    if (includedIndices.size >= targetLineCount) break;
+
+    // Add context: 3 lines before and 3 lines after for better context
+    const start = Math.max(0, errorIdx - 3);
+    const end = Math.min(logLines.length, errorIdx + 4);
+
+    for (let j = start; j < end; j++) {
+      includedIndices.add(j);
+    }
+  }
+
+  // Convert to sorted array and extract lines (preserves original order)
+  const sortedIndices = Array.from(includedIndices).sort((a, b) => a - b);
+  const resultLines = sortedIndices.map((i) => logLines[i]);
+
   // Limit to 50 lines to avoid huge comments
-  return errorLines.slice(0, 50).join("\n");
+  return resultLines.slice(0, 50).join("\n");
+}
+
+/**
+ * Convert various response data types to string
+ * GitHub API can return string, ArrayBuffer, or Buffer depending on context
+ */
+function responseDataToString(data: unknown): string {
+  if (typeof data === "string") {
+    return data;
+  } else if (data instanceof ArrayBuffer) {
+    return new TextDecoder().decode(data);
+  } else if (Buffer.isBuffer(data)) {
+    return data.toString("utf8");
+  } else {
+    return String(data);
+  }
 }
 
 /**
@@ -133,7 +192,7 @@ export function buildCommentBody(
   for (const summary of jobsToReport) {
     const failureCount = (jobFailureCounts[summary.name] || 0) + 1;
     commentBody += `### ❌ Job: \`${summary.name}\`\n\n`;
-    commentBody += `**Failure #${failureCount}/3** | [View Full Logs](${summary.url})\n\n`;
+    commentBody += `**Attempt ${failureCount} of 3** | [View Full Logs](${summary.url})\n\n`;
     commentBody += `<details>\n<summary>Error Summary</summary>\n\n`;
     commentBody += `\`\`\`\n${summary.logs}\n\`\`\`\n\n`;
     commentBody += `</details>\n\n`;
@@ -154,19 +213,45 @@ export function buildCommentBody(
 
 /**
  * Get PR number associated with a workflow run
+ *
+ * This function uses multiple strategies to find the PR:
+ * 1. Use the pullRequests array from the workflow run (fastest, but empty for fork PRs)
+ * 2. Search for open PRs by head commit SHA (works for both fork and non-fork PRs)
+ * 3. Search for PRs by head branch (fallback, doesn't work for forks)
  */
 async function getPRInfo(
   octokit: Octokit,
   owner: string,
   repo: string,
   headBranch: string,
+  headSha: string,
   pullRequests?: Array<{ number: number }>,
 ): Promise<PRInfo> {
+  // Strategy 1: Use pullRequests from workflow run (fastest)
   if (pullRequests && pullRequests.length > 0) {
     return { hasPR: true, prNumber: pullRequests[0].number };
   }
 
-  // Try to find PR by head branch
+  // Strategy 2: Search for PRs by head commit SHA (works for fork PRs)
+  // This is more reliable than branch search because SHA is unique and works across forks
+  try {
+    const { data: searchResults } =
+      await octokit.rest.search.issuesAndPullRequests({
+        q: `repo:${owner}/${repo} is:pr is:open ${headSha}`,
+      });
+
+    if (searchResults.total_count > 0 && searchResults.items.length > 0) {
+      return { hasPR: true, prNumber: searchResults.items[0].number };
+    }
+  } catch (error) {
+    // Log search error but continue to fallback
+    const message = error instanceof Error ? error.message : String(error);
+    console.log(
+      `SHA-based PR search failed: ${message}, falling back to branch search`,
+    );
+  }
+
+  // Strategy 3: Try to find PR by head branch (fallback, doesn't work for forks)
   const { data: pulls } = await octokit.rest.pulls.list({
     owner,
     repo,
@@ -219,17 +304,7 @@ async function collectJobSummaries(
         },
       );
 
-      // Convert to string - response.data can be string or ArrayBuffer
-      let logs: string;
-      if (typeof response.data === "string") {
-        logs = response.data;
-      } else if (response.data instanceof ArrayBuffer) {
-        logs = new TextDecoder().decode(response.data);
-      } else if (Buffer.isBuffer(response.data)) {
-        logs = response.data.toString("utf8");
-      } else {
-        logs = String(response.data);
-      }
+      const logs = responseDataToString(response.data);
 
       summaries.push({
         name: job.name,
@@ -270,6 +345,7 @@ export async function runCIFeedback(options: CIFeedbackOptions): Promise<void> {
     owner,
     repo,
     workflowRun.head_branch || "",
+    headSha,
     workflowRun.pull_requests,
   );
 
@@ -345,6 +421,106 @@ export async function runCIFeedback(options: CIFeedbackOptions): Promise<void> {
 }
 
 /**
+ * Post-job feedback function - runs within the CI workflow itself
+ * This approach has direct access to PR context, avoiding PR detection issues
+ */
+export async function runPostJobFeedback(
+  options: PostJobFeedbackOptions,
+): Promise<void> {
+  const {
+    token,
+    owner,
+    repo,
+    prNumber,
+    jobName,
+    runId,
+    headSha,
+    workflowRunUrl,
+  } = options;
+
+  const octokit = new Octokit({ auth: token });
+
+  console.log(`Processing feedback for job "${jobName}" on PR #${prNumber}`);
+
+  // Get job logs for the specific failed job
+  const { data: jobsData } = await octokit.rest.actions.listJobsForWorkflowRun({
+    owner,
+    repo,
+    run_id: runId,
+  });
+
+  // Find the specific job by name
+  const job = jobsData.jobs.find((j) => j.name === jobName);
+  if (!job) {
+    const availableJobs = jobsData.jobs.map((j) => j.name).join(", ");
+    console.log(
+      `Job "${jobName}" not found in workflow run. Available jobs: ${availableJobs}`,
+    );
+    return;
+  }
+
+  // Get job logs
+  let logs = "Unable to retrieve logs";
+  try {
+    const response = await octokit.rest.actions.downloadJobLogsForWorkflowRun({
+      owner,
+      repo,
+      job_id: job.id,
+    });
+
+    logs = extractErrorLines(responseDataToString(response.data));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.log(`Failed to get logs for job ${jobName}: ${message}`);
+  }
+
+  const summary: JobSummary = {
+    name: jobName,
+    url: job.html_url || "",
+    logs,
+  };
+
+  // Check existing comments to count failures
+  const { data: comments } = await octokit.rest.issues.listComments({
+    owner,
+    repo,
+    issue_number: prNumber,
+  });
+
+  const jobFailureCounts = countPreviousFailures(comments);
+  const failureCount = jobFailureCounts[jobName] || 0;
+
+  // Skip if this job has already failed 3+ times
+  if (failureCount >= 3) {
+    console.log(
+      `Job "${jobName}" has already failed ${failureCount} times. Skipping feedback.`,
+    );
+    return;
+  }
+
+  // Build and post comment for this single job
+  const commentBody = buildCommentBody(
+    runId,
+    workflowRunUrl,
+    headSha,
+    [summary],
+    [],
+    jobFailureCounts,
+  );
+
+  await octokit.rest.issues.createComment({
+    owner,
+    repo,
+    issue_number: prNumber,
+    body: commentBody,
+  });
+
+  console.log(
+    `Posted CI feedback comment for job "${jobName}" on PR #${prNumber}`,
+  );
+}
+
+/**
  * Set output for GitHub Actions
  */
 function setOutput(name: string, value: string): void {
@@ -411,6 +587,84 @@ export function runCIFeedbackCLI(): void {
     workflowRunUrl,
   }).catch((error) => {
     console.error("CI Feedback failed:", error);
+    process.exit(1);
+  });
+}
+
+/**
+ * CLI entry point for post-job feedback (runs within CI workflow)
+ */
+export function runPostJobFeedbackCLI(): void {
+  const token = process.env.GITHUB_TOKEN;
+  const owner = process.env.GITHUB_REPOSITORY_OWNER;
+  const githubRepository = process.env.GITHUB_REPOSITORY;
+  const prNumberStr = process.env.PR_NUMBER;
+  const jobName = process.env.JOB_NAME;
+  const runIdStr = process.env.RUN_ID;
+  const headSha = process.env.HEAD_SHA;
+  const workflowRunUrl = process.env.WORKFLOW_RUN_URL;
+
+  if (!token) {
+    console.error("GITHUB_TOKEN is required");
+    process.exit(1);
+  }
+  if (!owner) {
+    console.error("GITHUB_REPOSITORY_OWNER is required");
+    process.exit(1);
+  }
+  if (!githubRepository || !githubRepository.includes("/")) {
+    console.error(
+      "GITHUB_REPOSITORY is required and must be in format 'owner/repo'",
+    );
+    process.exit(1);
+  }
+  const repo = githubRepository.split("/")[1];
+  if (!repo) {
+    console.error("GITHUB_REPOSITORY must contain a repository name");
+    process.exit(1);
+  }
+  if (!prNumberStr) {
+    console.log("PR_NUMBER not set - not a pull request event, skipping");
+    process.exit(0);
+  }
+  const prNumber = parseInt(prNumberStr, 10);
+  if (isNaN(prNumber)) {
+    console.error("PR_NUMBER must be a valid number");
+    process.exit(1);
+  }
+  if (!jobName) {
+    console.error("JOB_NAME is required");
+    process.exit(1);
+  }
+  if (!runIdStr) {
+    console.error("RUN_ID is required");
+    process.exit(1);
+  }
+  const runId = parseInt(runIdStr, 10);
+  if (isNaN(runId)) {
+    console.error("RUN_ID must be a valid number");
+    process.exit(1);
+  }
+  if (!headSha) {
+    console.error("HEAD_SHA is required");
+    process.exit(1);
+  }
+  if (!workflowRunUrl) {
+    console.error("WORKFLOW_RUN_URL is required");
+    process.exit(1);
+  }
+
+  runPostJobFeedback({
+    token,
+    owner,
+    repo,
+    prNumber,
+    jobName,
+    runId,
+    headSha,
+    workflowRunUrl,
+  }).catch((error) => {
+    console.error("Post-job CI Feedback failed:", error);
     process.exit(1);
   });
 }

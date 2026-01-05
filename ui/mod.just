@@ -10,7 +10,20 @@ build:
 release:
     cargo build --release
 
+# Run tests with all features enabled (includes internal features)
 test log_level="DEBUG":
+    RUST_LOG={{log_level}} cargo test --all-features
+
+# Run tests without internal features (non-internal code path)
+test-non-internal log_level="DEBUG":
+    RUST_LOG={{log_level}} cargo test
+
+# Run both test configurations to ensure all code paths are covered
+test-all log_level="DEBUG":
+    @echo "Running non-internal (normal) tests..."
+    RUST_LOG={{log_level}} cargo test
+    @echo ""
+    @echo "Running tests with all features (includes internal)..."
     RUST_LOG={{log_level}} cargo test --all-features
 
 lint:

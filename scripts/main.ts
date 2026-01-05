@@ -8,8 +8,12 @@ import {
   type BuildSetupOptions,
 } from "./services/gcloud.ts";
 import { runVersionCheck } from "./gh-actions/version-check.ts";
-import { runCIFeedbackCLI } from "./gh-actions/ci-feedback.ts";
+import {
+  runCIFeedbackCLI,
+  runPostJobFeedbackCLI,
+} from "./gh-actions/ci-feedback.ts";
 import { runArtifactCleanupCLI } from "./gh-actions/artifact-cleanup.ts";
+import { runArtifactCheckCLI } from "./gh-actions/artifact-check.ts";
 import {
   getCargoFeature,
   getDatabaseSecret,
@@ -197,11 +201,29 @@ cli
 
 cli
   .command(
+    "ci-feedback-post-job",
+    "Post CI failure feedback from within a job (post-job approach)",
+  )
+  .action(() => {
+    runPostJobFeedbackCLI();
+  });
+
+cli
+  .command(
     "artifact-cleanup",
     "Cleanup old Docker images from Artifact Registry (for GitHub Actions)",
   )
   .action(async () => {
     await runArtifactCleanupCLI();
+  });
+
+cli
+  .command(
+    "artifact-check",
+    "Check Docker images in Artifact Registry and verify cleanup status",
+  )
+  .action(async () => {
+    await runArtifactCheckCLI();
   });
 
 cli.command("", "Show help").action(() => {
@@ -403,6 +425,31 @@ DRY_RUN=true bun run main.ts artifact-cleanup
 
 # Actually delete old images
 bun run main.ts artifact-cleanup
+\`\`\`
+
+### \`artifact-check\`
+
+Checks the current state of Docker images in Artifact Registry and verifies cleanup compliance.
+
+**What it does:**
+1. Lists all Docker images in the Artifact Registry repository.
+2. Categorizes images by type (PR, nightly, main, production).
+3. Checks if images are within their retention policies.
+4. Reports violations (images that should have been cleaned up).
+
+**Environment Variables:**
+- \`GCP_PROJECT_ID\` - Google Cloud Project ID (optional, uses gcloud config if not set)
+- \`GCP_REGION\` - Artifact Registry region (default: us-east1)
+- \`GCP_REPOSITORY\` - Repository name (default: collects-services)
+- \`GCP_IMAGE_NAME\` - Image name (default: collects-services)
+
+**Example:**
+\`\`\`bash
+# Check current artifact registry status
+just scripts::artifact-check
+
+# Or with bun directly
+bun run main.ts artifact-check
 \`\`\`
 
 ---

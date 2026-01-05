@@ -2,7 +2,10 @@ use collects_business::ApiStatus;
 use collects_business::BusinessConfig;
 use collects_business::Route;
 use collects_business::ToggleApiStatusCommand;
-use collects_business::{AuthCompute, LoginCommand, LoginInput, LogoutCommand};
+use collects_business::{
+    AuthCompute, LoginCommand, LoginInput, LogoutCommand, PendingTokenValidation,
+    ValidateTokenCommand,
+};
 #[cfg(any(feature = "env_internal", feature = "env_test_internal"))]
 use collects_business::{
     CFTokenCompute, CFTokenInput, CreateUserCommand, CreateUserCompute, CreateUserInput,
@@ -11,8 +14,12 @@ use collects_business::{
 use collects_states::{StateCtx, Time};
 use serde::{Deserialize, Serialize};
 
+use crate::widgets::ImagePreviewState;
 #[cfg(any(feature = "env_internal", feature = "env_test_internal"))]
 use crate::widgets::InternalUsersState;
+
+/// Key for storing the auth token in egui storage.
+pub const AUTH_TOKEN_STORAGE_KEY: &str = "collects_auth_token";
 
 #[derive(Deserialize, Serialize)]
 pub struct State {
@@ -33,6 +40,7 @@ impl Default for State {
 
         // Add login states and commands
         ctx.add_state(LoginInput::default());
+        ctx.add_state(PendingTokenValidation::default());
 
         // For internal builds, use Zero Trust authentication (skip login page)
         // For other builds, use default (not authenticated)
@@ -43,6 +51,10 @@ impl Default for State {
 
         ctx.record_command(LoginCommand);
         ctx.record_command(LogoutCommand);
+        ctx.record_command(ValidateTokenCommand);
+
+        // Add image preview state for clipboard/drop image handling
+        ctx.add_state(ImagePreviewState::new());
 
         // Add internal states and computes for internal builds
         #[cfg(any(feature = "env_internal", feature = "env_test_internal"))]
@@ -50,13 +62,13 @@ impl Default for State {
             // Cloudflare Access token (manual input) + compute cache
             ctx.add_state(CFTokenInput::default());
             ctx.record_compute(CFTokenCompute::default());
-            ctx.record_command(SetCFTokenCommand::default());
+            ctx.record_command(SetCFTokenCommand);
 
             // Create user flow
             ctx.add_state(CreateUserInput::default());
             ctx.record_compute(InternalApiStatus::default());
             ctx.record_compute(CreateUserCompute::default());
-            ctx.record_command(CreateUserCommand::default());
+            ctx.record_command(CreateUserCommand);
 
             // Internal users state
             ctx.add_state(InternalUsersState::new());
@@ -78,6 +90,7 @@ impl State {
 
         // Add login states and commands
         ctx.add_state(LoginInput::default());
+        ctx.add_state(PendingTokenValidation::default());
 
         // For internal builds, use Zero Trust authentication (skip login page)
         // For other builds, use default (not authenticated)
@@ -88,6 +101,10 @@ impl State {
 
         ctx.record_command(LoginCommand);
         ctx.record_command(LogoutCommand);
+        ctx.record_command(ValidateTokenCommand);
+
+        // Add image preview state for clipboard/drop image handling
+        ctx.add_state(ImagePreviewState::new());
 
         // Add internal states and computes for internal builds
         #[cfg(any(feature = "env_internal", feature = "env_test_internal"))]
@@ -95,13 +112,13 @@ impl State {
             // Cloudflare Access token (manual input) + compute cache
             ctx.add_state(CFTokenInput::default());
             ctx.record_compute(CFTokenCompute::default());
-            ctx.record_command(SetCFTokenCommand::default());
+            ctx.record_command(SetCFTokenCommand);
 
             // Create user flow
             ctx.add_state(CreateUserInput::default());
             ctx.record_compute(InternalApiStatus::default());
             ctx.record_compute(CreateUserCompute::default());
-            ctx.record_command(CreateUserCommand::default());
+            ctx.record_command(CreateUserCommand);
 
             // Internal users state
             ctx.add_state(InternalUsersState::new());

@@ -22,6 +22,8 @@ pub struct InternalApiStatus {
     last_error: Option<String>,
     /// Number of consecutive failed attempts (resets on success)
     retry_count: u8,
+    /// Whether an API fetch is currently in-flight (prevents duplicate requests)
+    is_fetching: bool,
 }
 
 /// Availability status for internal API.
@@ -50,6 +52,12 @@ impl Compute for InternalApiStatus {
     }
 
     fn compute(&self, deps: Dep, updater: Updater) {
+        // Skip if a fetch is already in-flight to prevent duplicate requests
+        if self.is_fetching {
+            debug!("Internal API status fetch already in-flight, skipping");
+            return;
+        }
+
         let config = deps.get_state_ref::<BusinessConfig>();
         let url = Ustr::from(format!("{}/internal/users", config.api_url().as_str()).as_str());
         let request = ehttp::Request::get(url);
@@ -94,6 +102,13 @@ impl Compute for InternalApiStatus {
                 "Fetching Internal API Status at {:?} on: {:?}, Waiting Result",
                 &url, now
             );
+            // Mark as fetching to prevent duplicate requests while this one is in-flight.
+            updater.set(InternalApiStatus {
+                last_update_time: self.last_update_time,
+                last_error: self.last_error.clone(),
+                retry_count: current_retry_count,
+                is_fetching: true,
+            });
             ehttp::fetch(request, move |res| match res {
                 Ok(response) => {
                     if response.status == 200 {
@@ -102,6 +117,7 @@ impl Compute for InternalApiStatus {
                             last_update_time: Some(now),
                             last_error: None,
                             retry_count: 0, // Reset retry count on success
+                            is_fetching: false,
                         };
                         updater.set(api_status);
                     } else {
@@ -113,6 +129,7 @@ impl Compute for InternalApiStatus {
                             last_update_time: Some(now),
                             last_error: Some(format!("Internal API: {}", response.status)),
                             retry_count: current_retry_count.saturating_add(1),
+                            is_fetching: false,
                         };
                         updater.set(api_status);
                     }
@@ -123,6 +140,7 @@ impl Compute for InternalApiStatus {
                         last_update_time: Some(now),
                         last_error: Some(err.to_string()),
                         retry_count: current_retry_count.saturating_add(1),
+                        is_fetching: false,
                     };
                     updater.set(api_status);
                 }

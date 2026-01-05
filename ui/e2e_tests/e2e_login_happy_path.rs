@@ -71,9 +71,7 @@ fn test_login_happy_path_e2e() {
     let _otp_code = match get_valid_otp_code() {
         Some(code) => code,
         None => {
-            log::info!(
-                "Skipping e2e login test: E2E_TEST_OTP_SECRET environment variable not set"
-            );
+            log::info!("Skipping e2e login test: E2E_TEST_OTP_SECRET environment variable not set");
             return;
         }
     };

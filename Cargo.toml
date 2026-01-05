@@ -38,15 +38,9 @@ ehttp = { version = "0.5", features = ["json", "streaming", "native-async", "mul
 flume = "0.11"
 mimalloc = { version = "0.1", default-features = false }
 wasm-bindgen = "0.2"
-stringzilla = "4"
-rfd = "0.15"
 log = "0.4"
 
-bumpalo = "3"
-foyer = "0.20"
 ustr = "1"
-zerocopy = "0.8"
-zerocopy-derive = '0.8'
 
 [profile.dev]
 opt-level = 1

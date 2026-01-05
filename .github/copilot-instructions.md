@@ -211,6 +211,61 @@ working-directory: scripts
 run: bun run main.ts my-action
 ```
 
+### CI Feedback for PR Workflows
+
+**IMPORTANT**: All CI jobs that run on `pull_request` events **MUST** include a CI feedback step to notify Copilot of failures.
+
+**Why:**
+- Enables Copilot to automatically analyze CI failures and suggest fixes
+- Provides consistent failure reporting across all PR checks
+- Helps developers fix issues faster with AI-assisted debugging
+
+**When to add CI feedback:**
+- Any job in a workflow triggered by `pull_request` events
+- Any job that validates code quality, builds, or tests
+
+**When NOT to add CI feedback:**
+- Workflows that only trigger on `schedule`, `workflow_dispatch`, or `workflow_run` (post-CI)
+- Cleanup jobs (e.g., `pull_request: types: [closed]`)
+- Jobs that run after CI has already passed
+
+**Required permissions:**
+```yaml
+permissions:
+  contents: read
+  pull-requests: write  # Required for posting PR comments
+```
+
+**Add this step at the end of each job:**
+```yaml
+- name: Post CI Feedback on Failure
+  if: failure() && github.event_name == 'pull_request'
+  uses: ./.github/actions/ci-feedback
+  with:
+    github-token: ${{ secrets.COPILOT_INVOKER_TOKEN }}
+    job-name: "Your Job Display Name"  # Must match the job's `name:` field exactly
+```
+
+**Example - Complete job with CI feedback:**
+```yaml
+jobs:
+  my-check:
+    name: "Check: My Validation"  # This name must match job-name in ci-feedback
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Validation
+        run: just my-validation-command
+
+      - name: Post CI Feedback on Failure
+        if: failure() && github.event_name == 'pull_request'
+        uses: ./.github/actions/ci-feedback
+        with:
+          github-token: ${{ secrets.COPILOT_INVOKER_TOKEN }}
+          job-name: "Check: My Validation"
+```
+
 ## StateCtx and Compute Pattern
 
 The application uses a reactive state management system with `StateCtx` for state and `Compute` for derived/async values.

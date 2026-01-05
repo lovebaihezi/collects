@@ -26,6 +26,7 @@ fn main() -> eframe::Result {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([400.0, 300.0])
             .with_min_inner_size([300.0, 220.0])
+            .with_drag_and_drop(true)
             .with_icon(
                 // Icon is generated at build time based on environment features
                 // (original for prod, grayscale for non-prod, inverted grayscale for internal)

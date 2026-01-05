@@ -19,6 +19,14 @@ interface ImageCategory {
   retentionDays: number | null; // null means cleaned on PR close
 }
 
+interface ImageToRemove {
+  tags: string[];
+  digest: string;
+  age: string;
+  reason: string;
+  fullPath: string;
+}
+
 interface CheckResult {
   totalImages: number;
   categories: {
@@ -29,6 +37,7 @@ interface CheckResult {
     unknown: ImageCategory;
   };
   violations: string[];
+  imagesToRemove: ImageToRemove[];
   summary: string[];
 }
 
@@ -138,6 +147,8 @@ export async function checkArtifacts(
 
   validateOptions(fullOptions);
 
+  const baseImagePath = `${fullOptions.region}-docker.pkg.dev/${fullOptions.projectId}/${fullOptions.repository}/${fullOptions.imageName}`;
+
   const result: CheckResult = {
     totalImages: 0,
     categories: {
@@ -148,6 +159,7 @@ export async function checkArtifacts(
       unknown: { name: "Unknown/Untagged", images: [], retentionDays: null },
     },
     violations: [],
+    imagesToRemove: [],
     summary: [],
   };
 
@@ -186,6 +198,13 @@ export async function checkArtifacts(
       result.violations.push(
         `PR image "${tags}" still exists (age: ${age}) - should be cleaned on PR close`,
       );
+      result.imagesToRemove.push({
+        tags: img.tags,
+        digest: img.digest,
+        age,
+        reason: "PR closed - should be cleaned immediately",
+        fullPath: `${baseImagePath}@${img.digest}`,
+      });
     }
   }
   console.log("");
@@ -203,6 +222,13 @@ export async function checkArtifacts(
       result.violations.push(
         `Nightly image "${tags}" (age: ${age}) exceeds 7 day retention`,
       );
+      result.imagesToRemove.push({
+        tags: img.tags,
+        digest: img.digest,
+        age,
+        reason: "Exceeds 7 day retention policy",
+        fullPath: `${baseImagePath}@${img.digest}`,
+      });
     } else {
       console.log(`   ✅ ${tags} (age: ${age})`);
     }
@@ -222,6 +248,13 @@ export async function checkArtifacts(
       result.violations.push(
         `Main branch image "${tags}" (age: ${age}) exceeds 1 day retention`,
       );
+      result.imagesToRemove.push({
+        tags: img.tags,
+        digest: img.digest,
+        age,
+        reason: "Exceeds 1 day retention policy",
+        fullPath: `${baseImagePath}@${img.digest}`,
+      });
     } else {
       console.log(`   ✅ ${tags} (age: ${age})`);
     }
@@ -241,6 +274,13 @@ export async function checkArtifacts(
       result.violations.push(
         `Production image "${tags}" (age: ${age}) exceeds 30 day retention`,
       );
+      result.imagesToRemove.push({
+        tags: img.tags,
+        digest: img.digest,
+        age,
+        reason: "Exceeds 30 day retention policy",
+        fullPath: `${baseImagePath}@${img.digest}`,
+      });
     } else {
       console.log(`   ✅ ${tags} (age: ${age})`);
     }
@@ -281,6 +321,35 @@ export async function checkArtifacts(
     console.log("Run `just scripts::artifact-cleanup` to clean up old images");
     result.summary.push(
       `Found ${result.violations.length} images that should be cleaned up`,
+    );
+  }
+
+  // List images to remove
+  if (result.imagesToRemove.length > 0) {
+    console.log("\n=== Images to Remove ===\n");
+    console.log(
+      `The following ${result.imagesToRemove.length} image(s) should be removed based on retention policies:\n`,
+    );
+
+    for (const img of result.imagesToRemove) {
+      const tags = img.tags.join(", ") || "(untagged)";
+      console.log(`📛 ${tags}`);
+      console.log(`   Age: ${img.age}`);
+      console.log(`   Reason: ${img.reason}`);
+      console.log(`   Digest: ${img.digest}`);
+      console.log(`   Full path: ${img.fullPath}`);
+      console.log("");
+    }
+
+    console.log("=== Removal Commands ===\n");
+    console.log("To remove these images, run the following commands:\n");
+    for (const img of result.imagesToRemove) {
+      console.log(
+        `gcloud artifacts docker images delete "${img.fullPath}" --delete-tags --quiet`,
+      );
+    }
+    console.log(
+      "\nOr run `just scripts::artifact-cleanup` to automatically clean up all images.",
     );
   }
 

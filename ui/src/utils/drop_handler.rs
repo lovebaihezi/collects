@@ -250,8 +250,8 @@ mod tests {
         #[test]
         fn test_load_image_from_bytes_valid_png() {
             // Create a minimal 1x1 red PNG image programmatically
-            use ::image::codecs::png::PngEncoder;
             use ::image::ImageEncoder;
+            use ::image::codecs::png::PngEncoder;
 
             let mut png_data = Vec::new();
             let encoder = PngEncoder::new(&mut png_data);

@@ -1,6 +1,7 @@
 use collects_business::ApiStatus;
 use collects_business::BusinessConfig;
 use collects_business::Route;
+use collects_business::ToggleApiStatusCommand;
 use collects_business::{AuthCompute, LoginCommand, LoginInput, LogoutCommand};
 #[cfg(any(feature = "env_internal", feature = "env_test_internal"))]
 use collects_business::{
@@ -10,6 +11,7 @@ use collects_business::{
 use collects_states::{StateCtx, Time};
 use serde::{Deserialize, Serialize};
 
+use crate::widgets::ImagePreviewState;
 #[cfg(any(feature = "env_internal", feature = "env_test_internal"))]
 use crate::widgets::InternalUsersState;
 
@@ -28,6 +30,7 @@ impl Default for State {
         ctx.add_state(BusinessConfig::default());
         ctx.add_state(Route::default());
         ctx.record_compute(ApiStatus::default());
+        ctx.record_command(ToggleApiStatusCommand);
 
         // Add login states and commands
         ctx.add_state(LoginInput::default());
@@ -41,6 +44,9 @@ impl Default for State {
 
         ctx.record_command(LoginCommand);
         ctx.record_command(LogoutCommand);
+
+        // Add image preview state for clipboard/drop image handling
+        ctx.add_state(ImagePreviewState::new());
 
         // Add internal states and computes for internal builds
         #[cfg(any(feature = "env_internal", feature = "env_test_internal"))]
@@ -72,6 +78,7 @@ impl State {
         ctx.add_state(BusinessConfig::new(base_url));
         ctx.add_state(Route::default());
         ctx.record_compute(ApiStatus::default());
+        ctx.record_command(ToggleApiStatusCommand);
 
         // Add login states and commands
         ctx.add_state(LoginInput::default());
@@ -85,6 +92,9 @@ impl State {
 
         ctx.record_command(LoginCommand);
         ctx.record_command(LogoutCommand);
+
+        // Add image preview state for clipboard/drop image handling
+        ctx.add_state(ImagePreviewState::new());
 
         // Add internal states and computes for internal builds
         #[cfg(any(feature = "env_internal", feature = "env_test_internal"))]

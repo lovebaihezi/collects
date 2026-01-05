@@ -211,10 +211,236 @@ working-directory: scripts
 run: bun run main.ts my-action
 ```
 
+## StateCtx and Compute Pattern
+
+The application uses a reactive state management system with `StateCtx` for state and `Compute` for derived/async values.
+
+### Updating Computes
+
+Computes **MUST** only be updated through the Command pattern using `Updater::set()`. Never mutate computes directly.
+
+**Why:**
+- Ensures state changes are trackable and predictable
+- Allows async operations to safely update state
+- Maintains separation between state reading and writing
+
+**Do:**
+```rust
+// Create a Command to update the compute
+#[derive(Default, Debug)]
+pub struct ToggleMyFeatureCommand;
+
+impl Command for ToggleMyFeatureCommand {
+    fn run(&self, deps: Dep, updater: Updater) {
+        let current = deps.get_compute_ref::<MyCompute>();
+        updater.set(MyCompute {
+            // ... update fields
+            my_flag: !current.my_flag,
+        });
+    }
+}
+
+// Dispatch the command from UI code
+ctx.dispatch::<ToggleMyFeatureCommand>();
+```
+
+**Don't:**
+```rust
+// ❌ Never mutate computes directly
+let compute = ctx.get_compute_mut::<MyCompute>();
+compute.my_flag = !compute.my_flag;
+```
+
+### Reading State in UI
+
+Use `cached::<T>()` to read compute values in UI code:
+```rust
+let show_panel = self.state.ctx
+    .cached::<MyCompute>()
+    .map(|c| c.show_flag())
+    .unwrap_or(false);
+```
+
 ## Testing
 
-- Run `just ui::test` for UI tests
+- Run `just ui::test` for UI tests (with all features enabled, includes internal features)
+- Run `just ui::test-non-internal` for non-internal tests only
+- Run `just ui::test-all` for complete coverage (both test configurations)
 - Ensure all tests pass before creating a PR
+
+### How UI Tests Work
+
+The UI testing system uses `kittest` and `egui_kittest` for testing egui-based widgets and applications. Tests are organized into:
+
+1. **Unit Tests**: Located in `#[cfg(test)]` modules within source files (e.g., `ui/src/widgets/api_status.rs`)
+2. **Integration Tests**: Located in `ui/tests/` directory
+
+#### Test Infrastructure
+
+**Key Dependencies (from `ui/Cargo.toml`):**
+```toml
+[dev-dependencies]
+kittest = "0.3"
+wiremock = "0.6"
+egui_kittest = { version = "0.33", features = ["snapshot", "eframe"] }
+tokio = { workspace = true, features = ["full", "test-util"] }
+```
+
+**Test Context (`ui/tests/common/mod.rs`):**
+- `TestCtx<'a, State>` - For testing individual widgets with a mock server
+- `TestCtx<'a, CollectsApp>` - For testing the full application
+
+```rust
+// Widget test example
+let mut ctx = TestCtx::new(|ui, state| {
+    my_widget(&state.ctx, ui);
+}).await;
+
+// Full app test example
+let mut ctx = TestCtx::new_app().await;
+let harness = ctx.harness_mut();
+harness.step();
+```
+
+### Environment-Specific Tests
+
+The UI supports multiple environments with different features enabled via Cargo feature flags. This affects which tests run and what code paths are tested.
+
+#### Available Environment Features
+
+| Feature | Description | Use Case |
+|---------|-------------|----------|
+| `env_test` | Test environment | Testing with test backend |
+| `env_test_internal` | Test-internal environment | Admin features testing |
+| `env_internal` | Internal environment | Admin features in production |
+| `env_nightly` | Nightly builds | Nightly release testing |
+| `env_pr` | PR preview environment | Pull request previews |
+| (none) | Production | Default production build |
+
+#### Running Tests for Different Environments
+
+**Run all tests with all features (default command):**
+```bash
+# Runs tests with all features enabled
+just ui::test
+
+# Or directly with cargo
+RUST_LOG=DEBUG cargo test --all-features
+```
+
+**Run tests for normal (non-internal) environment:**
+```bash
+# Run tests without internal features
+cd ui && cargo test
+
+# Or with specific test environment feature
+cd ui && cargo test --features env_test
+```
+
+**Run tests for internal environment:**
+```bash
+# Run tests with internal features enabled
+cd ui && cargo test --features env_test_internal
+
+# Or with env_internal feature
+cd ui && cargo test --features env_internal
+```
+
+**Run specific test file:**
+```bash
+# Run a specific integration test
+cd ui && cargo test --test api_status_integration --all-features
+
+# Run a specific test function
+cd ui && cargo test test_api_status_with_200 --all-features
+```
+
+#### Conditional Compilation in Tests
+
+Tests use `#[cfg]` attributes to conditionally compile based on environment features:
+
+**Tests only for internal environments:**
+```rust
+// This entire test file only compiles when internal features are enabled
+#![cfg(any(feature = "env_internal", feature = "env_test_internal"))]
+
+#[tokio::test]
+async fn test_internal_user_management() {
+    // Test internal-only features like user management
+}
+```
+
+**Tests only for normal (non-internal) environments:**
+```rust
+#[cfg(not(any(feature = "env_internal", feature = "env_test_internal")))]
+#[tokio::test]
+async fn test_normal_login_flow() {
+    // Test login flow that only exists in non-internal builds
+}
+```
+
+**Conditional test setup:**
+```rust
+async fn setup_test_state_with_status(status_code: u16) -> (MockServer, State) {
+    let mock_server = MockServer::start().await;
+
+    // Base mock for all environments
+    Mock::given(method("GET"))
+        .and(path("/api/is-health"))
+        .respond_with(ResponseTemplate::new(status_code))
+        .mount(&mock_server)
+        .await;
+
+    // Additional mock only for internal environments
+    #[cfg(any(feature = "env_internal", feature = "env_test_internal"))]
+    Mock::given(method("GET"))
+        .and(path("/api/internal/users"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "users": []
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let state = State::test(mock_server.uri());
+    (mock_server, state)
+}
+```
+
+#### Test File Organization by Environment
+
+| Test File | Environment | Description |
+|-----------|-------------|-------------|
+| `api_status_integration.rs` | All | API status widget tests |
+| `api_status_interval_test.rs` | Mixed | API status interval tests (some internal-only) |
+| `api_status_toggle_test.rs` | All | API status toggle functionality |
+| `login_integration.rs` | Mixed | Has both internal and non-internal tests |
+| `user_management_integration.rs` | Internal only | Admin user management tests |
+| `create_user_integration.rs` | Internal only | User creation tests |
+| `otp_time_remaining_test.rs` | Internal only | OTP time remaining widget tests |
+| `image_paste_integration.rs` | Non-internal only | Image paste functionality |
+
+#### CI/CD Test Execution
+
+In CI (`.github/workflows/ci.yml`), tests run **both** code paths to ensure complete coverage:
+
+```yaml
+- name: Run Non-Internal Tests
+  working-directory: ui
+  run: cargo test
+
+- name: Run Internal Tests (all features)
+  working-directory: ui
+  run: cargo test --all-features
+```
+
+This ensures:
+- **Non-internal tests** run first (`cargo test`) — tests code paths gated by `#[cfg(not(any(feature = "env_internal", feature = "env_test_internal")))]`
+- **Internal tests** run second (`cargo test --all-features`) — tests code paths gated by `#[cfg(any(feature = "env_internal", feature = "env_test_internal"))]`
+
+**Why both are needed:**
+- `--all-features` enables internal features, so `#[cfg(not(...))]` tests are **excluded**
+- Running without features enables non-internal code paths, so `#[cfg(any(...))]` tests are **excluded**
+- Together, both runs provide complete test coverage
 
 ### Testing Requirements
 
@@ -250,8 +476,8 @@ mod my_widget_test {
         let harness = ctx.harness_mut();
         harness.step();
         
-        // Assert widget renders correctly
-        assert!(harness.query_by_label("expected_label").is_some());
+        // Assert widget renders correctly using kittest queries
+        assert!(harness.query_by_label_contains("expected_label").is_some());
     }
 }
 ```
@@ -303,7 +529,76 @@ async fn test_my_feature_with_error() {
 - Test with various authentication scenarios (Zero Trust, etc.)
 - Test database interactions if applicable
 
-#### 3. File Organization Guidelines
+#### 3. UI Testing Best Practices
+
+**Use kittest queries to validate UI state, not internal StateCtx:**
+
+Integration tests should verify what the user sees, not internal application state. Use `harness.query_by_label_contains()` to check if UI elements are visible.
+
+**Do:**
+```rust
+// ✅ Query UI elements directly
+fn is_panel_visible(harness: &egui_kittest::Harness<'_, MyApp>) -> bool {
+    harness.query_by_label_contains("Panel Title").is_some()
+}
+
+assert!(is_panel_visible(harness), "Panel should be visible");
+```
+
+**Don't:**
+```rust
+// ❌ Don't check internal state in integration tests
+let show_panel = harness.state().ctx.cached::<MyCompute>()
+    .map(|c| c.show_flag())
+    .unwrap_or(false);
+assert!(show_panel);
+```
+
+**Use harness.key_press() to simulate user input:**
+
+```rust
+// Simulate F1 key press to toggle a feature
+harness.key_press(egui::Key::F1);
+harness.step();  // Process the key event
+harness.step();  // Let UI update
+
+// Verify the UI changed
+assert!(harness.query_by_label_contains("Feature Panel").is_some());
+```
+
+**Wait for async operations in tests:**
+
+If your test involves async API calls, ensure they complete before asserting:
+```rust
+// Run several frames to let initial API fetch complete
+for _ in 0..10 {
+    harness.step();
+}
+// Wait for async operations
+tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+for _ in 0..5 {
+    harness.step();
+}
+
+// Now test the feature
+harness.key_press(egui::Key::F1);
+harness.step();
+```
+
+**Add accessible labels to UI elements for testing:**
+
+When creating UI panels or widgets that need to be tested, include labels that kittest can query:
+```rust
+// In your UI code
+if show_api_status {
+    egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
+        ui.label("API Status");  // This label makes the panel queryable
+        // ... rest of panel content
+    });
+}
+```
+
+#### 4. File Organization Guidelines
 
 Split large files into smaller, focused files following these guidelines:
 

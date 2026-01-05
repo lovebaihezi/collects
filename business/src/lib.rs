@@ -10,7 +10,7 @@ pub mod route;
 // Re-export version_info from collects-utils for backward compatibility
 pub use collects_utils::version_info;
 
-pub use api_status::{APIAvailability, ApiStatus};
+pub use api_status::{APIAvailability, ApiStatus, ToggleApiStatusCommand};
 pub use cf_token_compute::{CFTokenCompute, CFTokenInput, CFTokenResult, SetCFTokenCommand};
 pub use config::BusinessConfig;
 pub use create_user_compute::{

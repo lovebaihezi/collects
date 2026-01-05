@@ -114,6 +114,8 @@ pub fn api_status(state_ctx: &StateCtx, ui: &mut Ui) -> Response {
 mod api_state_widget_test {
     use std::time::Duration;
 
+    use collects_business::{ApiStatus, ToggleApiStatusCommand};
+
     use crate::test_utils::TestCtx;
 
     #[tokio::test]
@@ -198,5 +200,141 @@ mod api_state_widget_test {
         harness.state_mut().ctx.run_all_dirty();
 
         // The widget should render successfully with error state
+    }
+
+    /// Tests that the ToggleApiStatusCommand correctly toggles the show_status flag.
+    #[tokio::test]
+    async fn test_toggle_api_status_command() {
+        let mut ctx = TestCtx::new(|ui, state| {
+            super::api_status(&state.ctx, ui);
+        })
+        .await;
+
+        let harness = ctx.harness_mut();
+        harness.step();
+
+        // Initially, show_status should be false (default)
+        let initial_show_status = harness
+            .state()
+            .ctx
+            .cached::<ApiStatus>()
+            .map(|api| api.show_status())
+            .unwrap_or(false);
+        assert!(
+            !initial_show_status,
+            "API status should be hidden by default"
+        );
+
+        // Dispatch the toggle command
+        harness.state_mut().ctx.dispatch::<ToggleApiStatusCommand>();
+
+        // Sync computes to apply the update
+        harness.state_mut().ctx.sync_computes();
+        harness.step();
+
+        // After toggle, show_status should be true
+        let after_toggle = harness
+            .state()
+            .ctx
+            .cached::<ApiStatus>()
+            .map(|api| api.show_status())
+            .unwrap_or(false);
+        assert!(
+            after_toggle,
+            "API status should be visible after first toggle"
+        );
+
+        // Toggle again
+        harness.state_mut().ctx.dispatch::<ToggleApiStatusCommand>();
+        harness.state_mut().ctx.sync_computes();
+        harness.step();
+
+        // After second toggle, show_status should be false again
+        let after_second_toggle = harness
+            .state()
+            .ctx
+            .cached::<ApiStatus>()
+            .map(|api| api.show_status())
+            .unwrap_or(true);
+        assert!(
+            !after_second_toggle,
+            "API status should be hidden after second toggle"
+        );
+    }
+
+    /// Tests that the show_status flag is preserved when ApiStatus compute updates.
+    #[tokio::test]
+    async fn test_show_status_preserved_after_api_fetch() {
+        let mut ctx = TestCtx::new(|ui, state| {
+            super::api_status(&state.ctx, ui);
+        })
+        .await;
+
+        let harness = ctx.harness_mut();
+        harness.step();
+
+        // Toggle to show the API status
+        harness.state_mut().ctx.dispatch::<ToggleApiStatusCommand>();
+        harness.state_mut().ctx.sync_computes();
+        harness.step();
+
+        // Verify show_status is true
+        let show_status_before = harness
+            .state()
+            .ctx
+            .cached::<ApiStatus>()
+            .map(|api| api.show_status())
+            .unwrap_or(false);
+        assert!(
+            show_status_before,
+            "API status should be visible after toggle"
+        );
+
+        // Run the compute cycle (which might update ApiStatus from API response)
+        harness.state_mut().ctx.run_all_dirty();
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        harness.state_mut().ctx.sync_computes();
+        harness.step();
+
+        // show_status should still be true after the API fetch updates ApiStatus
+        let show_status_after = harness
+            .state()
+            .ctx
+            .cached::<ApiStatus>()
+            .map(|api| api.show_status())
+            .unwrap_or(false);
+        assert!(
+            show_status_after,
+            "API status should remain visible after API fetch"
+        );
+    }
+
+    /// Tests that is_fetching flag is preserved when toggling API status visibility.
+    #[tokio::test]
+    async fn test_is_fetching_preserved_on_toggle() {
+        let mut ctx = TestCtx::new(|ui, state| {
+            super::api_status(&state.ctx, ui);
+        })
+        .await;
+
+        let harness = ctx.harness_mut();
+        harness.step();
+
+        // Run compute to trigger initial fetch (sets is_fetching = true)
+        harness.state_mut().ctx.run_all_dirty();
+
+        // Toggle while fetch might be in-flight
+        harness.state_mut().ctx.dispatch::<ToggleApiStatusCommand>();
+        harness.state_mut().ctx.sync_computes();
+        harness.step();
+
+        // After toggle, the status should be visible
+        let show_status = harness
+            .state()
+            .ctx
+            .cached::<ApiStatus>()
+            .map(|api| api.show_status())
+            .unwrap_or(false);
+        assert!(show_status, "API status should be visible after toggle");
     }
 }

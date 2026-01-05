@@ -14,7 +14,12 @@ mod alloc {
 fn main() -> eframe::Result {
     use std::fs;
 
-    env_logger::init(); // Log to stderr (if you run with `RUST_LOG=debug`).
+    // Log to stderr (if you run with `RUST_LOG=debug`).
+    // Filter out egui_winit clipboard errors - they occur when clipboard content
+    // is not in a supported text format (e.g., when copying images from browser)
+    env_logger::Builder::from_env(env_logger::Env::default())
+        .filter_module("egui_winit::clipboard", log::LevelFilter::Off)
+        .init();
 
     let native_options = eframe::NativeOptions {
         hardware_acceleration: eframe::HardwareAcceleration::Preferred,

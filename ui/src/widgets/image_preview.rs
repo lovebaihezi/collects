@@ -181,8 +181,7 @@ const MAX_PREVIEW_SIZE: f32 = 400.0;
 /// The egui Response from the widget.
 pub fn image_preview_fullscreen(state: &mut ImagePreviewState, ui: &mut Ui) -> Response {
     let Some(entry) = state.current_image() else {
-        // Should not happen, but handle gracefully
-        ui.label("No image");
+        // Should not happen (caller checks has_image()), but handle gracefully
         return ui.response();
     };
 
@@ -247,7 +246,7 @@ pub fn image_preview(state: &mut ImagePreviewState, ui: &mut Ui) -> Response {
     let response = ui
         .scope(|ui| {
             let Some(entry) = state.current_image() else {
-                ui.label("No image. Paste (Ctrl+V) an image to display it here.");
+                // No image - return without showing any placeholder text
                 return false;
             };
 
@@ -476,10 +475,10 @@ mod image_preview_widget_tests {
             state,
         );
 
-        // Should show the "No image" placeholder text
+        // Empty state should not show any placeholder text (removed for cleaner UI)
         assert!(
-            harness.query_by_label_contains("No image").is_some(),
-            "Empty state should show 'No image' placeholder"
+            harness.query_by_label_contains("No image").is_none(),
+            "Empty state should not show 'No image' placeholder (removed)"
         );
     }
 

@@ -263,8 +263,184 @@ let show_panel = self.state.ctx
 
 ## Testing
 
-- Run `just ui::test` for UI tests
+- Run `just ui::test` for UI tests (with all features enabled, includes internal features)
+- Run `just ui::test-non-internal` for non-internal tests only
+- Run `just ui::test-all` for complete coverage (both test configurations)
 - Ensure all tests pass before creating a PR
+
+### How UI Tests Work
+
+The UI testing system uses `kittest` and `egui_kittest` for testing egui-based widgets and applications. Tests are organized into:
+
+1. **Unit Tests**: Located in `#[cfg(test)]` modules within source files (e.g., `ui/src/widgets/api_status.rs`)
+2. **Integration Tests**: Located in `ui/tests/` directory
+
+#### Test Infrastructure
+
+**Key Dependencies (from `ui/Cargo.toml`):**
+```toml
+[dev-dependencies]
+kittest = "0.3"
+wiremock = "0.6"
+egui_kittest = { version = "0.33", features = ["snapshot", "eframe"] }
+tokio = { workspace = true, features = ["full", "test-util"] }
+```
+
+**Test Context (`ui/tests/common/mod.rs`):**
+- `TestCtx<'a, State>` - For testing individual widgets with a mock server
+- `TestCtx<'a, CollectsApp>` - For testing the full application
+
+```rust
+// Widget test example
+let mut ctx = TestCtx::new(|ui, state| {
+    my_widget(&state.ctx, ui);
+}).await;
+
+// Full app test example
+let mut ctx = TestCtx::new_app().await;
+let harness = ctx.harness_mut();
+harness.step();
+```
+
+### Environment-Specific Tests
+
+The UI supports multiple environments with different features enabled via Cargo feature flags. This affects which tests run and what code paths are tested.
+
+#### Available Environment Features
+
+| Feature | Description | Use Case |
+|---------|-------------|----------|
+| `env_test` | Test environment | Testing with test backend |
+| `env_test_internal` | Test-internal environment | Admin features testing |
+| `env_internal` | Internal environment | Admin features in production |
+| `env_nightly` | Nightly builds | Nightly release testing |
+| `env_pr` | PR preview environment | Pull request previews |
+| (none) | Production | Default production build |
+
+#### Running Tests for Different Environments
+
+**Run all tests with all features (default command):**
+```bash
+# Runs tests with all features enabled
+just ui::test
+
+# Or directly with cargo
+RUST_LOG=DEBUG cargo test --all-features
+```
+
+**Run tests for normal (non-internal) environment:**
+```bash
+# Run tests without internal features
+cd ui && cargo test
+
+# Or with specific test environment feature
+cd ui && cargo test --features env_test
+```
+
+**Run tests for internal environment:**
+```bash
+# Run tests with internal features enabled
+cd ui && cargo test --features env_test_internal
+
+# Or with env_internal feature
+cd ui && cargo test --features env_internal
+```
+
+**Run specific test file:**
+```bash
+# Run a specific integration test
+cd ui && cargo test --test api_status_integration --all-features
+
+# Run a specific test function
+cd ui && cargo test test_api_status_with_200 --all-features
+```
+
+#### Conditional Compilation in Tests
+
+Tests use `#[cfg]` attributes to conditionally compile based on environment features:
+
+**Tests only for internal environments:**
+```rust
+// This entire test file only compiles when internal features are enabled
+#![cfg(any(feature = "env_internal", feature = "env_test_internal"))]
+
+#[tokio::test]
+async fn test_internal_user_management() {
+    // Test internal-only features like user management
+}
+```
+
+**Tests only for normal (non-internal) environments:**
+```rust
+#[cfg(not(any(feature = "env_internal", feature = "env_test_internal")))]
+#[tokio::test]
+async fn test_normal_login_flow() {
+    // Test login flow that only exists in non-internal builds
+}
+```
+
+**Conditional test setup:**
+```rust
+async fn setup_test_state_with_status(status_code: u16) -> (MockServer, State) {
+    let mock_server = MockServer::start().await;
+
+    // Base mock for all environments
+    Mock::given(method("GET"))
+        .and(path("/api/is-health"))
+        .respond_with(ResponseTemplate::new(status_code))
+        .mount(&mock_server)
+        .await;
+
+    // Additional mock only for internal environments
+    #[cfg(any(feature = "env_internal", feature = "env_test_internal"))]
+    Mock::given(method("GET"))
+        .and(path("/api/internal/users"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "users": []
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let state = State::test(mock_server.uri());
+    (mock_server, state)
+}
+```
+
+#### Test File Organization by Environment
+
+| Test File | Environment | Description |
+|-----------|-------------|-------------|
+| `api_status_integration.rs` | All | API status widget tests |
+| `api_status_interval_test.rs` | Mixed | API status interval tests (some internal-only) |
+| `api_status_toggle_test.rs` | All | API status toggle functionality |
+| `login_integration.rs` | Mixed | Has both internal and non-internal tests |
+| `user_management_integration.rs` | Internal only | Admin user management tests |
+| `create_user_integration.rs` | Internal only | User creation tests |
+| `otp_time_remaining_test.rs` | Internal only | OTP time remaining widget tests |
+| `image_paste_integration.rs` | Non-internal only | Image paste functionality |
+
+#### CI/CD Test Execution
+
+In CI (`.github/workflows/ci.yml`), tests run **both** code paths to ensure complete coverage:
+
+```yaml
+- name: Run Non-Internal Tests
+  working-directory: ui
+  run: cargo test
+
+- name: Run Internal Tests (all features)
+  working-directory: ui
+  run: cargo test --all-features
+```
+
+This ensures:
+- **Non-internal tests** run first (`cargo test`) — tests code paths gated by `#[cfg(not(any(feature = "env_internal", feature = "env_test_internal")))]`
+- **Internal tests** run second (`cargo test --all-features`) — tests code paths gated by `#[cfg(any(feature = "env_internal", feature = "env_test_internal"))]`
+
+**Why both are needed:**
+- `--all-features` enables internal features, so `#[cfg(not(...))]` tests are **excluded**
+- Running without features enables non-internal code paths, so `#[cfg(any(...))]` tests are **excluded**
+- Together, both runs provide complete test coverage
 
 ### Testing Requirements
 

@@ -17,7 +17,7 @@ pub use dep::Dep;
 pub use enum_states::BasicStates;
 pub use graph::{DepRoute, Graph, TopologyError};
 pub use runtime::StateRuntime;
-pub use state::{Reader, State, Updater};
+pub use state::{Reader, State, Updater, state_assign_impl};
 pub use state_sync_status::Stage;
 
 /// Manual-only side effects / commands.
@@ -55,6 +55,10 @@ mod state_runtime_test {
         fn as_any_mut(&mut self) -> &mut dyn Any {
             self
         }
+
+        fn assign_box(&mut self, new_self: Box<dyn Any + Send>) {
+            state_assign_impl(self, new_self);
+        }
     }
 
     #[derive(Default, Debug)]
@@ -65,6 +69,10 @@ mod state_runtime_test {
     impl State for DummyComputeA {
         fn as_any_mut(&mut self) -> &mut dyn Any {
             self
+        }
+
+        fn assign_box(&mut self, new_self: Box<dyn Any + Send>) {
+            state_assign_impl(self, new_self);
         }
     }
 
@@ -85,7 +93,7 @@ mod state_runtime_test {
             });
         }
 
-        fn assign_box(&mut self, new_self: Box<dyn Any>) {
+        fn assign_box(&mut self, new_self: Box<dyn Any + Send>) {
             assign_impl(self, new_self);
         }
     }
@@ -115,6 +123,10 @@ mod state_runtime_test {
         fn as_any_mut(&mut self) -> &mut dyn Any {
             self
         }
+
+        fn assign_box(&mut self, new_self: Box<dyn Any + Send>) {
+            state_assign_impl(self, new_self);
+        }
     }
 
     impl Compute for DummyComputeB {
@@ -136,7 +148,7 @@ mod state_runtime_test {
             }
         }
 
-        fn assign_box(&mut self, new_self: Box<dyn Any>) {
+        fn assign_box(&mut self, new_self: Box<dyn Any + Send>) {
             assign_impl(self, new_self);
         }
     }
@@ -222,6 +234,10 @@ mod state_runtime_test {
         fn as_any_mut(&mut self) -> &mut dyn Any {
             self
         }
+
+        fn assign_box(&mut self, new_self: Box<dyn Any + Send>) {
+            state_assign_impl(self, new_self);
+        }
     }
 
     impl Compute for DummyComputeC {
@@ -243,7 +259,7 @@ mod state_runtime_test {
             });
         }
 
-        fn assign_box(&mut self, new_self: Box<dyn Any>) {
+        fn assign_box(&mut self, new_self: Box<dyn Any + Send>) {
             assign_impl(self, new_self);
         }
     }
@@ -287,6 +303,10 @@ mod state_runtime_test {
     impl State for SideEffectCountState {
         fn as_any_mut(&mut self) -> &mut dyn Any {
             self
+        }
+
+        fn assign_box(&mut self, new_self: Box<dyn Any + Send>) {
+            state_assign_impl(self, new_self);
         }
     }
 
@@ -333,6 +353,10 @@ mod state_runtime_test {
         fn as_any_mut(&mut self) -> &mut dyn Any {
             self
         }
+
+        fn assign_box(&mut self, new_self: Box<dyn Any + Send>) {
+            state_assign_impl(self, new_self);
+        }
     }
 
     impl Compute for DummyComputeFromCommand {
@@ -350,7 +374,7 @@ mod state_runtime_test {
             // Intentionally no-op: this compute is updated by a Command via Updater.
         }
 
-        fn assign_box(&mut self, new_self: Box<dyn Any>) {
+        fn assign_box(&mut self, new_self: Box<dyn Any + Send>) {
             assign_impl(self, new_self);
         }
     }
@@ -393,6 +417,10 @@ mod state_runtime_test {
         fn as_any_mut(&mut self) -> &mut dyn Any {
             self
         }
+
+        fn assign_box(&mut self, new_self: Box<dyn Any + Send>) {
+            state_assign_impl(self, new_self);
+        }
     }
 
     impl Compute for UnregisteredCompute {
@@ -410,7 +438,7 @@ mod state_runtime_test {
             // Intentionally no-op: this compute is only used to validate strict syncing.
         }
 
-        fn assign_box(&mut self, new_self: Box<dyn Any>) {
+        fn assign_box(&mut self, new_self: Box<dyn Any + Send>) {
             assign_impl(self, new_self);
         }
     }
@@ -452,6 +480,10 @@ mod state_runtime_test {
         fn as_any_mut(&mut self) -> &mut dyn Any {
             self
         }
+
+        fn assign_box(&mut self, new_self: Box<dyn Any + Send>) {
+            state_assign_impl(self, new_self);
+        }
     }
 
     impl Compute for ExecutionCountingCompute {
@@ -476,7 +508,7 @@ mod state_runtime_test {
             });
         }
 
-        fn assign_box(&mut self, new_self: Box<dyn Any>) {
+        fn assign_box(&mut self, new_self: Box<dyn Any + Send>) {
             assign_impl(self, new_self);
         }
     }

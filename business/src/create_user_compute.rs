@@ -33,7 +33,9 @@ use crate::BusinessConfig;
 use crate::cf_token_compute::CFTokenCompute;
 use crate::internal::{CreateUserRequest, CreateUserResponse};
 
-use collects_states::{Command, Compute, ComputeDeps, Dep, State, Updater, assign_impl};
+use collects_states::{
+    Command, Compute, ComputeDeps, Dep, State, Updater, assign_impl, state_assign_impl,
+};
 use log::{error, info};
 
 /// State to hold inputs for user creation.
@@ -49,6 +51,10 @@ pub struct CreateUserInput {
 impl State for CreateUserInput {
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
+    }
+
+    fn assign_box(&mut self, new_self: Box<dyn Any + Send>) {
+        state_assign_impl(self, new_self);
     }
 }
 
@@ -127,7 +133,7 @@ impl Compute for CreateUserCompute {
         self
     }
 
-    fn assign_box(&mut self, new_self: Box<dyn Any>) {
+    fn assign_box(&mut self, new_self: Box<dyn Any + Send>) {
         assign_impl(self, new_self);
     }
 }
@@ -135,6 +141,10 @@ impl Compute for CreateUserCompute {
 impl State for CreateUserCompute {
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
+    }
+
+    fn assign_box(&mut self, new_self: Box<dyn Any + Send>) {
+        state_assign_impl(self, new_self);
     }
 }
 

@@ -32,7 +32,9 @@
 
 use std::any::Any;
 
-use collects_states::{Command, Compute, ComputeDeps, Dep, State, Updater, assign_impl};
+use collects_states::{
+    Command, Compute, ComputeDeps, Dep, State, Updater, assign_impl, state_assign_impl,
+};
 use log::info;
 
 /// State for manually editing the Cloudflare Access token.
@@ -50,6 +52,10 @@ pub struct CFTokenInput {
 impl State for CFTokenInput {
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
+    }
+
+    fn assign_box(&mut self, new_self: Box<dyn Any + Send>) {
+        state_assign_impl(self, new_self);
     }
 }
 
@@ -115,7 +121,7 @@ impl Compute for CFTokenCompute {
         self
     }
 
-    fn assign_box(&mut self, new_self: Box<dyn Any>) {
+    fn assign_box(&mut self, new_self: Box<dyn Any + Send>) {
         assign_impl(self, new_self);
     }
 }
@@ -123,6 +129,10 @@ impl Compute for CFTokenCompute {
 impl State for CFTokenCompute {
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
+    }
+
+    fn assign_box(&mut self, new_self: Box<dyn Any + Send>) {
+        state_assign_impl(self, new_self);
     }
 }
 

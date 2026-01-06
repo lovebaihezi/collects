@@ -12,6 +12,7 @@ use crate::{Compute, StateRuntime};
 /// It provides basic identity and initialization logic for state objects.
 pub trait State: Any + Debug {
     fn as_any_mut(&mut self) -> &mut dyn Any;
+
     /// Initializes the state.
     ///
     /// This method is called when the state is first added to the context.
@@ -28,10 +29,62 @@ pub trait State: Any + Debug {
     fn id(&self) -> TypeId {
         TypeId::of::<Self>()
     }
+
+    /// Assigns a new value to this state from a boxed `Any`.
+    ///
+    /// Used for updating the state's value via the `Updater` channel.
+    /// States that can be updated via `Updater::set_state()` should implement this.
+    /// States that cannot be sent across threads (e.g., containing `TextureHandle`)
+    /// can leave the default implementation which panics.
+    ///
+    /// For UI-only state mutations, use `StateCtx::state_mut()` directly instead.
+    fn assign_box(&mut self, _new_self: Box<dyn Any + Send>) {
+        panic!(
+            "State type {} does not support assign_box. \
+            Use StateCtx::state_mut() for direct mutation instead of Updater::set_state().",
+            type_name::<Self>()
+        );
+    }
+}
+
+/// Helper function to implement `assign_box` for State types.
+///
+/// Usage in State impl:
+/// ```ignore
+/// fn assign_box(&mut self, new_self: Box<dyn Any + Send>) {
+///     state_assign_impl(self, new_self);
+/// }
+/// ```
+pub fn state_assign_impl<T: State + 'static>(old: &mut T, new: Box<dyn Any + Send>) {
+    match new.downcast::<T>() {
+        Ok(value) => {
+            log::debug!(
+                "Assign New State {:?} to State {:?}",
+                &value,
+                type_name::<T>()
+            );
+            *old = *value;
+        }
+        Err(_) => {
+            panic!(
+                "Failed to assign state: type mismatch, expected {:?}, but any unable to downcast to it",
+                type_name::<T>(),
+            );
+        }
+    }
+}
+
+/// Message type for updates via Updater.
+#[derive(Debug)]
+pub enum UpdateMessage {
+    /// Update a Compute type.
+    Compute(TypeId, Box<dyn Any + Send>),
+    /// Update a State type.
+    State(TypeId, Box<dyn Any + Send>),
 }
 
 pub struct Updater {
-    send: Sender<(TypeId, Box<dyn Any>)>,
+    send: Sender<UpdateMessage>,
 }
 
 impl From<&StateRuntime> for Updater {
@@ -43,27 +96,46 @@ impl From<&StateRuntime> for Updater {
 }
 
 impl Updater {
-    pub fn set<T: Compute + 'static>(&self, state: T) {
+    /// Set a Compute value via the updater channel.
+    ///
+    /// This is used by Commands to update Compute values after async operations complete.
+    pub fn set<T: Compute + Send + 'static>(&self, compute: T) {
         let id = TypeId::of::<T>();
-        let boxed: Box<dyn Any> = Box::new(state);
-        self.send.send((id, boxed)).unwrap();
+        let boxed: Box<dyn Any + Send> = Box::new(compute);
+        self.send.send(UpdateMessage::Compute(id, boxed)).unwrap();
+    }
+
+    /// Set a State value via the updater channel.
+    ///
+    /// This is used by Commands to update State values after async operations complete.
+    /// For synchronous state mutations in UI code, prefer using `StateCtx::state_mut()` directly.
+    pub fn set_state<T: State + Send + 'static>(&self, state: T) {
+        let id = TypeId::of::<T>();
+        let boxed: Box<dyn Any + Send> = Box::new(state);
+        self.send.send(UpdateMessage::State(id, boxed)).unwrap();
     }
 }
 
 unsafe impl Send for Updater {}
 
 pub struct Reader {
-    recv: Receiver<(TypeId, Box<dyn Any>)>,
+    recv: Receiver<UpdateMessage>,
 }
 
 impl Reader {
-    pub fn read<T: Compute + 'static>(&self) -> Option<(TypeId, Box<T>)> {
-        if let Ok((reg, boxed)) = self.recv.try_recv()
-            && let Ok(state) = boxed.downcast::<T>()
-        {
-            return Some((reg, state));
-        }
-        None
+    /// Try to receive a message from the channel.
+    pub fn try_recv(&self) -> Option<UpdateMessage> {
+        self.recv.try_recv().ok()
+    }
+
+    /// Get the number of pending messages.
+    pub fn len(&self) -> usize {
+        self.recv.len()
+    }
+
+    /// Check if there are no pending messages.
+    pub fn is_empty(&self) -> bool {
+        self.recv.is_empty()
     }
 }
 

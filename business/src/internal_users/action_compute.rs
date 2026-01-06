@@ -16,7 +16,9 @@
 
 use std::any::Any;
 
-use collects_states::{Command, Compute, ComputeDeps, Dep, State, Updater, assign_impl};
+use collects_states::{
+    Command, Compute, ComputeDeps, Dep, State, Updater, assign_impl, state_assign_impl,
+};
 use ustr::Ustr;
 
 use crate::BusinessConfig;
@@ -105,7 +107,7 @@ impl Compute for InternalUsersActionCompute {
         // Dispatch one of the action commands to update this compute via `Updater::set()`.
     }
 
-    fn assign_box(&mut self, new_self: Box<dyn Any>) {
+    fn assign_box(&mut self, new_self: Box<dyn Any + Send>) {
         assign_impl(self, new_self);
     }
 }
@@ -113,6 +115,10 @@ impl Compute for InternalUsersActionCompute {
 impl State for InternalUsersActionCompute {
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
+    }
+
+    fn assign_box(&mut self, new_self: Box<dyn Any + Send>) {
+        state_assign_impl(self, new_self);
     }
 }
 
@@ -142,6 +148,10 @@ pub struct InternalUsersActionInput {
 impl State for InternalUsersActionInput {
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
+    }
+
+    fn assign_box(&mut self, new_self: Box<dyn Any + Send>) {
+        state_assign_impl(self, new_self);
     }
 }
 

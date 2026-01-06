@@ -2,9 +2,7 @@
 
 use collects_business::{
     CreateUserCommand, CreateUserCompute, CreateUserInput, InternalUserItem,
-    InternalUsersListUsersCompute, InternalUsersListUsersResult, OpenCreateUserModalCommand,
-    OpenInternalUsersActionCommand, RefreshInternalUsersCommand, ToggleOtpVisibilityCommand,
-    WorkflowInput,
+    InternalUsersListUsersCompute, InternalUsersListUsersResult, RefreshInternalUsersCommand,
 };
 use collects_states::{StateCtx, Time};
 use egui::{Color32, Response, Ui};
@@ -37,18 +35,16 @@ pub fn internal_users_panel(state_ctx: &mut StateCtx, api_base_url: &str, ui: &m
 
         // Apply toggle action after table iteration
         if let Some(username) = username_to_toggle {
-            state_ctx.update::<WorkflowInput>(|input| {
-                input.toggle_otp_username = Some(username);
-            });
-            state_ctx.dispatch::<ToggleOtpVisibilityCommand>();
+            state_ctx
+                .state_mut::<InternalUsersState>()
+                .toggle_otp_visibility(username);
         }
 
         // Start action if requested
         if let Some(action) = action_to_start {
-            state_ctx.update::<WorkflowInput>(|input| {
-                input.action = Some(action);
-            });
-            state_ctx.dispatch::<OpenInternalUsersActionCommand>();
+            state_ctx
+                .state_mut::<InternalUsersState>()
+                .start_action(action);
         }
 
         // Render QR code expansion inline (after table) if ShowQrCode action is active
@@ -93,7 +89,9 @@ fn render_controls_row(state_ctx: &mut StateCtx, api_base_url: &str, ui: &mut Ui
     // Handle create modal open
     if should_open_create {
         reset_create_user_compute(state_ctx);
-        state_ctx.dispatch::<OpenCreateUserModalCommand>();
+        state_ctx
+            .state_mut::<InternalUsersState>()
+            .open_create_modal();
     }
 }
 

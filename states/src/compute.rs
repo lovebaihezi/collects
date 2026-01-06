@@ -37,7 +37,7 @@ pub trait Compute: Debug + Any {
     /// Assigns a new value to this compute from a boxed `Any`.
     ///
     /// Used for updating the compute's value after a recalculation.
-    fn assign_box(&mut self, new_self: Box<dyn Any>);
+    fn assign_box(&mut self, new_self: Box<dyn Any + Send>);
 
     /// Returns the name of the compute type.
     ///
@@ -47,7 +47,7 @@ pub trait Compute: Debug + Any {
     }
 }
 
-pub fn assign_impl<T: Compute + 'static>(old: &mut T, new: Box<dyn Any>) {
+pub fn assign_impl<T: Compute + 'static>(old: &mut T, new: Box<dyn Any + Send>) {
     match new.downcast::<T>() {
         Ok(value) => {
             debug!(

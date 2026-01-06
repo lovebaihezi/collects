@@ -9,7 +9,7 @@
 //! - Commands read input and update state/computes
 //! - UI reads via `ctx.cached::<Compute>()` or `ctx.state::<State>()`
 
-use collects_states::{Command, Dep, State, Updater};
+use collects_states::{Command, Dep, State, Updater, state_assign_impl};
 use std::any::Any;
 use ustr::Ustr;
 
@@ -30,6 +30,10 @@ pub struct WorkflowInput {
 impl State for WorkflowInput {
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
+    }
+
+    fn assign_box(&mut self, new_self: Box<dyn Any + Send>) {
+        state_assign_impl(self, new_self);
     }
 }
 

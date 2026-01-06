@@ -7,7 +7,7 @@ use std::{
 
 use log::{Level, log_enabled, trace};
 
-use crate::{Command, Dep, Reader, Updater};
+use crate::{Command, Dep, Reader, Updater, state::UpdateMessage};
 
 use super::{Compute, Stage, State, StateRuntime};
 
@@ -376,39 +376,64 @@ impl StateCtx {
     // SYNC AND RUNTIME
     // ═══════════════════════════════════════════════════════════════════════
 
-    /// Synchronizes the computes by processing updates from the runtime.
+    /// Synchronizes both computes and states by processing updates from the runtime.
     ///
     /// This processes any pending updates sent via the `Updater` and applies them
-    /// to the respective computes, marking them as clean.
+    /// to the respective computes or states, marking computes as clean.
     pub fn sync_computes(&mut self) {
         let cur_len = self.runtime().receiver().len();
         trace!(
-            "Start Sync Compute State, Cur Received {:?} Compute Result",
+            "Start Sync Updates, Cur Received {:?} Update Messages",
             cur_len
         );
         for _ in 0..cur_len {
-            if let Ok((id, boxed)) = self.runtime().receiver().try_recv() {
-                let compute = self.computes.get_mut(&id).unwrap_or_else(|| {
-                    panic!(
-                        "Received compute update for an unregistered compute id={:?}. \
+            if let Ok(msg) = self.runtime().receiver().try_recv() {
+                match msg {
+                    UpdateMessage::Compute(id, boxed) => {
+                        let compute = self.computes.get_mut(&id).unwrap_or_else(|| {
+                            panic!(
+                                "Received compute update for an unregistered compute id={:?}. \
 This is a programmer error (e.g. a Command/Compute called `Updater::set(...)` for a compute type that was never `record_compute(...)`).",
-                        id
-                    )
-                });
+                                id
+                            )
+                        });
 
-                let computed_name = compute.0.borrow().name();
+                        let computed_name = compute.0.borrow().name();
 
-                // A compute result may arrive when the compute is in various states:
-                // - Pending: normal case, compute was run and we're receiving its result
-                // - Clean: compute was already synced (e.g., from a previous async response)
-                // - Dirty/BeforeInit: compute was re-triggered before previous result arrived
-                // In all cases, we should apply the result if it arrives.
-                trace!(
-                    "Received Compute Update, compute={:?}, current_stage={:?}",
-                    computed_name, compute.1
-                );
-                compute.0.borrow_mut().assign_box(boxed);
-                self.mark_clean(&id);
+                        // A compute result may arrive when the compute is in various states:
+                        // - Pending: normal case, compute was run and we're receiving its result
+                        // - Clean: compute was already synced (e.g., from a previous async response)
+                        // - Dirty/BeforeInit: compute was re-triggered before previous result arrived
+                        // In all cases, we should apply the result if it arrives.
+                        trace!(
+                            "Received Compute Update, compute={:?}, current_stage={:?}",
+                            computed_name, compute.1
+                        );
+                        compute.0.borrow_mut().assign_box(boxed);
+                        self.mark_clean(&id);
+                    }
+                    UpdateMessage::State(id, boxed) => {
+                        let state = self.states.get_mut(&id).unwrap_or_else(|| {
+                            panic!(
+                                "Received state update for an unregistered state id={:?}. \
+This is a programmer error (e.g. a Command called `Updater::set_state(...)` for a state type that was never `add_state(...)`).",
+                                id
+                            )
+                        });
+
+                        let state_name = state.0.borrow().name();
+                        trace!(
+                            "Received State Update, state={:?}, current_stage={:?}",
+                            state_name, state.1
+                        );
+
+                        // Replace the state with the new value using assign_box
+                        state.0.borrow_mut().assign_box(boxed);
+
+                        // Propagate dirty to dependent computes
+                        self.propagate_dirty_from(&id);
+                    }
+                }
             }
         }
     }

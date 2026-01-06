@@ -20,7 +20,6 @@ pub fn show_edit_username_modal(
     ui: &mut Ui,
 ) {
     let mut open = true;
-    let state = state_ctx.state_mut::<InternalUsersState>();
 
     Window::new(format!("Edit Username - {}", username))
         .open(&mut open)
@@ -126,8 +125,7 @@ pub fn show_edit_username_modal(
                 }
 
                 if ui.button("Cancel").clicked() {
-                    // Keep existing workflow state mutation for now (TODO #2).
-                    state.close_action();
+                    state_ctx.state_mut::<InternalUsersState>().close_action();
                 }
             });
         });
@@ -291,8 +289,7 @@ pub fn show_edit_profile_modal(
                 }
 
                 if ui.button("Cancel").clicked() {
-                    // Keep existing workflow state mutation for now (TODO #2).
-                    state.close_action();
+                    state_ctx.state_mut::<InternalUsersState>().close_action();
                 }
             });
         });
@@ -309,7 +306,6 @@ pub fn show_delete_user_modal(
     ui: &mut Ui,
 ) {
     let mut open = true;
-    let state = state_ctx.state_mut::<InternalUsersState>();
 
     Window::new(format!("Delete User - {}", username))
         .open(&mut open)
@@ -396,8 +392,7 @@ pub fn show_delete_user_modal(
                 }
 
                 if ui.button("Cancel").clicked() {
-                    // Keep existing workflow state mutation for now (TODO #2).
-                    state.close_action();
+                    state_ctx.state_mut::<InternalUsersState>().close_action();
                 }
             });
         });
@@ -536,8 +531,7 @@ pub fn show_revoke_otp_modal(
                     }
 
                     if ui.button("Cancel").clicked() {
-                        // Keep existing workflow state mutation for now (TODO #2).
-                        state.close_action();
+                        state_ctx.state_mut::<InternalUsersState>().close_action();
                     }
                 });
             }

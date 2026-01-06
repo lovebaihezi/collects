@@ -2,7 +2,9 @@ use std::any::{Any, TypeId};
 
 use crate::BusinessConfig;
 use chrono::{DateTime, Utc};
-use collects_states::{Command, Compute, ComputeDeps, Dep, State, Time, Updater, assign_impl};
+use collects_states::{
+    Command, Compute, ComputeDeps, Dep, State, Time, Updater, assign_impl, state_assign_impl,
+};
 use log::{debug, info, warn};
 use ustr::Ustr;
 
@@ -180,7 +182,7 @@ impl Compute for ApiStatus {
         self
     }
 
-    fn assign_box(&mut self, new_self: Box<dyn Any>) {
+    fn assign_box(&mut self, new_self: Box<dyn Any + Send>) {
         assign_impl(self, new_self);
     }
 }
@@ -188,6 +190,10 @@ impl Compute for ApiStatus {
 impl State for ApiStatus {
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
+    }
+
+    fn assign_box(&mut self, new_self: Box<dyn Any + Send>) {
+        state_assign_impl(self, new_self);
     }
 }
 

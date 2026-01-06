@@ -1,13 +1,13 @@
-use std::any::{Any, TypeId};
+use std::any::TypeId;
 
 use flume::{Receiver, Sender};
 
-use crate::{Compute, Graph, graph::TopologyError};
+use crate::{Compute, Graph, graph::TopologyError, state::UpdateMessage};
 
 #[derive(Debug)]
 pub struct StateRuntime {
-    send: Sender<(TypeId, Box<dyn Any>)>,
-    recv: Receiver<(TypeId, Box<dyn Any>)>,
+    send: Sender<UpdateMessage>,
+    recv: Receiver<UpdateMessage>,
 
     graph: Graph<TypeId>,
 }
@@ -28,11 +28,11 @@ impl StateRuntime {
         }
     }
 
-    pub fn sender(&self) -> Sender<(TypeId, Box<dyn Any>)> {
+    pub fn sender(&self) -> Sender<UpdateMessage> {
         self.send.clone()
     }
 
-    pub fn receiver(&self) -> Receiver<(TypeId, Box<dyn Any>)> {
+    pub fn receiver(&self) -> Receiver<UpdateMessage> {
         self.recv.clone()
     }
 

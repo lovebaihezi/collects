@@ -2,7 +2,7 @@
 //!
 //! This module defines the route enum that determines which page to display.
 
-use collects_states::State;
+use collects_states::{State, state_assign_impl};
 use serde::{Deserialize, Serialize};
 use std::any::Any;
 
@@ -22,6 +22,10 @@ pub enum Route {
 impl State for Route {
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
+    }
+
+    fn assign_box(&mut self, new_self: Box<dyn Any + Send>) {
+        state_assign_impl(self, new_self);
     }
 }
 

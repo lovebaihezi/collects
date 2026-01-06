@@ -171,7 +171,13 @@ impl Command for ToggleImageDiagCommand {
 
 /// Command to record a successful image event.
 ///
-/// Dispatch via `ctx.dispatch::<RecordImageEventCommand>()`.
+/// **Usage Pattern:**
+/// 1. Create a new command instance with actual values: `RecordImageEventCommand { ... }`
+/// 2. Register it with `ctx.record_command(command)`
+/// 3. Dispatch with `ctx.dispatch::<RecordImageEventCommand>()`
+///
+/// The Default impl exists for initial StateCtx registration but should not
+/// be dispatched directly - always register with actual event values first.
 #[derive(Debug)]
 pub struct RecordImageEventCommand {
     /// Type of event to record.
@@ -185,6 +191,8 @@ pub struct RecordImageEventCommand {
 }
 
 impl Default for RecordImageEventCommand {
+    /// Creates a placeholder instance for StateCtx registration.
+    /// Do not dispatch this default - always register with actual values first.
     fn default() -> Self {
         Self {
             event_type: ImageEventType::Paste,
@@ -219,16 +227,24 @@ impl Command for RecordImageEventCommand {
 
 /// Command to record a failed image event.
 ///
-/// Dispatch via `ctx.dispatch::<RecordImageErrorCommand>()`.
+/// **Usage Pattern:**
+/// 1. Create a new command instance with actual values: `RecordImageErrorCommand { ... }`
+/// 2. Register it with `ctx.record_command(command)`
+/// 3. Dispatch with `ctx.dispatch::<RecordImageErrorCommand>()`
+///
+/// The Default impl exists for initial StateCtx registration but should not
+/// be dispatched directly - always register with actual error values first.
 #[derive(Debug)]
 pub struct RecordImageErrorCommand {
     /// Type of event to record.
     pub event_type: ImageEventType,
-    /// Error message.
+    /// Error message describing what went wrong.
     pub error: String,
 }
 
 impl Default for RecordImageErrorCommand {
+    /// Creates a placeholder instance for StateCtx registration.
+    /// Do not dispatch this default - always register with actual values first.
     fn default() -> Self {
         Self {
             event_type: ImageEventType::Paste,

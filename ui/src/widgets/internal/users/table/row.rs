@@ -21,7 +21,6 @@ pub struct UserRowData {
     pub user: InternalUserItem,
     pub is_revealed: bool,
     pub time_remaining: u8,
-    pub is_qr_expanded: bool,
 }
 
 /// Result of rendering a user row.
@@ -224,15 +223,11 @@ pub fn prepare_user_row_data(
 ) -> UserRowData {
     let is_revealed = state.is_otp_revealed(&user.username);
     let time_remaining = state.calculate_time_remaining(user.time_remaining, now);
-    let username_ustr = Ustr::from(&user.username);
-    let is_qr_expanded =
-        matches!(&state.current_action, UserAction::ShowQrCode(u) if *u == username_ustr);
 
     UserRowData {
         index,
         user: user.clone(),
         is_revealed,
         time_remaining,
-        is_qr_expanded,
     }
 }

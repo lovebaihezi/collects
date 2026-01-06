@@ -13,7 +13,7 @@ use super::modals::{
     show_edit_username_modal, show_revoke_otp_modal,
 };
 use super::state::{InternalUsersState, UserAction};
-use super::table::columns::{HEADER_HEIGHT, QR_ROW_HEIGHT, ROW_HEIGHT, table_columns};
+use super::table::columns::{HEADER_HEIGHT, ROW_HEIGHT, table_columns};
 use super::table::header::render_table_header;
 use super::table::row::{prepare_user_row_data, render_qr_expansion, render_user_row};
 
@@ -128,14 +128,8 @@ fn render_users_table(state_ctx: &mut StateCtx, ui: &mut Ui) -> (Option<Ustr>, O
             for data in &user_data {
                 let username_ustr = Ustr::from(&data.user.username);
 
-                // Determine row height - taller if QR is expanded
-                let row_height = if data.is_qr_expanded {
-                    ROW_HEIGHT + QR_ROW_HEIGHT
-                } else {
-                    ROW_HEIGHT
-                };
-
-                body.row(row_height, |mut row| {
+                // Use fixed row height - QR code is rendered outside the table
+                body.row(ROW_HEIGHT, |mut row| {
                     let result = render_user_row(&mut row, data);
 
                     if result.toggle_otp {

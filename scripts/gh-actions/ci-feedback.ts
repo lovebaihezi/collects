@@ -431,7 +431,7 @@ export interface CIFeedbackResult {
 function isGitHubApiError(
   error: unknown,
   status?: number,
-): error is { status: number; message: string } {
+): error is { status: number } {
   if (
     typeof error === "object" &&
     error !== null &&
@@ -784,8 +784,11 @@ export function runPostJobFeedbackCLI(): void {
     })
     .catch((error) => {
       // Unexpected errors - log but don't fail the workflow
-      const message = error instanceof Error ? error.message : String(error);
-      console.error(`⚠️ Unexpected CI Feedback error: ${message}`);
+      const message = formatApiErrorMessage(
+        error,
+        "Unexpected CI Feedback error",
+      );
+      console.error(`⚠️ ${message}`);
       console.log(
         "CI Feedback encountered an unexpected error but will not fail the workflow step.",
       );

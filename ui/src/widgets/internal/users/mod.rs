@@ -17,7 +17,4 @@ pub(crate) mod qr;
 pub mod table;
 
 pub use collects_business::{InternalUsersState, UserAction};
-pub use panel::{internal_users_panel, poll_internal_users_responses};
-
-// Re-export internal functions for use by modals
-pub(crate) use panel::{reset_create_user_compute, trigger_create_user};
+pub use panel::internal_users_panel;

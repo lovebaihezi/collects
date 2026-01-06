@@ -440,4 +440,87 @@ mod state_runtime_test {
         ctx.dispatch::<SetUnregisteredComputeCommand>();
         ctx.sync_computes();
     }
+
+    /// A compute that tracks how many times it has been executed.
+    #[derive(Debug)]
+    struct ExecutionCountingCompute {
+        value: i32,
+        execution_count: Arc<AtomicUsize>,
+    }
+
+    impl State for ExecutionCountingCompute {
+        fn as_any_mut(&mut self) -> &mut dyn Any {
+            self
+        }
+    }
+
+    impl Compute for ExecutionCountingCompute {
+        fn as_any(&self) -> &dyn Any {
+            self
+        }
+
+        fn deps(&self) -> ComputeDeps {
+            // Depends on DummyState (simulating ApiStatus depending on Time)
+            const IDS: [TypeId; 1] = [TypeId::of::<DummyState>()];
+            (&IDS, &[])
+        }
+
+        fn compute(&self, dep: Dep, updater: Updater) {
+            // Track execution count
+            self.execution_count.fetch_add(1, Ordering::SeqCst);
+
+            let state = dep.get_state_ref::<DummyState>();
+            updater.set(ExecutionCountingCompute {
+                value: state.base_value * 10,
+                execution_count: Arc::clone(&self.execution_count),
+            });
+        }
+
+        fn assign_box(&mut self, new_self: Box<dyn Any>) {
+            assign_impl(self, new_self);
+        }
+    }
+
+    /// Test that verifies compute execution behavior when state changes rapidly.
+    ///
+    /// This test simulates the scenario where Time state updates frequently (e.g., every second)
+    /// and a compute (like ApiStatus) depends on it. The compute should:
+    /// 1. Be marked dirty when dependency changes
+    /// 2. Only execute once per `run_all_dirty()` call
+    /// 3. Not spam logs at INFO level (tested by verifying execution count)
+    #[test]
+    fn test_compute_execution_count_with_rapid_state_changes() {
+        let execution_count = Arc::new(AtomicUsize::new(0));
+
+        let mut ctx = StateCtx::new();
+        ctx.add_state(DummyState { base_value: 1 });
+        ctx.record_compute(ExecutionCountingCompute {
+            value: 0,
+            execution_count: Arc::clone(&execution_count),
+        });
+
+        // Initial run - should execute once
+        ctx.run_all_dirty();
+        ctx.sync_computes();
+        assert_eq!(execution_count.load(Ordering::SeqCst), 1);
+        assert_eq!(ctx.cached::<ExecutionCountingCompute>().unwrap().value, 10);
+
+        // Simulate rapid state changes (like Time updating every second)
+        // Each update should mark the compute dirty
+        for i in 2..=5 {
+            ctx.update::<DummyState>(|state| {
+                state.base_value = i;
+            });
+        }
+
+        // Even though state changed 4 times, run_all_dirty() should only execute compute ONCE
+        // because it processes all dirty computes in a single pass
+        ctx.run_all_dirty();
+        ctx.sync_computes();
+
+        // Compute should have executed exactly 2 times total (1 initial + 1 after multiple updates)
+        assert_eq!(execution_count.load(Ordering::SeqCst), 2);
+        // Value should be based on the last state value (5 * 10 = 50)
+        assert_eq!(ctx.cached::<ExecutionCountingCompute>().unwrap().value, 50);
+    }
 }

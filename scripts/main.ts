@@ -6,12 +6,16 @@ import {
   buildSetupContext,
   setupGitHubActions,
   type BuildSetupOptions,
+  buildMigrateRepoContext,
+  migrateRepoBindings,
+  type BuildMigrateRepoOptions,
 } from "./services/gcloud.ts";
 import { runVersionCheck } from "./gh-actions/version-check.ts";
 import {
   runCIFeedbackCLI,
   runPostJobFeedbackCLI,
 } from "./gh-actions/ci-feedback.ts";
+import { runScheduledJobIssueCLI } from "./gh-actions/scheduled-job-issue.ts";
 import { runArtifactCleanupCLI } from "./gh-actions/artifact-cleanup.ts";
 import { runArtifactCheckCLI } from "./gh-actions/artifact-check.ts";
 import {
@@ -45,6 +49,25 @@ cli
       repo: options.repo,
     } as BuildSetupOptions);
     await setupGitHubActions(ctx);
+  });
+
+cli
+  .command(
+    "actions-migrate-repo",
+    "Migrate workload identity bindings when repository is moved to a new org/name",
+  )
+  .option("--project-id <projectId>", "Google Cloud Project ID")
+  .option("--old-repo <oldRepo>", "Old GitHub Repository (owner/repo)")
+  .option("--new-repo <newRepo>", "New GitHub Repository (owner/repo)")
+  .action(async (options) => {
+    p.intro("GitHub Actions Repository Migration");
+
+    const ctx = await buildMigrateRepoContext({
+      projectId: options.projectId,
+      oldRepo: options.oldRepo,
+      newRepo: options.newRepo,
+    } as BuildMigrateRepoOptions);
+    await migrateRepoBindings(ctx);
   });
 
 cli
@@ -210,6 +233,15 @@ cli
 
 cli
   .command(
+    "scheduled-job-issue",
+    "Create GitHub issue when scheduled job fails (for GitHub Actions)",
+  )
+  .action(() => {
+    runScheduledJobIssueCLI();
+  });
+
+cli
+  .command(
     "artifact-cleanup",
     "Cleanup old Docker images from Artifact Registry (for GitHub Actions)",
   )
@@ -257,6 +289,29 @@ Sets up Workload Identity Federation for GitHub Actions to deploy to Google Clou
 bun run main.ts actions-setup
 # Or with options:
 bun run main.ts actions-setup --project-id my-gcp-project-id --repo username/repository
+\`\`\`
+
+### \`actions-migrate-repo\`
+
+Migrates workload identity bindings when a GitHub repository is moved to a new org or renamed.
+
+**What it does:**
+1. Updates the Workload Identity Provider's attribute condition to use the new repository.
+2. Adds a new IAM binding for the Service Account to allow the new repository.
+3. Removes the old IAM binding to revoke access from the old repository path.
+
+**When to use:**
+- When you move a repository to a different organization (e.g., \`old-org/repo\` → \`new-org/repo\`)
+- When you rename a repository
+- When you fork and want to use the same GCP setup
+
+**Example:**
+\`\`\`bash
+bun run main.ts actions-migrate-repo
+# Or with options:
+bun run main.ts actions-migrate-repo --project-id my-gcp-project-id --old-repo old-org/old-repo --new-repo new-org/new-repo
+# For example, migrating to lqxc-org:
+just scripts::actions-migrate-repo --project-id braided-case-416903 --old-repo old-owner/collects --new-repo lqxc-org/collects
 \`\`\`
 
 ### \`init-db-secret\`
@@ -397,6 +452,43 @@ Personal Access Token (PAT) so the comment appears to come from your account.
 If you prefer a classic token, create one with the \`repo\` scope and save it as \`COPILOT_INVOKER_TOKEN\`.
 
 That's it! Now when CI fails on a PR, Copilot will automatically be asked to help.
+
+### \`scheduled-job-issue\`
+
+Creates GitHub issues when scheduled background jobs fail. This tool monitors scheduled workflow runs 
+and automatically creates detailed issues with diagnosis plans and possible root causes.
+
+**How it works:**
+When a scheduled job (like \`Artifact Cleanup\`) fails, this command:
+1. Collects error logs from the failed jobs
+2. Analyzes the errors to generate diagnosis plans
+3. Creates (or updates) a GitHub issue with:
+   - Error summaries
+   - Possible root causes
+   - Step-by-step diagnosis instructions
+   - Suggested actions
+
+**Features:**
+- **Deduplication**: If an issue already exists for the same workflow, adds a comment instead of creating a new issue
+- **Smart Diagnosis**: Automatically categorizes errors (authentication, network, Docker, etc.)
+- **Actionable**: Provides specific diagnosis steps based on error patterns
+
+**Environment Variables:**
+- \`GITHUB_TOKEN\` - GitHub token with issues:write permission
+- \`WORKFLOW_RUN_ID\` - ID of the failed workflow run
+- \`WORKFLOW_NAME\` - Name of the workflow that failed
+- \`WORKFLOW_RUN_URL\` - URL to the failed workflow run
+- \`HEAD_SHA\` - Git SHA of the commit that triggered the workflow
+
+**Labels Applied:**
+- \`scheduled-job-failure\`
+- \`automated\`
+
+**Example:**
+\`\`\`bash
+# Usually called from the scheduled-job-monitor.yml workflow
+bun run main.ts scheduled-job-issue
+\`\`\`
 
 ### \`artifact-cleanup\`
 

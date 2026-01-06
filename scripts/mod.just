@@ -32,6 +32,11 @@ env-list:
 actions-setup *args: install
     bun run main.ts actions-setup {{args}}
 
+# Migrate workload identity bindings when repository is moved
+# Usage: just scripts::actions-migrate-repo --project-id <id> --old-repo <old-owner/old-repo> --new-repo <new-owner/new-repo>
+actions-migrate-repo *args: install
+    bun run main.ts actions-migrate-repo {{args}}
+
 init-db token project_id: install
     bun run main.ts init-db-secret --token {{token}} --project-id {{project_id}}
 
@@ -53,6 +58,11 @@ r2-list *args: install
 # Requires environment variables: GITHUB_TOKEN, WORKFLOW_RUN_ID, HEAD_SHA, WORKFLOW_RUN_URL
 ci-feedback: install
     bun run main.ts ci-feedback
+
+# Create GitHub issue when scheduled job fails (for GitHub Actions)
+# Requires environment variables: GITHUB_TOKEN, WORKFLOW_RUN_ID, WORKFLOW_NAME, HEAD_SHA, WORKFLOW_RUN_URL
+scheduled-job-issue: install
+    bun run main.ts scheduled-job-issue
 
 # Cleanup old Docker images from Artifact Registry (for GitHub Actions)
 # Environment variables:

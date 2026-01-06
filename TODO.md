@@ -39,61 +39,19 @@ This pattern is:
 
 - ✅ Internal Users: Refresh/List users now uses `RefreshInternalUsersCommand` → `InternalUsersListUsersCompute`
   - No longer uses `ctx.memory_mut` temps for `"internal_users_response"` / `"internal_users_error"`
+- ✅ Internal Users: Actions migrated off egui-memory temps
+  - Business: added `InternalUsersActionCompute` + typed `InternalUsersActionState/Kind`
+  - Commands: `UpdateUsernameCommand`, `UpdateProfileCommand`, `DeleteUserCommand`, `RevokeOtpCommand`, `GetUserQrCommand`
+  - UI: modals + inline QR now dispatch commands and read compute (no `"action_*"` / `"*_response"` temp IDs)
+  - UI drafts: replaced per-keystroke business mutation (`edit_*_input`) with UI-local drafts seeded on open
 
 ---
 
 ## Remaining legacy refactors (in priority order)
 
-### 1) Internal Users: Migrate action/result plumbing off egui memory
-
-**Files**
-- `ui/src/widgets/internal/users/modals.rs`
-- `ui/src/widgets/internal/users/panel.rs` (still polls action temps)
-
-**Current egui-memory IDs used**
-- `"action_error"`: String error message
-- `"action_success"`: String outcome (`"user_deleted"`, `"username_updated"`, `"profile_updated"`)
-- `"user_qr_code_response"`: String `otpauth_url` (QR data)
-- `"revoke_otp_response"`: String `otpauth_url`
-
-**What to build (business)**
-- `InternalUsersActionCompute`
-  - strongly typed: `Idle | InFlight { kind, user } | Success { kind, user, data? } | Error { kind, user, message }`
-- One command per operation (manual-only; async in command; `Updater::set()` updates compute):
-  - `UpdateUsernameCommand`
-  - `UpdateProfileCommand`
-  - `DeleteUserCommand`
-  - `RevokeOtpCommand`
-  - (optional) `GetUserQrCommand` if QR fetch is separate
-
-**UI changes**
-- Remove writes to egui memory in callbacks
-- Remove polling branches in `poll_internal_users_responses` for those IDs
-- Render modal loading/success/error directly from `InternalUsersActionCompute`
-- On success:
-  - close modal via a command (business workflow state change)
-  - trigger refresh (ideally from the command that succeeded)
-
-**Hybrid drafts (UI-local)**
-- Replace business fields:
-  - `InternalUsersState.edit_username_input`
-  - `InternalUsersState.edit_nickname_input`
-  - `InternalUsersState.edit_avatar_url_input`
-- With UI-local drafts seeded from selected user:
-  - seed once when opening `EditUsername/EditProfile` for a given username
-  - commit on submit by dispatching the appropriate command with final values
-  - do not update business state on every keystroke
-
-**Benefits**
-- Eliminates `"action_*"` magic strings and egui temp IDs
-- Deletes the poller entirely once all actions are migrated
-- Makes actions typed and testable
-
----
-
 ### 2) Internal Users: Remove direct business state mutation from UI
 
-Even after async compute migration, UI currently calls methods like:
+Even after async compute migration, UI still calls methods like:
 - `state_ctx.state_mut::<InternalUsersState>().start_action(...)`
 - `.toggle_otp_visibility(...)`
 - `.open_create_modal()`, `.close_action()`, etc.
@@ -109,11 +67,11 @@ Even after async compute migration, UI currently calls methods like:
 
 ### 3) Internal Users: Remove `poll_internal_users_responses`
 
-Once both:
+Now that:
 - list refresh uses compute (done)
-- all actions use `InternalUsersActionCompute` (pending)
+- all actions use `InternalUsersActionCompute` (done)
 
-…then `poll_internal_users_responses` should be deleted.
+…`poll_internal_users_responses` should be deleted entirely (and removed from any call sites/exports).
 
 ---
 

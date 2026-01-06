@@ -59,6 +59,11 @@ r2-list *args: install
 ci-feedback: install
     bun run main.ts ci-feedback
 
+# Create GitHub issue when scheduled job fails (for GitHub Actions)
+# Requires environment variables: GITHUB_TOKEN, WORKFLOW_RUN_ID, WORKFLOW_NAME, HEAD_SHA, WORKFLOW_RUN_URL
+scheduled-job-issue: install
+    bun run main.ts scheduled-job-issue
+
 # Cleanup old Docker images from Artifact Registry (for GitHub Actions)
 # Environment variables:
 #   - GCP_PROJECT_ID: Google Cloud Project ID (optional)

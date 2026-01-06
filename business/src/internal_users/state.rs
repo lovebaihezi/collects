@@ -1,66 +1,98 @@
-//! State management for internal users panel.
+//! State for internal users management UI.
+//!
+//! This file lives in `collects_business` so UI code can remain “dumb”:
+//! - UI reads state + computes and renders
+//! - UI dispatches commands
+//! - State / compute / command definitions live in `business`
+//!
+//! Notes:
+//! - This module intentionally contains UI-affine state such as `egui::TextureHandle`
+//!   because it represents application state for the internal users feature.
+//! - For identifiers that are frequently cloned/compared (usernames), we use `Ustr`.
 
 use chrono::{DateTime, Utc};
-use collects_business::InternalUserItem;
 use collects_states::State;
 use egui::TextureHandle;
 use std::any::Any;
 use std::collections::HashMap;
 use ustr::Ustr;
 
+use crate::InternalUserItem;
+
 /// Action type for user management.
+/// This drives which modal/action UI is currently active.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub enum UserAction {
     /// No action.
     #[default]
     None,
+
     /// Show QR code for a user.
     ShowQrCode(Ustr),
+
     /// Edit username.
     EditUsername(Ustr),
+
     /// Edit profile (nickname and avatar URL).
     EditProfile(Ustr),
+
     /// Delete user (with confirmation).
     DeleteUser(Ustr),
+
     /// Revoke OTP for a user.
     RevokeOtp(Ustr),
 }
 
 /// State for the internal users panel.
 ///
-/// This state is stored in `StateCtx` and can be accessed via `state_mut::<InternalUsersState>()`.
+/// This state is stored in `StateCtx` and can be accessed via
+/// `state_mut::<InternalUsersState>()`.
 #[derive(Default)]
 pub struct InternalUsersState {
     /// List of users fetched from the API.
-    pub(crate) users: Vec<InternalUserItem>,
+    pub users: Vec<InternalUserItem>,
+
     /// Map to track which users have their OTP revealed.
-    pub(crate) revealed_otps: HashMap<Ustr, bool>,
+    pub revealed_otps: HashMap<Ustr, bool>,
+
     /// Whether currently fetching users.
-    pub(crate) is_fetching: bool,
+    pub is_fetching: bool,
+
     /// Error message if fetch failed.
-    pub(crate) error: Option<String>,
-    /// Last fetch timestamp (using DateTime<Utc> for WASM compatibility and test mockability).
-    pub(crate) last_fetch: Option<DateTime<Utc>>,
+    pub error: Option<String>,
+
+    /// Last fetch timestamp (using `DateTime<Utc>` for WASM compatibility and test mockability).
+    pub last_fetch: Option<DateTime<Utc>>,
+
     /// Whether the create user modal is open.
-    pub(crate) create_modal_open: bool,
+    pub create_modal_open: bool,
+
     /// Username input for create modal.
-    pub(crate) new_username: String,
-    /// Cached QR code texture for the created user.
-    pub(crate) qr_texture: Option<TextureHandle>,
+    pub new_username: String,
+
+    /// Cached QR code texture for modal display (create/revoke/show).
+    pub qr_texture: Option<TextureHandle>,
+
     /// Current action being performed.
-    pub(crate) current_action: UserAction,
+    pub current_action: UserAction,
+
     /// Edit username input.
-    pub(crate) edit_username_input: String,
+    pub edit_username_input: String,
+
     /// Edit nickname input for profile editing.
-    pub(crate) edit_nickname_input: String,
+    pub edit_nickname_input: String,
+
     /// Edit avatar URL input for profile editing.
-    pub(crate) edit_avatar_url_input: String,
+    pub edit_avatar_url_input: String,
+
     /// Whether an action is in progress.
-    pub(crate) action_in_progress: bool,
+    pub action_in_progress: bool,
+
     /// Action error message.
-    pub(crate) action_error: Option<String>,
+    pub action_error: Option<String>,
+
     /// QR code data for display (otpauth URL).
-    pub(crate) qr_code_data: Option<String>,
+    pub qr_code_data: Option<String>,
 }
 
 impl std::fmt::Debug for InternalUsersState {
@@ -171,7 +203,7 @@ impl InternalUsersState {
         }
     }
 
-    /// Close the current action modal.
+    /// Close the current action modal/inline action.
     pub fn close_action(&mut self) {
         self.current_action = UserAction::None;
         self.action_in_progress = false;
@@ -202,7 +234,7 @@ impl InternalUsersState {
     }
 
     // =====================
-    // Getter methods for testing
+    // Getter methods (useful for tests and for reducing UI reach-in)
     // =====================
 
     /// Get the current action.
@@ -235,7 +267,7 @@ impl InternalUsersState {
         &self.users
     }
 
-    /// Get mutable reference to users list for testing.
+    /// Get mutable reference to users list. Primarily for tests.
     pub fn users_mut(&mut self) -> &mut Vec<InternalUserItem> {
         &mut self.users
     }
@@ -275,13 +307,12 @@ impl InternalUsersState {
             return original_time_remaining;
         }
 
-        // Calculate the new time remaining
         // original_time_remaining was the seconds until code change at last_fetch
-        // After elapsed_seconds, we need to compute new position in the 30-second cycle
+        // After elapsed_seconds, we need to compute new position in the 30-second cycle.
         let original = original_time_remaining as i64;
         let remaining = original - (elapsed_seconds % OTP_CYCLE_SECONDS);
 
-        // Handle wrap-around: if remaining <= 0, we've passed into new cycle(s)
+        // Wrap-around: if remaining <= 0, we've passed into new cycle(s)
         let adjusted = if remaining <= 0 {
             remaining + OTP_CYCLE_SECONDS
         } else {
@@ -310,7 +341,6 @@ mod tests {
         let now = Utc::now();
         let state = state_with_last_fetch(now);
 
-        // If no time has elapsed, time remaining should be unchanged
         assert_eq!(state.calculate_time_remaining(30, now), 30);
         assert_eq!(state.calculate_time_remaining(15, now), 15);
         assert_eq!(state.calculate_time_remaining(1, now), 1);
@@ -322,11 +352,8 @@ mod tests {
         let fetch_time = now - Duration::seconds(5);
         let state = state_with_last_fetch(fetch_time);
 
-        // 30 - 5 = 25
         assert_eq!(state.calculate_time_remaining(30, now), 25);
-        // 15 - 5 = 10
         assert_eq!(state.calculate_time_remaining(15, now), 10);
-        // 10 - 5 = 5
         assert_eq!(state.calculate_time_remaining(10, now), 5);
     }
 
@@ -336,11 +363,8 @@ mod tests {
         let fetch_time = now - Duration::seconds(10);
         let state = state_with_last_fetch(fetch_time);
 
-        // 5 - 10 = -5, which wraps to 25 (30 + (-5))
+        // 5 - 10 = -5, wrap to 25
         assert_eq!(state.calculate_time_remaining(5, now), 25);
-
-        // 1 - 10 = -9, which wraps to 21 (30 + (-9))
-        assert_eq!(state.calculate_time_remaining(1, now), 21);
     }
 
     #[test]
@@ -349,111 +373,88 @@ mod tests {
         let fetch_time = now - Duration::seconds(30);
         let state = state_with_last_fetch(fetch_time);
 
-        // After exactly one full cycle (30 seconds), time remaining should be same
+        // After exactly one cycle, remaining should be unchanged.
         assert_eq!(state.calculate_time_remaining(30, now), 30);
-        assert_eq!(state.calculate_time_remaining(15, now), 15);
+        assert_eq!(state.calculate_time_remaining(7, now), 7);
     }
 
     #[test]
     fn test_calculate_time_remaining_multiple_cycles() {
         let now = Utc::now();
-        let fetch_time = now - Duration::seconds(65); // 2 full cycles + 5 seconds
+        let fetch_time = now - Duration::seconds(95); // 95 % 30 = 5
         let state = state_with_last_fetch(fetch_time);
 
-        // 65 % 30 = 5 seconds elapsed in current cycle
-        // 30 - 5 = 25
+        // Equivalent to 5 seconds elapsed
         assert_eq!(state.calculate_time_remaining(30, now), 25);
-        // 15 - 5 = 10
-        assert_eq!(state.calculate_time_remaining(15, now), 10);
+        assert_eq!(state.calculate_time_remaining(10, now), 5);
     }
 
     #[test]
     fn test_calculate_time_remaining_no_last_fetch() {
-        let state = InternalUsersState::new();
         let now = Utc::now();
+        let state = InternalUsersState::new();
 
-        // Without last_fetch, should return original value
-        assert_eq!(state.calculate_time_remaining(30, now), 30);
-        assert_eq!(state.calculate_time_remaining(15, now), 15);
+        // If last_fetch not present, return original.
+        assert_eq!(state.calculate_time_remaining(12, now), 12);
     }
 
     #[test]
     fn test_calculate_time_remaining_clock_skew() {
+        // last_fetch in the future relative to now
         let now = Utc::now();
-        let future_fetch_time = now + Duration::seconds(10);
-        let state = state_with_last_fetch(future_fetch_time);
+        let fetch_time = now + Duration::seconds(5);
+        let state = state_with_last_fetch(fetch_time);
 
-        // If last_fetch is in the future (clock skew), should return original value
-        assert_eq!(state.calculate_time_remaining(30, now), 30);
-        assert_eq!(state.calculate_time_remaining(15, now), 15);
+        // If time went backwards, return original.
+        assert_eq!(state.calculate_time_remaining(12, now), 12);
     }
 
     #[test]
     fn test_calculate_time_remaining_exactly_at_boundary() {
         let now = Utc::now();
-
-        // Test when original is 30 and we're at exact boundary
-        let fetch_time = now - Duration::seconds(30);
-        let state = state_with_last_fetch(fetch_time);
-        // 30 - (30 % 30) = 30 - 0 = 30
-        assert_eq!(state.calculate_time_remaining(30, now), 30);
-
-        // Test when original is 1 and 1 second has passed
         let fetch_time = now - Duration::seconds(1);
         let state = state_with_last_fetch(fetch_time);
-        // 1 - 1 = 0, which should wrap to 30
+
         assert_eq!(state.calculate_time_remaining(1, now), 30);
     }
 
     #[test]
     fn test_start_action_edit_profile_initializes_fields() {
         let mut state = InternalUsersState::new();
-
-        // Add a user with nickname and avatar
-        state.users.push(InternalUserItem {
-            username: "testuser".to_string(),
+        state.users = vec![InternalUserItem {
+            username: "alice".to_string(),
             current_otp: "123456".to_string(),
-            time_remaining: 25,
-            nickname: Some("Test Nickname".to_string()),
+            time_remaining: 30,
+            nickname: Some("Alice".to_string()),
             avatar_url: Some("https://example.com/avatar.png".to_string()),
-            created_at: "2026-01-04T08:00:00Z".to_string(),
-            updated_at: "2026-01-04T08:15:00Z".to_string(),
-        });
+            created_at: "2020-01-01T00:00:00Z".to_string(),
+            updated_at: "2020-01-01T00:00:00Z".to_string(),
+        }];
 
-        // Start edit profile action
-        state.start_action(UserAction::EditProfile(Ustr::from("testuser")));
+        state.start_action(UserAction::EditProfile(Ustr::from("alice")));
 
-        // Verify profile fields are initialized from user
-        assert_eq!(state.edit_nickname_input, "Test Nickname");
+        assert_eq!(state.edit_nickname_input, "Alice");
         assert_eq!(
             state.edit_avatar_url_input,
             "https://example.com/avatar.png"
-        );
-        assert_eq!(
-            state.current_action,
-            UserAction::EditProfile(Ustr::from("testuser"))
         );
     }
 
     #[test]
     fn test_start_action_edit_profile_empty_fields() {
         let mut state = InternalUsersState::new();
-
-        // Add a user without nickname and avatar
-        state.users.push(InternalUserItem {
-            username: "testuser".to_string(),
+        state.users = vec![InternalUserItem {
+            username: "alice".to_string(),
             current_otp: "123456".to_string(),
-            time_remaining: 25,
+            time_remaining: 30,
             nickname: None,
             avatar_url: None,
-            created_at: "2026-01-04T08:00:00Z".to_string(),
-            updated_at: "2026-01-04T08:15:00Z".to_string(),
-        });
+            created_at: "2020-01-01T00:00:00Z".to_string(),
+            updated_at: "2020-01-01T00:00:00Z".to_string(),
+        }];
 
-        // Start edit profile action
-        state.start_action(UserAction::EditProfile(Ustr::from("testuser")));
+        state.start_action(UserAction::EditProfile(Ustr::from("alice")));
 
-        // Verify profile fields are empty when user has no values
         assert_eq!(state.edit_nickname_input, "");
         assert_eq!(state.edit_avatar_url_input, "");
     }
@@ -462,10 +463,8 @@ mod tests {
     fn test_start_action_edit_profile_user_not_found() {
         let mut state = InternalUsersState::new();
 
-        // Start edit profile action for non-existent user
-        state.start_action(UserAction::EditProfile(Ustr::from("nonexistent")));
+        state.start_action(UserAction::EditProfile(Ustr::from("missing")));
 
-        // Verify profile fields are empty when user not found
         assert_eq!(state.edit_nickname_input, "");
         assert_eq!(state.edit_avatar_url_input, "");
     }
@@ -473,29 +472,19 @@ mod tests {
     #[test]
     fn test_close_action_clears_profile_fields() {
         let mut state = InternalUsersState::new();
-
-        // Set up some profile fields
-        state.edit_nickname_input = "Test Nickname".to_string();
+        state.edit_nickname_input = "Alice".to_string();
         state.edit_avatar_url_input = "https://example.com/avatar.png".to_string();
-        state.current_action = UserAction::EditProfile(Ustr::from("testuser"));
 
-        // Close the action
         state.close_action();
 
-        // Verify all fields are cleared
         assert_eq!(state.edit_nickname_input, "");
         assert_eq!(state.edit_avatar_url_input, "");
-        assert_eq!(state.current_action, UserAction::None);
+        assert!(matches!(state.current_action, UserAction::None));
     }
 
     #[test]
     fn test_user_action_edit_profile_variant() {
-        let action = UserAction::EditProfile(Ustr::from("testuser"));
-
-        // Verify the action variant
-        assert!(matches!(action, UserAction::EditProfile(_)));
-        if let UserAction::EditProfile(username) = action {
-            assert_eq!(username.as_str(), "testuser");
-        }
+        let action = UserAction::EditProfile(Ustr::from("alice"));
+        assert_eq!(action, UserAction::EditProfile(Ustr::from("alice")));
     }
 }

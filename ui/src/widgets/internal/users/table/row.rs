@@ -2,6 +2,7 @@
 
 use chrono::{DateTime, Utc};
 use collects_business::InternalUserItem;
+use collects_states::StateCtx;
 use egui::{Color32, RichText, Stroke, Ui};
 use egui_extras::TableRow;
 use ustr::Ustr;
@@ -11,9 +12,9 @@ use super::cells::{
     render_otp_code_cell, render_otp_toggle_button, render_time_remaining_cell,
     render_timestamp_cell, render_username_cell,
 };
-use crate::widgets::internal::users::api::fetch_user_qr_code;
 use crate::widgets::internal::users::qr::generate_qr_image;
-use crate::widgets::internal::users::state::{InternalUsersState, UserAction};
+use collects_business::internal_users::api as internal_users_api;
+use collects_business::{InternalUsersState, UserAction};
 
 /// Data needed to render a user row.
 pub struct UserRowData {
@@ -134,6 +135,7 @@ fn draw_cell_bottom_border(ui: &mut Ui) {
 /// This shows the QR code inline instead of in a modal window.
 #[inline]
 pub fn render_qr_expansion(
+    state_ctx: &StateCtx,
     state: &mut InternalUsersState,
     api_base_url: &str,
     username: &Ustr,
@@ -207,7 +209,52 @@ pub fn render_qr_expansion(
                 } else {
                     // Fetch user data to get QR code
                     state.set_action_in_progress();
-                    fetch_user_qr_code(api_base_url, username.as_str(), ctx);
+
+                    // Pull CF token from business compute and call business-layer API helper.
+                    // We keep the existing egui-memory based response plumbing: the callback writes the
+                    // result into egui temp memory, and `poll_internal_users_responses()` consumes it.
+                    let api_base_url = api_base_url.to_string();
+                    let username = username.to_string();
+
+                    let Some(cf_token) = state_ctx.cached::<collects_business::CFTokenCompute>()
+                    else {
+                        ctx.memory_mut(|mem| {
+                            mem.data.insert_temp(
+                                egui::Id::new("action_error"),
+                                "Missing CF token compute".to_string(),
+                            );
+                        });
+                        return;
+                    };
+
+                    internal_users_api::get_user(
+                        &api_base_url,
+                        cf_token,
+                        &username,
+                        move |result: collects_business::internal_users::api::ApiResult<
+                            collects_business::GetUserResponse,
+                        >| {
+                            ctx.request_repaint();
+                            match result {
+                                Ok(user_response) => {
+                                    ctx.memory_mut(|mem| {
+                                        mem.data.insert_temp(
+                                            egui::Id::new("user_qr_code_response"),
+                                            user_response.otpauth_url,
+                                        );
+                                    });
+                                }
+                                Err(err) => {
+                                    ctx.memory_mut(|mem| {
+                                        mem.data.insert_temp(
+                                            egui::Id::new("action_error"),
+                                            err.to_string(),
+                                        );
+                                    });
+                                }
+                            }
+                        },
+                    );
                 }
             });
         });

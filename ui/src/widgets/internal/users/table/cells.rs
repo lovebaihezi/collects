@@ -7,7 +7,7 @@ use chrono::DateTime;
 use egui::{Color32, RichText, Ui};
 use ustr::Ustr;
 
-use crate::widgets::internal::users::state::UserAction;
+use collects_business::UserAction;
 
 /// Renders the ID cell with a border indicator.
 ///

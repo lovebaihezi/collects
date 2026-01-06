@@ -72,6 +72,14 @@ impl Default for State {
 
             // Internal users state
             ctx.add_state(InternalUsersState::new());
+
+            // Internal users: refresh/list users compute + input + command
+            //
+            // This replaces the previous pattern where UI used egui `ctx.memory_mut`
+            // as an async message bus for list-users refresh results.
+            ctx.add_state(collects_business::InternalUsersListUsersInput::default());
+            ctx.record_compute(collects_business::InternalUsersListUsersCompute::default());
+            ctx.record_command(collects_business::RefreshInternalUsersCommand);
         }
 
         Self { ctx }
@@ -122,6 +130,14 @@ impl State {
 
             // Internal users state
             ctx.add_state(InternalUsersState::new());
+
+            // Internal users: refresh/list users compute + input + command
+            //
+            // This replaces the previous pattern where UI used egui `ctx.memory_mut`
+            // as an async message bus for list-users refresh results.
+            ctx.add_state(collects_business::InternalUsersListUsersInput::default());
+            ctx.record_compute(collects_business::InternalUsersListUsersCompute::default());
+            ctx.record_command(collects_business::RefreshInternalUsersCommand);
         }
 
         Self { ctx }

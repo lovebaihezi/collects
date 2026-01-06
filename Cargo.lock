@@ -1040,6 +1040,7 @@ dependencies = [
  "chrono",
  "collects-states",
  "collects-utils",
+ "egui",
  "ehttp",
  "log",
  "reqwest",

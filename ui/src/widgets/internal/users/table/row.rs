@@ -13,8 +13,10 @@ use super::cells::{
     render_timestamp_cell, render_username_cell,
 };
 use crate::widgets::internal::users::qr::generate_qr_image;
-use collects_business::internal_users::api as internal_users_api;
-use collects_business::{InternalUsersState, UserAction};
+use collects_business::{
+    GetUserQrCommand, InternalUsersActionCompute, InternalUsersActionInput,
+    InternalUsersActionKind, InternalUsersActionState, InternalUsersState, UserAction,
+};
 
 /// Data needed to render a user row.
 pub struct UserRowData {
@@ -135,7 +137,7 @@ fn draw_cell_bottom_border(ui: &mut Ui) {
 /// This shows the QR code inline instead of in a modal window.
 #[inline]
 pub fn render_qr_expansion(
-    state_ctx: &StateCtx,
+    state_ctx: &mut StateCtx,
     state: &mut InternalUsersState,
     api_base_url: &str,
     username: &Ustr,
@@ -157,7 +159,46 @@ pub fn render_qr_expansion(
                 ui.label(format!("QR Code for: {}", username));
                 ui.add_space(8.0);
 
-                if let Some(error) = &state.action_error {
+                // Prefer the typed action compute for error/loading/data when available.
+                if let Some(action_compute) = state_ctx.cached::<InternalUsersActionCompute>() {
+                    match action_compute.state() {
+                        InternalUsersActionState::Error {
+                            kind: InternalUsersActionKind::GetUserQr,
+                            user,
+                            message,
+                        } if *user == *username => {
+                            ui.colored_label(Color32::RED, format!("Error: {message}"));
+                            ui.add_space(8.0);
+                            if ui.button("Close").clicked() {
+                                state.close_action();
+                            }
+                            return;
+                        }
+                        InternalUsersActionState::InFlight {
+                            kind: InternalUsersActionKind::GetUserQr,
+                            user,
+                        } if *user == *username => {
+                            ui.horizontal(|ui| {
+                                ui.spinner();
+                                ui.label("Loading QR code...");
+                            });
+                            return;
+                        }
+                        InternalUsersActionState::Success {
+                            kind: InternalUsersActionKind::GetUserQr,
+                            user,
+                            data: Some(otpauth_url),
+                        } if *user == *username => {
+                            // Keep local cached copies in state for texture caching + existing UI flow.
+                            if state.qr_code_data.as_deref() != Some(otpauth_url.as_str()) {
+                                state.qr_code_data = Some(otpauth_url.clone());
+                                state.action_in_progress = false;
+                            }
+                        }
+                        _ => {}
+                    }
+                } else if let Some(error) = &state.action_error {
+                    // Legacy fallback until all callers are migrated.
                     ui.colored_label(Color32::RED, format!("Error: {error}"));
                     ui.add_space(8.0);
                     if ui.button("Close").clicked() {
@@ -166,6 +207,7 @@ pub fn render_qr_expansion(
                     return;
                 }
 
+                // Legacy fallback loading state until all callers are migrated.
                 if state.action_in_progress {
                     ui.horizontal(|ui| {
                         ui.spinner();
@@ -207,54 +249,20 @@ pub fn render_qr_expansion(
                         state.close_action();
                     }
                 } else {
-                    // Fetch user data to get QR code
+                    // Fetch user QR code via business Command + Compute (no egui temp memory plumbing).
                     state.set_action_in_progress();
 
-                    // Pull CF token from business compute and call business-layer API helper.
-                    // We keep the existing egui-memory based response plumbing: the callback writes the
-                    // result into egui temp memory, and `poll_internal_users_responses()` consumes it.
-                    let api_base_url = api_base_url.to_string();
-                    let username = username.to_string();
+                    // Provide the base URL via business input state (kept consistent with refresh).
+                    state_ctx.update::<InternalUsersActionInput>(|input| {
+                        input.api_base_url = Some(Ustr::from(api_base_url));
+                        input.username = Some(*username);
+                        // Clear unrelated fields defensively.
+                        input.new_username = None;
+                        input.nickname = None;
+                        input.avatar_url = None;
+                    });
 
-                    let Some(cf_token) = state_ctx.cached::<collects_business::CFTokenCompute>()
-                    else {
-                        ctx.memory_mut(|mem| {
-                            mem.data.insert_temp(
-                                egui::Id::new("action_error"),
-                                "Missing CF token compute".to_string(),
-                            );
-                        });
-                        return;
-                    };
-
-                    internal_users_api::get_user(
-                        &api_base_url,
-                        cf_token,
-                        &username,
-                        move |result: collects_business::internal_users::api::ApiResult<
-                            collects_business::GetUserResponse,
-                        >| {
-                            ctx.request_repaint();
-                            match result {
-                                Ok(user_response) => {
-                                    ctx.memory_mut(|mem| {
-                                        mem.data.insert_temp(
-                                            egui::Id::new("user_qr_code_response"),
-                                            user_response.otpauth_url,
-                                        );
-                                    });
-                                }
-                                Err(err) => {
-                                    ctx.memory_mut(|mem| {
-                                        mem.data.insert_temp(
-                                            egui::Id::new("action_error"),
-                                            err.to_string(),
-                                        );
-                                    });
-                                }
-                            }
-                        },
-                    );
+                    state_ctx.dispatch::<GetUserQrCommand>();
                 }
             });
         });

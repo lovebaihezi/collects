@@ -1,7 +1,10 @@
 //! Modal dialogs for user management actions.
 
-use collects_business::internal_users::api as internal_users_api;
-use collects_business::{CreateUserCompute, CreateUserResult, InternalUsersState};
+use collects_business::{
+    CreateUserCompute, CreateUserResult, DeleteUserCommand, InternalUsersActionCompute,
+    InternalUsersActionInput, InternalUsersActionKind, InternalUsersActionState,
+    InternalUsersState, RevokeOtpCommand, UpdateProfileCommand, UpdateUsernameCommand,
+};
 use collects_states::StateCtx;
 use egui::{Color32, RichText, Ui, Window};
 use ustr::Ustr;
@@ -23,12 +26,41 @@ pub fn show_edit_username_modal(
         .collapsible(false)
         .resizable(false)
         .show(ui.ctx(), |ui| {
-            if let Some(error) = &state.action_error {
+            // Local draft (UI-only). Seed once from the selected username.
+            let draft_id = egui::Id::new(("internal_users_edit_username_draft", username));
+            let mut draft: String = ui
+                .ctx()
+                .data_mut(|d| d.get_temp::<String>(draft_id))
+                .unwrap_or_else(|| username.as_str().to_string());
+
+            // Typed action state from business compute.
+            let action_state = state_ctx
+                .cached::<InternalUsersActionCompute>()
+                .map(|c| c.state.clone())
+                .unwrap_or(InternalUsersActionState::Idle);
+
+            let (in_flight, error_msg) = match &action_state {
+                InternalUsersActionState::InFlight { kind, user } => (
+                    *kind == InternalUsersActionKind::UpdateUsername && *user == username,
+                    None,
+                ),
+                InternalUsersActionState::Error {
+                    kind,
+                    user,
+                    message,
+                } => (
+                    *kind == InternalUsersActionKind::UpdateUsername && *user == username,
+                    Some(message.as_str()),
+                ),
+                _ => (false, None),
+            };
+
+            if let Some(error) = error_msg {
                 ui.colored_label(Color32::RED, format!("Error: {error}"));
                 ui.add_space(8.0);
             }
 
-            if state.action_in_progress {
+            if in_flight {
                 ui.label("Updating username...");
                 ui.spinner();
                 return;
@@ -39,69 +71,37 @@ pub fn show_edit_username_modal(
 
             ui.horizontal(|ui| {
                 ui.label("New Username:");
-                ui.text_edit_singleline(&mut state.edit_username_input);
+                ui.text_edit_singleline(&mut draft);
+            });
+
+            // Persist draft back into UI temp data (no business mutation per keystroke).
+            ui.ctx().data_mut(|d| {
+                d.insert_temp(draft_id, draft.clone());
             });
 
             ui.add_space(16.0);
 
             ui.horizontal(|ui| {
-                let can_update = !state.edit_username_input.is_empty()
-                    && state.edit_username_input != username.as_str();
+                let can_update = !draft.is_empty() && draft != username.as_str();
 
                 if ui
                     .add_enabled(can_update, egui::Button::new("Update"))
                     .clicked()
                 {
-                    state.set_action_in_progress();
+                    // Configure inputs for the business command.
+                    state_ctx.update::<InternalUsersActionInput>(|input| {
+                        input.api_base_url = Some(Ustr::from(api_base_url));
+                        input.username = Some(username);
+                        input.new_username = Some(Ustr::from(draft.as_str()));
+                        input.nickname = None;
+                        input.avatar_url = None;
+                    });
 
-                    let ctx = ui.ctx().clone();
-                    let api_base_url = api_base_url.to_string();
-                    let old_username = username.to_string();
-                    let new_username = state.edit_username_input.clone();
-
-                    let Some(cf_token) = state_ctx.cached::<collects_business::CFTokenCompute>()
-                    else {
-                        ctx.memory_mut(|mem| {
-                            mem.data.insert_temp(
-                                egui::Id::new("action_error"),
-                                "Missing CF token compute".to_string(),
-                            );
-                        });
-                        return;
-                    };
-
-                    internal_users_api::update_username(
-                        &api_base_url,
-                        cf_token,
-                        &old_username,
-                        &new_username,
-                        move |result: collects_business::internal_users::api::ApiResult<
-                            collects_business::UpdateUsernameResponse,
-                        >| {
-                            ctx.request_repaint();
-                            match result {
-                                Ok(_) => {
-                                    ctx.memory_mut(|mem| {
-                                        mem.data.insert_temp(
-                                            egui::Id::new("action_success"),
-                                            "username_updated".to_string(),
-                                        );
-                                    });
-                                }
-                                Err(err) => {
-                                    ctx.memory_mut(|mem| {
-                                        mem.data.insert_temp(
-                                            egui::Id::new("action_error"),
-                                            err.to_string(),
-                                        );
-                                    });
-                                }
-                            }
-                        },
-                    );
+                    state_ctx.dispatch::<UpdateUsernameCommand>();
                 }
 
                 if ui.button("Cancel").clicked() {
+                    // Keep existing workflow state mutation for now (TODO #2).
                     state.close_action();
                 }
             });
@@ -127,12 +127,61 @@ pub fn show_edit_profile_modal(
         .collapsible(false)
         .resizable(false)
         .show(ui.ctx(), |ui| {
-            if let Some(error) = &state.action_error {
+            // Local drafts (UI-only). Seed once from the selected business state snapshot.
+            let seed_nickname = state
+                .users
+                .iter()
+                .find(|u| u.username == username.as_str())
+                .and_then(|u| u.nickname.clone())
+                .unwrap_or_default();
+            let seed_avatar_url = state
+                .users
+                .iter()
+                .find(|u| u.username == username.as_str())
+                .and_then(|u| u.avatar_url.clone())
+                .unwrap_or_default();
+
+            let nickname_id =
+                egui::Id::new(("internal_users_edit_profile_nickname_draft", username));
+            let avatar_id = egui::Id::new(("internal_users_edit_profile_avatar_draft", username));
+
+            let mut nickname_draft: String = ui
+                .ctx()
+                .data_mut(|d| d.get_temp::<String>(nickname_id))
+                .unwrap_or(seed_nickname);
+            let mut avatar_draft: String = ui
+                .ctx()
+                .data_mut(|d| d.get_temp::<String>(avatar_id))
+                .unwrap_or(seed_avatar_url);
+
+            // Typed action state from business compute.
+            let action_state = state_ctx
+                .cached::<InternalUsersActionCompute>()
+                .map(|c| c.state.clone())
+                .unwrap_or(InternalUsersActionState::Idle);
+
+            let (in_flight, error_msg) = match &action_state {
+                InternalUsersActionState::InFlight { kind, user } => (
+                    *kind == InternalUsersActionKind::UpdateProfile && *user == username,
+                    None,
+                ),
+                InternalUsersActionState::Error {
+                    kind,
+                    user,
+                    message,
+                } => (
+                    *kind == InternalUsersActionKind::UpdateProfile && *user == username,
+                    Some(message.as_str()),
+                ),
+                _ => (false, None),
+            };
+
+            if let Some(error) = error_msg {
                 ui.colored_label(Color32::RED, format!("Error: {error}"));
                 ui.add_space(8.0);
             }
 
-            if state.action_in_progress {
+            if in_flight {
                 ui.label("Updating profile...");
                 ui.spinner();
                 return;
@@ -143,14 +192,20 @@ pub fn show_edit_profile_modal(
 
             ui.horizontal(|ui| {
                 ui.label("Nickname:");
-                ui.text_edit_singleline(&mut state.edit_nickname_input);
+                ui.text_edit_singleline(&mut nickname_draft);
             });
 
             ui.add_space(8.0);
 
             ui.horizontal(|ui| {
                 ui.label("Avatar URL:");
-                ui.text_edit_singleline(&mut state.edit_avatar_url_input);
+                ui.text_edit_singleline(&mut avatar_draft);
+            });
+
+            // Persist drafts back into UI temp data (no business mutation per keystroke).
+            ui.ctx().data_mut(|d| {
+                d.insert_temp(nickname_id, nickname_draft.clone());
+                d.insert_temp(avatar_id, avatar_draft.clone());
             });
 
             ui.add_space(4.0);
@@ -164,65 +219,30 @@ pub fn show_edit_profile_modal(
 
             ui.horizontal(|ui| {
                 if ui.button("Update").clicked() {
-                    state.set_action_in_progress();
-                    let nickname = if state.edit_nickname_input.is_empty() {
+                    let nickname = if nickname_draft.is_empty() {
                         None
                     } else {
-                        Some(state.edit_nickname_input.clone())
+                        Some(nickname_draft.clone())
                     };
-                    let avatar_url = if state.edit_avatar_url_input.is_empty() {
+                    let avatar_url = if avatar_draft.is_empty() {
                         None
                     } else {
-                        Some(state.edit_avatar_url_input.clone())
-                    };
-                    let ctx = ui.ctx().clone();
-                    let api_base_url = api_base_url.to_string();
-                    let username = username.to_string();
-
-                    let Some(cf_token) = state_ctx.cached::<collects_business::CFTokenCompute>()
-                    else {
-                        ctx.memory_mut(|mem| {
-                            mem.data.insert_temp(
-                                egui::Id::new("action_error"),
-                                "Missing CF token compute".to_string(),
-                            );
-                        });
-                        return;
+                        Some(avatar_draft.clone())
                     };
 
-                    internal_users_api::update_profile(
-                        &api_base_url,
-                        cf_token,
-                        &username,
-                        nickname,
-                        avatar_url,
-                        move |result: collects_business::internal_users::api::ApiResult<
-                            collects_business::UpdateProfileResponse,
-                        >| {
-                            ctx.request_repaint();
-                            match result {
-                                Ok(_) => {
-                                    ctx.memory_mut(|mem| {
-                                        mem.data.insert_temp(
-                                            egui::Id::new("action_success"),
-                                            "profile_updated".to_string(),
-                                        );
-                                    });
-                                }
-                                Err(err) => {
-                                    ctx.memory_mut(|mem| {
-                                        mem.data.insert_temp(
-                                            egui::Id::new("action_error"),
-                                            err.to_string(),
-                                        );
-                                    });
-                                }
-                            }
-                        },
-                    );
+                    state_ctx.update::<InternalUsersActionInput>(|input| {
+                        input.api_base_url = Some(Ustr::from(api_base_url));
+                        input.username = Some(username);
+                        input.new_username = None;
+                        input.nickname = nickname;
+                        input.avatar_url = avatar_url;
+                    });
+
+                    state_ctx.dispatch::<UpdateProfileCommand>();
                 }
 
                 if ui.button("Cancel").clicked() {
+                    // Keep existing workflow state mutation for now (TODO #2).
                     state.close_action();
                 }
             });
@@ -248,12 +268,34 @@ pub fn show_delete_user_modal(
         .collapsible(false)
         .resizable(false)
         .show(ui.ctx(), |ui| {
-            if let Some(error) = &state.action_error {
+            // Typed action state from business compute.
+            let action_state = state_ctx
+                .cached::<InternalUsersActionCompute>()
+                .map(|c| c.state.clone())
+                .unwrap_or(InternalUsersActionState::Idle);
+
+            let (in_flight, error_msg) = match &action_state {
+                InternalUsersActionState::InFlight { kind, user } => (
+                    *kind == InternalUsersActionKind::DeleteUser && *user == username,
+                    None,
+                ),
+                InternalUsersActionState::Error {
+                    kind,
+                    user,
+                    message,
+                } => (
+                    *kind == InternalUsersActionKind::DeleteUser && *user == username,
+                    Some(message.as_str()),
+                ),
+                _ => (false, None),
+            };
+
+            if let Some(error) = error_msg {
                 ui.colored_label(Color32::RED, format!("Error: {error}"));
                 ui.add_space(8.0);
             }
 
-            if state.action_in_progress {
+            if in_flight {
                 ui.label("Deleting user...");
                 ui.spinner();
                 return;
@@ -274,63 +316,19 @@ pub fn show_delete_user_modal(
                     .button(RichText::new("Delete").color(Color32::RED))
                     .clicked()
                 {
-                    state.set_action_in_progress();
+                    state_ctx.update::<InternalUsersActionInput>(|input| {
+                        input.api_base_url = Some(Ustr::from(api_base_url));
+                        input.username = Some(username);
+                        input.new_username = None;
+                        input.nickname = None;
+                        input.avatar_url = None;
+                    });
 
-                    let ctx = ui.ctx().clone();
-                    let api_base_url = api_base_url.to_string();
-                    let username = username.to_string();
-
-                    let Some(cf_token) = state_ctx.cached::<collects_business::CFTokenCompute>()
-                    else {
-                        ctx.memory_mut(|mem| {
-                            mem.data.insert_temp(
-                                egui::Id::new("action_error"),
-                                "Missing CF token compute".to_string(),
-                            );
-                        });
-                        return;
-                    };
-
-                    internal_users_api::delete_user(
-                        &api_base_url,
-                        cf_token,
-                        &username,
-                        move |result: collects_business::internal_users::api::ApiResult<
-                            collects_business::DeleteUserResponse,
-                        >| {
-                            ctx.request_repaint();
-                            match result {
-                                Ok(delete_response) => {
-                                    if delete_response.deleted {
-                                        ctx.memory_mut(|mem| {
-                                            mem.data.insert_temp(
-                                                egui::Id::new("action_success"),
-                                                "user_deleted".to_string(),
-                                            );
-                                        });
-                                    } else {
-                                        ctx.memory_mut(|mem| {
-                                            mem.data.insert_temp(
-                                                egui::Id::new("action_error"),
-                                                "User not found".to_string(),
-                                            );
-                                        });
-                                    }
-                                }
-                                Err(err) => {
-                                    ctx.memory_mut(|mem| {
-                                        mem.data.insert_temp(
-                                            egui::Id::new("action_error"),
-                                            err.to_string(),
-                                        );
-                                    });
-                                }
-                            }
-                        },
-                    );
+                    state_ctx.dispatch::<DeleteUserCommand>();
                 }
 
                 if ui.button("Cancel").clicked() {
+                    // Keep existing workflow state mutation for now (TODO #2).
                     state.close_action();
                 }
             });
@@ -356,19 +354,52 @@ pub fn show_revoke_otp_modal(
         .collapsible(false)
         .resizable(false)
         .show(ui.ctx(), |ui| {
-            if let Some(error) = &state.action_error {
+            // Typed action state from business compute.
+            let action_state = state_ctx
+                .cached::<InternalUsersActionCompute>()
+                .map(|c| c.state.clone())
+                .unwrap_or(InternalUsersActionState::Idle);
+
+            let (in_flight, error_msg, qr_data) = match &action_state {
+                InternalUsersActionState::InFlight { kind, user } => (
+                    *kind == InternalUsersActionKind::RevokeOtp && *user == username,
+                    None,
+                    None,
+                ),
+                InternalUsersActionState::Error {
+                    kind,
+                    user,
+                    message,
+                } => (
+                    *kind == InternalUsersActionKind::RevokeOtp && *user == username,
+                    Some(message.as_str()),
+                    None,
+                ),
+                InternalUsersActionState::Success { kind, user, data } => (
+                    false,
+                    None,
+                    if *kind == InternalUsersActionKind::RevokeOtp && *user == username {
+                        data.as_deref()
+                    } else {
+                        None
+                    },
+                ),
+                _ => (false, None, None),
+            };
+
+            if let Some(error) = error_msg {
                 ui.colored_label(Color32::RED, format!("Error: {error}"));
                 ui.add_space(8.0);
             }
 
-            if state.action_in_progress {
+            if in_flight {
                 ui.label("Revoking OTP...");
                 ui.spinner();
                 return;
             }
 
-            // Check if we have new QR code data (after revoke)
-            if let Some(otpauth_url) = &state.qr_code_data {
+            // Success state: show QR code returned by action command.
+            if let Some(otpauth_url) = qr_data {
                 ui.colored_label(
                     Color32::from_rgb(34, 139, 34),
                     "✓ OTP revoked successfully!",
@@ -377,7 +408,6 @@ pub fn show_revoke_otp_modal(
                 ui.label("The user must scan this new QR code:");
                 ui.add_space(4.0);
 
-                // Generate QR code texture if not cached
                 if state.qr_texture.is_none()
                     && let Some(qr_image) = generate_qr_image(otpauth_url, 200)
                 {
@@ -388,7 +418,6 @@ pub fn show_revoke_otp_modal(
                     ));
                 }
 
-                // Display QR code as an image
                 egui::Frame::NONE
                     .fill(Color32::WHITE)
                     .inner_margin(egui::Margin::same(8))
@@ -403,6 +432,7 @@ pub fn show_revoke_otp_modal(
 
                 ui.add_space(8.0);
                 if ui.button("Close").clicked() {
+                    // Keep existing workflow state mutation for now (TODO #2).
                     state.close_action();
                 }
             } else {
@@ -421,55 +451,19 @@ pub fn show_revoke_otp_modal(
                         .button(RichText::new("Revoke").color(Color32::from_rgb(255, 165, 0)))
                         .clicked()
                     {
-                        state.set_action_in_progress();
+                        state_ctx.update::<InternalUsersActionInput>(|input| {
+                            input.api_base_url = Some(Ustr::from(api_base_url));
+                            input.username = Some(username);
+                            input.new_username = None;
+                            input.nickname = None;
+                            input.avatar_url = None;
+                        });
 
-                        let ctx = ui.ctx().clone();
-                        let api_base_url = api_base_url.to_string();
-                        let username = username.to_string();
-
-                        let Some(cf_token) =
-                            state_ctx.cached::<collects_business::CFTokenCompute>()
-                        else {
-                            ctx.memory_mut(|mem| {
-                                mem.data.insert_temp(
-                                    egui::Id::new("action_error"),
-                                    "Missing CF token compute".to_string(),
-                                );
-                            });
-                            return;
-                        };
-
-                        internal_users_api::revoke_otp(
-                            &api_base_url,
-                            cf_token,
-                            &username,
-                            move |result: collects_business::internal_users::api::ApiResult<
-                                collects_business::RevokeOtpResponse,
-                            >| {
-                                ctx.request_repaint();
-                                match result {
-                                    Ok(revoke_response) => {
-                                        ctx.memory_mut(|mem| {
-                                            mem.data.insert_temp(
-                                                egui::Id::new("revoke_otp_response"),
-                                                revoke_response.otpauth_url,
-                                            );
-                                        });
-                                    }
-                                    Err(err) => {
-                                        ctx.memory_mut(|mem| {
-                                            mem.data.insert_temp(
-                                                egui::Id::new("action_error"),
-                                                err.to_string(),
-                                            );
-                                        });
-                                    }
-                                }
-                            },
-                        );
+                        state_ctx.dispatch::<RevokeOtpCommand>();
                     }
 
                     if ui.button("Cancel").clicked() {
+                        // Keep existing workflow state mutation for now (TODO #2).
                         state.close_action();
                     }
                 });

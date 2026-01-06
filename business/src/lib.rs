@@ -26,8 +26,10 @@ pub use internal_api_status::{InternalAPIAvailability, InternalApiStatus};
 
 pub use internal_users::state::{InternalUsersState, UserAction};
 pub use internal_users::{
-    InternalUsersListUsersCompute, InternalUsersListUsersInput, InternalUsersListUsersResult,
-    RefreshInternalUsersCommand,
+    DeleteUserCommand, GetUserQrCommand, InternalUsersActionCompute, InternalUsersActionInput,
+    InternalUsersActionKind, InternalUsersActionState, InternalUsersListUsersCompute,
+    InternalUsersListUsersInput, InternalUsersListUsersResult, RefreshInternalUsersCommand,
+    RevokeOtpCommand, UpdateProfileCommand, UpdateUsernameCommand,
 };
 pub use login_state::{
     AuthCompute, AuthStatus, LoginCommand, LoginInput, LogoutCommand, PendingTokenValidation,

@@ -6,6 +6,9 @@ import {
   buildSetupContext,
   setupGitHubActions,
   type BuildSetupOptions,
+  buildMigrateRepoContext,
+  migrateRepoBindings,
+  type BuildMigrateRepoOptions,
 } from "./services/gcloud.ts";
 import { runVersionCheck } from "./gh-actions/version-check.ts";
 import {
@@ -45,6 +48,25 @@ cli
       repo: options.repo,
     } as BuildSetupOptions);
     await setupGitHubActions(ctx);
+  });
+
+cli
+  .command(
+    "actions-migrate-repo",
+    "Migrate workload identity bindings when repository is moved to a new org/name",
+  )
+  .option("--project-id <projectId>", "Google Cloud Project ID")
+  .option("--old-repo <oldRepo>", "Old GitHub Repository (owner/repo)")
+  .option("--new-repo <newRepo>", "New GitHub Repository (owner/repo)")
+  .action(async (options) => {
+    p.intro("GitHub Actions Repository Migration");
+
+    const ctx = await buildMigrateRepoContext({
+      projectId: options.projectId,
+      oldRepo: options.oldRepo,
+      newRepo: options.newRepo,
+    } as BuildMigrateRepoOptions);
+    await migrateRepoBindings(ctx);
   });
 
 cli
@@ -257,6 +279,29 @@ Sets up Workload Identity Federation for GitHub Actions to deploy to Google Clou
 bun run main.ts actions-setup
 # Or with options:
 bun run main.ts actions-setup --project-id my-gcp-project-id --repo username/repository
+\`\`\`
+
+### \`actions-migrate-repo\`
+
+Migrates workload identity bindings when a GitHub repository is moved to a new org or renamed.
+
+**What it does:**
+1. Updates the Workload Identity Provider's attribute condition to use the new repository.
+2. Adds a new IAM binding for the Service Account to allow the new repository.
+3. Removes the old IAM binding to revoke access from the old repository path.
+
+**When to use:**
+- When you move a repository to a different organization (e.g., \`old-org/repo\` → \`new-org/repo\`)
+- When you rename a repository
+- When you fork and want to use the same GCP setup
+
+**Example:**
+\`\`\`bash
+bun run main.ts actions-migrate-repo
+# Or with options:
+bun run main.ts actions-migrate-repo --project-id my-gcp-project-id --old-repo old-org/old-repo --new-repo new-org/new-repo
+# For example, migrating to lqxc-org:
+just scripts::actions-migrate-repo --project-id braided-case-416903 --old-repo old-owner/collects --new-repo lqxc-org/collects
 \`\`\`
 
 ### \`init-db-secret\`

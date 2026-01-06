@@ -32,6 +32,11 @@ env-list:
 actions-setup *args: install
     bun run main.ts actions-setup {{args}}
 
+# Migrate workload identity bindings when repository is moved
+# Usage: just scripts::actions-migrate-repo --project-id <id> --old-repo <old-owner/old-repo> --new-repo <new-owner/new-repo>
+actions-migrate-repo *args: install
+    bun run main.ts actions-migrate-repo {{args}}
+
 init-db token project_id: install
     bun run main.ts init-db-secret --token {{token}} --project-id {{project_id}}
 

@@ -146,10 +146,6 @@ impl<P: PasteHandler, D: DropHandler> eframe::App for CollectsApp<P, D> {
         // Sync Compute for render
         self.state.ctx.sync_computes();
 
-        // Poll for async responses (internal builds only)
-        #[cfg(any(feature = "env_internal", feature = "env_test_internal"))]
-        widgets::poll_internal_users_responses(&mut self.state.ctx, ctx);
-
         // Update route based on authentication state
         self.update_route();
 

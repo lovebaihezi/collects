@@ -45,9 +45,7 @@ mod image_preview;
 mod internal;
 mod login;
 
-pub use internal::{
-    InternalUsersState, UserAction, internal_users_panel, poll_internal_users_responses,
-};
+pub use internal::{InternalUsersState, UserAction, internal_users_panel};
 
 pub use api_status::api_status;
 pub use footer::powered_by_egui_and_eframe;

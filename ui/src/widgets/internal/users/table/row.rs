@@ -15,7 +15,8 @@ use super::cells::{
 use crate::widgets::internal::users::qr::generate_qr_image;
 use collects_business::{
     GetUserQrCommand, InternalUsersActionCompute, InternalUsersActionInput,
-    InternalUsersActionKind, InternalUsersActionState, InternalUsersState, UserAction,
+    InternalUsersActionKind, InternalUsersActionState, InternalUsersState,
+    ResetInternalUsersActionCommand, UserAction,
 };
 
 /// Data needed to render a user row.
@@ -171,6 +172,7 @@ pub fn render_qr_expansion(
                             ui.add_space(8.0);
                             if ui.button("Close").clicked() {
                                 state.close_action();
+                                state_ctx.dispatch::<ResetInternalUsersActionCommand>();
                             }
                             return;
                         }
@@ -247,6 +249,7 @@ pub fn render_qr_expansion(
                     ui.add_space(8.0);
                     if ui.button("Close").clicked() {
                         state.close_action();
+                        state_ctx.dispatch::<ResetInternalUsersActionCommand>();
                     }
                 } else {
                     // Fetch user QR code via business Command + Compute (no egui temp memory plumbing).

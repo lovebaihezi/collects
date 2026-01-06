@@ -4,7 +4,7 @@ This file tracks remaining places where UI code uses `egui::Context` memory (`ct
 
 ## Goal
 
-Migrate each legacy flow to the repo’s reference pattern:
+Migrate each legacy flow to the repo's reference pattern:
 
 - Async work runs inside a **business `Command`**
 - Async lifecycle/results stored in a **business `Compute`**
@@ -44,6 +44,12 @@ This pattern is:
   - Commands: `UpdateUsernameCommand`, `UpdateProfileCommand`, `DeleteUserCommand`, `RevokeOtpCommand`, `GetUserQrCommand`
   - UI: modals + inline QR now dispatch commands and read compute (no `"action_*"` / `"*_response"` temp IDs)
   - UI drafts: replaced per-keystroke business mutation (`edit_*_input`) with UI-local drafts seeded on open
+- ✅ Internal Users: Remove `poll_internal_users_responses`
+  - Deleted the polling bridge function entirely
+  - Modals now detect Success/Error states directly from `InternalUsersActionCompute`
+  - Added `ResetInternalUsersActionCommand` to reset compute to Idle after handling results
+  - UI handles side effects directly: close action, trigger refresh, reset compute
+  - Removed all exports and call sites for `poll_internal_users_responses`
 
 ---
 
@@ -62,16 +68,6 @@ Even after async compute migration, UI still calls methods like:
   - `CloseInternalUsersActionCommand`
   - `ToggleOtpVisibilityCommand { username: Ustr }`
   - `OpenCreateUserModalCommand`, `CloseCreateUserModalCommand`, etc.
-
----
-
-### 3) Internal Users: Remove `poll_internal_users_responses`
-
-Now that:
-- list refresh uses compute (done)
-- all actions use `InternalUsersActionCompute` (done)
-
-…`poll_internal_users_responses` should be deleted entirely (and removed from any call sites/exports).
 
 ---
 

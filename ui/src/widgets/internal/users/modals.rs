@@ -3,7 +3,8 @@
 use collects_business::{
     CreateUserCompute, CreateUserResult, DeleteUserCommand, InternalUsersActionCompute,
     InternalUsersActionInput, InternalUsersActionKind, InternalUsersActionState,
-    InternalUsersState, RevokeOtpCommand, UpdateProfileCommand, UpdateUsernameCommand,
+    InternalUsersState, RefreshInternalUsersCommand, ResetInternalUsersActionCommand,
+    RevokeOtpCommand, UpdateProfileCommand, UpdateUsernameCommand,
 };
 use collects_states::StateCtx;
 use egui::{Color32, RichText, Ui, Window};
@@ -39,21 +40,45 @@ pub fn show_edit_username_modal(
                 .map(|c| c.state.clone())
                 .unwrap_or(InternalUsersActionState::Idle);
 
-            let (in_flight, error_msg) = match &action_state {
+            let (in_flight, error_msg, is_success) = match &action_state {
                 InternalUsersActionState::InFlight { kind, user } => (
                     *kind == InternalUsersActionKind::UpdateUsername && *user == username,
                     None,
+                    false,
                 ),
                 InternalUsersActionState::Error {
                     kind,
                     user,
                     message,
                 } => (
-                    *kind == InternalUsersActionKind::UpdateUsername && *user == username,
-                    Some(message.as_str()),
+                    false,
+                    if *kind == InternalUsersActionKind::UpdateUsername && *user == username {
+                        Some(message.as_str())
+                    } else {
+                        None
+                    },
+                    false,
                 ),
-                _ => (false, None),
+                InternalUsersActionState::Success { kind, user, .. } => (
+                    false,
+                    None,
+                    *kind == InternalUsersActionKind::UpdateUsername && *user == username,
+                ),
+                _ => (false, None, false),
             };
+
+            // Handle success: close modal, trigger refresh, and reset compute.
+            if is_success {
+                // Clear UI draft data.
+                ui.ctx().data_mut(|d| {
+                    d.remove::<String>(draft_id);
+                });
+                // Close the action and refresh.
+                state_ctx.state_mut::<InternalUsersState>().close_action();
+                state_ctx.dispatch::<RefreshInternalUsersCommand>();
+                state_ctx.dispatch::<ResetInternalUsersActionCommand>();
+                return;
+            }
 
             if let Some(error) = error_msg {
                 ui.colored_label(Color32::RED, format!("Error: {error}"));
@@ -112,7 +137,6 @@ pub fn show_edit_username_modal(
     }
 }
 
-/// Shows the edit profile modal (nickname and avatar URL).
 pub fn show_edit_profile_modal(
     state_ctx: &mut StateCtx,
     api_base_url: &str,
@@ -160,21 +184,46 @@ pub fn show_edit_profile_modal(
                 .map(|c| c.state.clone())
                 .unwrap_or(InternalUsersActionState::Idle);
 
-            let (in_flight, error_msg) = match &action_state {
+            let (in_flight, error_msg, is_success) = match &action_state {
                 InternalUsersActionState::InFlight { kind, user } => (
                     *kind == InternalUsersActionKind::UpdateProfile && *user == username,
                     None,
+                    false,
                 ),
                 InternalUsersActionState::Error {
                     kind,
                     user,
                     message,
                 } => (
-                    *kind == InternalUsersActionKind::UpdateProfile && *user == username,
-                    Some(message.as_str()),
+                    false,
+                    if *kind == InternalUsersActionKind::UpdateProfile && *user == username {
+                        Some(message.as_str())
+                    } else {
+                        None
+                    },
+                    false,
                 ),
-                _ => (false, None),
+                InternalUsersActionState::Success { kind, user, .. } => (
+                    false,
+                    None,
+                    *kind == InternalUsersActionKind::UpdateProfile && *user == username,
+                ),
+                _ => (false, None, false),
             };
+
+            // Handle success: close modal, trigger refresh, and reset compute.
+            if is_success {
+                // Clear UI draft data.
+                ui.ctx().data_mut(|d| {
+                    d.remove::<String>(nickname_id);
+                    d.remove::<String>(avatar_id);
+                });
+                // Close the action and refresh.
+                state_ctx.state_mut::<InternalUsersState>().close_action();
+                state_ctx.dispatch::<RefreshInternalUsersCommand>();
+                state_ctx.dispatch::<ResetInternalUsersActionCommand>();
+                return;
+            }
 
             if let Some(error) = error_msg {
                 ui.colored_label(Color32::RED, format!("Error: {error}"));
@@ -253,7 +302,6 @@ pub fn show_edit_profile_modal(
     }
 }
 
-/// Shows the delete user confirmation modal.
 pub fn show_delete_user_modal(
     state_ctx: &mut StateCtx,
     api_base_url: &str,
@@ -274,21 +322,41 @@ pub fn show_delete_user_modal(
                 .map(|c| c.state.clone())
                 .unwrap_or(InternalUsersActionState::Idle);
 
-            let (in_flight, error_msg) = match &action_state {
+            let (in_flight, error_msg, is_success) = match &action_state {
                 InternalUsersActionState::InFlight { kind, user } => (
                     *kind == InternalUsersActionKind::DeleteUser && *user == username,
                     None,
+                    false,
                 ),
                 InternalUsersActionState::Error {
                     kind,
                     user,
                     message,
                 } => (
-                    *kind == InternalUsersActionKind::DeleteUser && *user == username,
-                    Some(message.as_str()),
+                    false,
+                    if *kind == InternalUsersActionKind::DeleteUser && *user == username {
+                        Some(message.as_str())
+                    } else {
+                        None
+                    },
+                    false,
                 ),
-                _ => (false, None),
+                InternalUsersActionState::Success { kind, user, .. } => (
+                    false,
+                    None,
+                    *kind == InternalUsersActionKind::DeleteUser && *user == username,
+                ),
+                _ => (false, None, false),
             };
+
+            // Handle success: close modal, trigger refresh, and reset compute.
+            if is_success {
+                // Close the action and refresh.
+                state_ctx.state_mut::<InternalUsersState>().close_action();
+                state_ctx.dispatch::<RefreshInternalUsersCommand>();
+                state_ctx.dispatch::<ResetInternalUsersActionCommand>();
+                return;
+            }
 
             if let Some(error) = error_msg {
                 ui.colored_label(Color32::RED, format!("Error: {error}"));
@@ -339,7 +407,6 @@ pub fn show_delete_user_modal(
     }
 }
 
-/// Shows the revoke OTP modal.
 pub fn show_revoke_otp_modal(
     state_ctx: &mut StateCtx,
     api_base_url: &str,
@@ -371,8 +438,12 @@ pub fn show_revoke_otp_modal(
                     user,
                     message,
                 } => (
-                    *kind == InternalUsersActionKind::RevokeOtp && *user == username,
-                    Some(message.as_str()),
+                    false,
+                    if *kind == InternalUsersActionKind::RevokeOtp && *user == username {
+                        Some(message.as_str())
+                    } else {
+                        None
+                    },
                     None,
                 ),
                 InternalUsersActionState::Success { kind, user, data } => (
@@ -432,8 +503,10 @@ pub fn show_revoke_otp_modal(
 
                 ui.add_space(8.0);
                 if ui.button("Close").clicked() {
-                    // Keep existing workflow state mutation for now (TODO #2).
-                    state.close_action();
+                    // Close the action, trigger refresh, and reset compute.
+                    state_ctx.state_mut::<InternalUsersState>().close_action();
+                    state_ctx.dispatch::<RefreshInternalUsersCommand>();
+                    state_ctx.dispatch::<ResetInternalUsersActionCommand>();
                 }
             } else {
                 ui.colored_label(Color32::from_rgb(255, 165, 0), "⚠️ Warning");
@@ -475,43 +548,64 @@ pub fn show_revoke_otp_modal(
     }
 }
 
-/// Shows the create user modal window.
 pub fn show_create_user_modal(state_ctx: &mut StateCtx, ui: &mut Ui) {
     let state = state_ctx.state_mut::<InternalUsersState>();
     let mut open = state.create_modal_open;
-
-    // Get the compute result
-    let compute_result = state_ctx
-        .cached::<CreateUserCompute>()
-        .map(|c| c.result.clone())
-        .unwrap_or(CreateUserResult::Idle);
-
-    let state = state_ctx.state_mut::<InternalUsersState>();
 
     Window::new("Create User")
         .open(&mut open)
         .collapsible(false)
         .resizable(false)
         .show(ui.ctx(), |ui| {
-            match &compute_result {
-                CreateUserResult::Success(created) => {
-                    // Show success with QR code info
-                    ui.colored_label(
-                        Color32::from_rgb(34, 139, 34),
-                        "✓ User created successfully!",
-                    );
+            // Check compute state
+            let create_result = state_ctx
+                .cached::<CreateUserCompute>()
+                .map(|c| c.result.clone())
+                .unwrap_or(CreateUserResult::Idle);
+
+            match create_result {
+                CreateUserResult::Idle => {
+                    ui.label("Enter username for the new user:");
                     ui.add_space(8.0);
 
+                    let state = state_ctx.state_mut::<InternalUsersState>();
                     ui.horizontal(|ui| {
-                        ui.strong("Username:");
-                        ui.label(&created.username);
+                        ui.label("Username:");
+                        ui.text_edit_singleline(&mut state.new_username);
                     });
 
+                    ui.add_space(16.0);
+
+                    ui.horizontal(|ui| {
+                        let state = state_ctx.state_mut::<InternalUsersState>();
+                        let can_create = !state.new_username.trim().is_empty();
+
+                        if ui
+                            .add_enabled(can_create, egui::Button::new("Create"))
+                            .clicked()
+                        {
+                            let username = state.new_username.trim().to_string();
+                            super::panel::trigger_create_user(state_ctx, &username);
+                        }
+
+                        if ui.button("Cancel").clicked() {
+                            state_ctx
+                                .state_mut::<InternalUsersState>()
+                                .close_create_modal();
+                        }
+                    });
+                }
+                CreateUserResult::Pending => {
+                    ui.label("Creating user...");
+                    ui.spinner();
+                }
+                CreateUserResult::Success(created) => {
+                    ui.colored_label(Color32::from_rgb(34, 139, 34), "✓ User created!");
                     ui.add_space(8.0);
-                    ui.label("Scan this QR code with Google Authenticator:");
+                    ui.label("Scan the QR code below to set up OTP:");
                     ui.add_space(4.0);
 
-                    // Generate QR code texture if not cached
+                    let state = state_ctx.state_mut::<InternalUsersState>();
                     if state.qr_texture.is_none()
                         && let Some(qr_image) = generate_qr_image(&created.otpauth_url, 200)
                     {
@@ -522,7 +616,6 @@ pub fn show_create_user_modal(state_ctx: &mut StateCtx, ui: &mut Ui) {
                         ));
                     }
 
-                    // Display QR code as an image
                     egui::Frame::NONE
                         .fill(Color32::WHITE)
                         .inner_margin(egui::Margin::same(8))
@@ -536,58 +629,30 @@ pub fn show_create_user_modal(state_ctx: &mut StateCtx, ui: &mut Ui) {
                         });
 
                     ui.add_space(8.0);
-
-                    // Store create_modal_should_close flag to close modal after UI
+                    if ui.button("Done").clicked() {
+                        super::panel::reset_create_user_compute(state_ctx);
+                        state_ctx
+                            .state_mut::<InternalUsersState>()
+                            .close_create_modal();
+                        state_ctx.dispatch::<RefreshInternalUsersCommand>();
+                    }
                 }
                 CreateUserResult::Error(err) => {
                     ui.colored_label(Color32::RED, format!("Error: {err}"));
-                    ui.add_space(8.0);
-                }
-                CreateUserResult::Pending => {
-                    ui.label("Creating user...");
-                    ui.spinner();
-                }
-                CreateUserResult::Idle => {
-                    ui.label("Enter the username for the new user:");
-                    ui.add_space(8.0);
-
-                    ui.horizontal(|ui| {
-                        ui.label("Username:");
-                        ui.text_edit_singleline(&mut state.new_username);
-                    });
-
                     ui.add_space(16.0);
 
-                    let can_create = !state.new_username.trim().is_empty();
-
-                    ui.horizontal(|ui| {
-                        if ui
-                            .add_enabled(can_create, egui::Button::new("Create"))
-                            .clicked()
-                        {
-                            super::trigger_create_user(state_ctx, &state.new_username);
-                        }
-
-                        if ui.button("Cancel").clicked() {
-                            state.close_create_modal();
-                        }
-                    });
+                    if ui.button("Close").clicked() {
+                        super::panel::reset_create_user_compute(state_ctx);
+                        state_ctx
+                            .state_mut::<InternalUsersState>()
+                            .close_create_modal();
+                    }
                 }
             }
         });
 
-    // Handle close actions after Window rendering
-    let should_close_and_reset = !open
-        || matches!(
-            compute_result,
-            CreateUserResult::Success(_) | CreateUserResult::Error(_)
-        );
-    if should_close_and_reset && ui.input(|i| i.pointer.any_click()) {
-        // Check if Close button was clicked by re-checking state
-    }
-
     if !open {
-        super::reset_create_user_compute(state_ctx);
+        super::panel::reset_create_user_compute(state_ctx);
         state_ctx
             .state_mut::<InternalUsersState>()
             .close_create_modal();

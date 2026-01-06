@@ -6,6 +6,4 @@
 
 mod users;
 
-pub use users::{
-    InternalUsersState, UserAction, internal_users_panel, poll_internal_users_responses,
-};
+pub use users::{InternalUsersState, UserAction, internal_users_panel};

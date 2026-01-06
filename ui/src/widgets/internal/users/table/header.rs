@@ -4,7 +4,18 @@ use egui::Ui;
 use egui_extras::TableRow;
 
 /// Header column labels.
-const HEADERS: [&str; 6] = ["ID", "Username", "OTP Code", "Time Left", "OTP", "Actions"];
+const HEADERS: [&str; 10] = [
+    "ID",
+    "Avatar",
+    "Username",
+    "Nickname",
+    "OTP Code",
+    "Time Left",
+    "OTP",
+    "Created",
+    "Updated",
+    "Actions",
+];
 
 /// Renders the table header with centered, bold labels.
 #[inline]

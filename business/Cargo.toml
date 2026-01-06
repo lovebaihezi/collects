@@ -16,6 +16,7 @@ ehttp = { workspace = true }
 chrono = { workspace = true }
 log = { workspace = true }
 ustr = { workspace = true }
+egui = { workspace = true }
 
 collects-states = { path = "../states" }
 collects-utils = { path = "../utils" }

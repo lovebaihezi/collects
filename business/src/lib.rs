@@ -4,6 +4,7 @@ pub mod config;
 pub mod create_user_compute;
 pub mod internal;
 pub mod internal_api_status;
+pub mod internal_users;
 pub mod login_state;
 pub mod route;
 
@@ -18,10 +19,16 @@ pub use create_user_compute::{
 };
 pub use internal::{
     CreateUserRequest, CreateUserResponse, DeleteUserResponse, GetUserResponse, InternalUserItem,
-    ListUsersResponse, RevokeOtpResponse, UpdateUsernameRequest, UpdateUsernameResponse,
-    is_internal_build,
+    ListUsersResponse, RevokeOtpResponse, UpdateProfileRequest, UpdateProfileResponse,
+    UpdateUsernameRequest, UpdateUsernameResponse, is_internal_build,
 };
 pub use internal_api_status::{InternalAPIAvailability, InternalApiStatus};
+
+pub use internal_users::state::{InternalUsersState, UserAction};
+pub use internal_users::{
+    InternalUsersListUsersCompute, InternalUsersListUsersInput, InternalUsersListUsersResult,
+    RefreshInternalUsersCommand,
+};
 pub use login_state::{
     AuthCompute, AuthStatus, LoginCommand, LoginInput, LogoutCommand, PendingTokenValidation,
     ValidateTokenCommand, ValidateTokenRequest, ValidateTokenResponse,

@@ -15,6 +15,7 @@ pub(crate) mod qr;
 mod state;
 pub mod table;
 
+pub use api::fetch_users;
 pub use panel::{internal_users_panel, poll_internal_users_responses};
 pub use state::InternalUsersState;
 

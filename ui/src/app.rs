@@ -9,6 +9,8 @@ use crate::{
 };
 use chrono::{Timelike, Utc};
 use collects_business::{ApiStatus, AuthCompute, Route, ToggleApiStatusCommand};
+#[cfg(any(feature = "env_internal", feature = "env_test_internal"))]
+use collects_business::BusinessConfig;
 #[cfg(not(any(feature = "env_internal", feature = "env_test_internal")))]
 use collects_business::{PendingTokenValidation, ValidateTokenCommand};
 use collects_states::Time;
@@ -26,6 +28,9 @@ pub struct CollectsApp<P: PasteHandler = SystemPasteHandler, D: DropHandler = Sy
     /// Whether token validation has been triggered on startup.
     #[cfg(not(any(feature = "env_internal", feature = "env_test_internal")))]
     token_validation_started: bool,
+    /// Whether initial users fetch has been triggered on startup.
+    #[cfg(any(feature = "env_internal", feature = "env_test_internal"))]
+    users_fetch_started: bool,
     drop_handler: D,
 }
 
@@ -37,6 +42,8 @@ impl CollectsApp<SystemPasteHandler, SystemDropHandler> {
             paste_handler: SystemPasteHandler,
             #[cfg(not(any(feature = "env_internal", feature = "env_test_internal")))]
             token_validation_started: false,
+            #[cfg(any(feature = "env_internal", feature = "env_test_internal"))]
+            users_fetch_started: false,
             drop_handler: SystemDropHandler,
         }
     }
@@ -50,6 +57,8 @@ impl<P: PasteHandler, D: DropHandler> CollectsApp<P, D> {
             paste_handler,
             #[cfg(not(any(feature = "env_internal", feature = "env_test_internal")))]
             token_validation_started: false,
+            #[cfg(any(feature = "env_internal", feature = "env_test_internal"))]
+            users_fetch_started: false,
             drop_handler,
         }
     }
@@ -75,6 +84,25 @@ impl<P: PasteHandler, D: DropHandler> eframe::App for CollectsApp<P, D> {
                 // Dispatch token validation command
                 self.state.ctx.dispatch::<ValidateTokenCommand>();
             }
+        }
+
+        // On first frame (for internal builds), trigger initial users fetch
+        #[cfg(any(feature = "env_internal", feature = "env_test_internal"))]
+        if !self.users_fetch_started {
+            self.users_fetch_started = true;
+            let api_base_url = self
+                .state
+                .ctx
+                .state_mut::<BusinessConfig>()
+                .api_url()
+                .to_string();
+            // Set fetching state and trigger the fetch
+            self.state
+                .ctx
+                .state_mut::<widgets::InternalUsersState>()
+                .set_fetching();
+            widgets::fetch_internal_users(&api_base_url, ctx.clone());
+            log::info!("Initial internal users fetch triggered");
         }
 
         // Handle paste shortcut (Ctrl+V / Cmd+V) for clipboard image

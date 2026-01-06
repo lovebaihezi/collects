@@ -6,4 +6,4 @@
 
 mod users;
 
-pub use users::{InternalUsersState, internal_users_panel, poll_internal_users_responses};
+pub use users::{InternalUsersState, fetch_users, internal_users_panel, poll_internal_users_responses};

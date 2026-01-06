@@ -104,6 +104,17 @@ fn render_users_table(state_ctx: &mut StateCtx, ui: &mut Ui) -> (Option<Ustr>, O
     // Users table using native egui_extras TableBuilder
     let state = state_ctx.state_mut::<InternalUsersState>();
 
+    // If fetching and no users yet, show loading spinner in the table area
+    if state.is_fetching && state.users.is_empty() {
+        ui.vertical_centered(|ui| {
+            ui.add_space(40.0);
+            ui.spinner();
+            ui.label("Loading users...");
+            ui.add_space(40.0);
+        });
+        return (None, None);
+    }
+
     // Prepare user row data outside the table body closure
     let user_data: Vec<_> = state
         .users

@@ -43,14 +43,14 @@ export const ENV_CONFIGS: EnvConfig[] = [
     env: "internal",
     cargoFeature: "env_internal",
     databaseSecret: "database-url-internal",
-    jwtSecret: "jwt-secret", // Shares JWT secret with production
+    jwtSecret: "jwt-secret", // Same secret name as production
     description: "Internal environment (admin role, deploys with prod)",
   },
   {
     env: "nightly",
     cargoFeature: "env_nightly",
     databaseSecret: "database-url", // Uses production database
-    jwtSecret: "jwt-secret", // Shares JWT secret with production
+    jwtSecret: "jwt-secret", // Same secret name as production
     description: "Nightly build environment",
   },
   {

@@ -13,7 +13,6 @@ pub const AVATAR_WIDTH: f32 = 50.0;
 pub const TIMESTAMP_WIDTH: f32 = 150.0;
 pub const ROW_HEIGHT: f32 = 30.0;
 pub const HEADER_HEIGHT: f32 = 24.0;
-pub const QR_ROW_HEIGHT: f32 = 240.0;
 
 /// Table column configuration for the internal users table.
 ///

@@ -34,7 +34,7 @@ pub use internal_users::{
     DeleteUserCommand, GetUserQrCommand, InternalUsersActionCompute, InternalUsersActionInput,
     InternalUsersActionKind, InternalUsersActionState, InternalUsersListUsersCompute,
     InternalUsersListUsersInput, InternalUsersListUsersResult, RefreshInternalUsersCommand,
-    RevokeOtpCommand, UpdateProfileCommand, UpdateUsernameCommand,
+    ResetInternalUsersActionCommand, RevokeOtpCommand, UpdateProfileCommand, UpdateUsernameCommand,
 };
 pub use login_state::{
     AuthCompute, AuthStatus, LoginCommand, LoginInput, LogoutCommand, PendingTokenValidation,

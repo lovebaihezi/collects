@@ -470,6 +470,21 @@ impl Command for RevokeOtpCommand {
     }
 }
 
+/// Command to reset the action compute back to Idle state.
+///
+/// Dispatched by UI after handling a Success or Error state to acknowledge the result
+/// and allow new actions to proceed.
+#[derive(Default, Debug)]
+pub struct ResetInternalUsersActionCommand;
+
+impl Command for ResetInternalUsersActionCommand {
+    fn run(&self, _deps: Dep, updater: Updater) {
+        updater.set(InternalUsersActionCompute {
+            state: InternalUsersActionState::Idle,
+        });
+    }
+}
+
 #[derive(Default, Debug)]
 pub struct GetUserQrCommand;
 

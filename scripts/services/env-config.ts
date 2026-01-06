@@ -21,6 +21,8 @@ export interface EnvConfig {
   cargoFeature: string | null;
   /** Database secret name in Google Cloud Secret Manager */
   databaseSecret: string;
+  /** JWT secret name in Google Cloud Secret Manager (null = uses default local secret) */
+  jwtSecret: string | null;
   /** Description of the environment */
   description: string;
 }
@@ -34,42 +36,49 @@ export const ENV_CONFIGS: EnvConfig[] = [
     env: "prod",
     cargoFeature: null, // Production uses default (no feature)
     databaseSecret: "database-url",
+    jwtSecret: "jwt-secret",
     description: "Production environment",
   },
   {
     env: "internal",
     cargoFeature: "env_internal",
     databaseSecret: "database-url-internal",
+    jwtSecret: "jwt-secret", // Shares JWT secret with production
     description: "Internal environment (admin role, deploys with prod)",
   },
   {
     env: "nightly",
     cargoFeature: "env_nightly",
     databaseSecret: "database-url", // Uses production database
+    jwtSecret: "jwt-secret", // Shares JWT secret with production
     description: "Nightly build environment",
   },
   {
     env: "test",
     cargoFeature: "env_test",
     databaseSecret: "database-url-test",
+    jwtSecret: null, // Uses default local secret
     description: "Test environment",
   },
   {
     env: "test-internal",
     cargoFeature: "env_test_internal",
     databaseSecret: "database-url-test-internal",
+    jwtSecret: null, // Uses default local secret
     description: "Test-internal environment (admin role, deploys with main)",
   },
   {
     env: "pr",
     cargoFeature: "env_pr",
     databaseSecret: "database-url-pr",
+    jwtSecret: "jwt-secret-pr",
     description: "Pull request environment",
   },
   {
     env: "local",
     cargoFeature: null, // Local uses default (no feature)
     databaseSecret: "database-url-local",
+    jwtSecret: null, // Uses default local secret
     description: "Local development environment",
   },
 ];
@@ -114,6 +123,22 @@ export function getDatabaseSecret(env: string): string {
     process.exit(1);
   }
   return config.databaseSecret;
+}
+
+/**
+ * Get JWT secret name for an environment
+ * Returns the secret name or empty string if the environment uses default local secret
+ */
+export function getJwtSecret(env: string): string {
+  const config = getEnvConfig(env);
+  if (!config) {
+    console.error(`Unknown environment: ${env}`);
+    console.error(
+      `Available environments: ${ENV_CONFIGS.map((c) => c.env).join(", ")}`,
+    );
+    process.exit(1);
+  }
+  return config.jwtSecret ?? "";
 }
 
 /**

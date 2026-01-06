@@ -214,6 +214,9 @@ gcloud-deploy env image_tag:
     # Get database secret using centralized env config
     DATABASE_SECRET=$(just scripts::env-secret {{env}})
 
+    # Get JWT secret (empty string means environment uses default local secret)
+    JWT_SECRET=$(just scripts::jwt-secret {{env}})
+
     # Determine service name based on environment
     if [ "{{env}}" == "prod" ]; then
         SERVICE_NAME="collects-services"
@@ -224,6 +227,15 @@ gcloud-deploy env image_tag:
     echo "Deploying ${FULL_IMAGE_NAME} to Cloud Run service ${SERVICE_NAME} in ${GCP_REGION}..."
     echo "Using database secret: ${DATABASE_SECRET}"
 
+    # Build secrets string - always include DATABASE_URL
+    SECRETS_ARG="DATABASE_URL=${DATABASE_SECRET}:latest"
+
+    # Add JWT_SECRET only if the environment requires it
+    if [ -n "${JWT_SECRET}" ]; then
+        echo "Using JWT secret: ${JWT_SECRET}"
+        SECRETS_ARG="${SECRETS_ARG},JWT_SECRET=${JWT_SECRET}:latest"
+    fi
+
     gcloud run deploy "${SERVICE_NAME}" \
         --image "${FULL_IMAGE_NAME}" \
         --region "${GCP_REGION}" \
@@ -231,4 +243,4 @@ gcloud-deploy env image_tag:
         --allow-unauthenticated \
         --startup-probe httpGet.path=/is-health,httpGet.port=8080,initialDelaySeconds=24,timeoutSeconds=240,periodSeconds=240,failureThreshold=3 \
         --set-env-vars "ENV={{env}},GCP_PROJECT_ID=${PROJECT_ID}" \
-        --set-secrets "DATABASE_URL=${DATABASE_SECRET}:latest"
+        --set-secrets "${SECRETS_ARG}"

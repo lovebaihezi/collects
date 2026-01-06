@@ -21,6 +21,7 @@ import { runArtifactCheckCLI } from "./gh-actions/artifact-check.ts";
 import {
   getCargoFeature,
   getDatabaseSecret,
+  getJwtSecret,
   listEnvironments,
 } from "./services/env-config.ts";
 import { runPrTitleCheck } from "./services/pr-title.ts";
@@ -144,6 +145,17 @@ cli
   .action((env: string) => {
     // Output only the secret name, suitable for command substitution
     console.log(getDatabaseSecret(env));
+  });
+
+cli
+  .command(
+    "jwt-secret <env>",
+    "Get JWT secret name for an environment (used by justfiles)",
+  )
+  .action((env: string) => {
+    // Output only the secret name, suitable for command substitution
+    // Returns empty string if the environment uses default local secret
+    console.log(getJwtSecret(env));
   });
 
 cli.command("env-list", "List all available environment names").action(() => {
@@ -370,6 +382,18 @@ Gets database secret name for an environment. Used by justfiles to centralize en
 bun run main.ts env-secret pr         # Output: database-url-pr
 bun run main.ts env-secret prod       # Output: database-url
 bun run main.ts env-secret local      # Output: database-url-local
+\`\`\`
+
+### \`jwt-secret\`
+
+Gets JWT secret name for an environment. Used by justfiles to centralize environment configuration.
+Returns an empty string for environments that use the default local secret (local, test, test-internal).
+
+**Example:**
+\`\`\`bash
+bun run main.ts jwt-secret pr         # Output: jwt-secret-pr
+bun run main.ts jwt-secret prod       # Output: jwt-secret
+bun run main.ts jwt-secret local      # Output: (empty - uses default local secret)
 \`\`\`
 
 ### \`env-list\`

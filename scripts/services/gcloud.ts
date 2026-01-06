@@ -201,6 +201,27 @@ export async function grantSecretAccessToAllDatabaseSecrets(
 }
 
 /**
+ * Grants Secret Accessor role to the default compute service account for all JWT secrets
+ * This includes: jwt-secret, jwt-secret-pr
+ */
+export async function grantSecretAccessToAllJwtSecrets(
+  ctx: SetupContext,
+): Promise<void> {
+  const computeSaEmail = `${ctx.projectNumber}-compute@developer.gserviceaccount.com`;
+  const jwtSecrets = [
+    "jwt-secret", // Used by prod, internal, nightly
+    "jwt-secret-pr", // Used by PR environment
+  ];
+
+  for (const secretName of jwtSecrets) {
+    await confirmAndRun(
+      `gcloud secrets add-iam-policy-binding ${secretName} --member="serviceAccount:${computeSaEmail}" --role="roles/secretmanager.secretAccessor" --project=${ctx.projectId}`,
+      `Grant access to secret '${secretName}' for Compute Service Account`,
+    );
+  }
+}
+
+/**
  * Displays the final workflow YAML
  */
 function displayWorkflowYAML(ctx: SetupContext): void {
@@ -524,6 +545,9 @@ export async function setupGitHubActions(ctx: SetupContext): Promise<void> {
 
   // 8. Grant access to all database secrets
   await grantSecretAccessToAllDatabaseSecrets(ctx);
+
+  // 9. Grant access to all JWT secrets
+  await grantSecretAccessToAllJwtSecrets(ctx);
 
   p.outro("Setup Complete!");
   displayWorkflowYAML(ctx);

@@ -24,6 +24,11 @@ env-feature env="":
 env-secret env:
     @bun run main.ts env-secret {{env}}
 
+# Get JWT secret name for an environment (used by other modules)
+# Usage: just scripts::jwt-secret pr
+jwt-secret env:
+    @bun run main.ts jwt-secret {{env}}
+
 # List all available environment names
 env-list:
     @bun run main.ts env-list

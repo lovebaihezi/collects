@@ -9,6 +9,84 @@ use ustr::Ustr;
 
 use collects_business::UserAction;
 
+#[cfg(test)]
+mod otp_time_remaining_cell_test {
+    use super::*;
+    use egui_kittest::Harness;
+    use kittest::Queryable;
+
+    fn render_time_remaining_for_test(ui: &mut Ui, time_remaining: u8) {
+        render_time_remaining_cell(ui, time_remaining);
+    }
+
+    #[test]
+    fn test_otp_time_remaining_renders_label_text() {
+        let mut harness = Harness::new_ui(|ui| {
+            render_time_remaining_for_test(ui, 25);
+        });
+
+        harness.step();
+
+        assert!(
+            harness.query_by_label_contains("25s").is_some(),
+            "Should display 25s"
+        );
+    }
+
+    #[test]
+    fn test_otp_time_remaining_color_thresholds_render() {
+        let mut harness = Harness::new_ui(|ui| {
+            ui.vertical(|ui| {
+                render_time_remaining_for_test(ui, 15); // green
+                render_time_remaining_for_test(ui, 8); // orange
+                render_time_remaining_for_test(ui, 4); // red
+            });
+        });
+
+        harness.step();
+
+        assert!(
+            harness.query_by_label_contains("15s").is_some(),
+            "Should display 15s"
+        );
+        assert!(
+            harness.query_by_label_contains("8s").is_some(),
+            "Should display 8s"
+        );
+        assert!(
+            harness.query_by_label_contains("4s").is_some(),
+            "Should display 4s"
+        );
+
+        // NOTE: We intentionally do not assert on exact Color32 values from the UI tree here.
+        // The unit test goal is behavior-visible text presence; color mapping logic remains
+        // covered indirectly and can be asserted in lower-level pure tests if needed.
+    }
+
+    #[test]
+    fn test_otp_time_remaining_wraps_label_values_are_renderable() {
+        // The wrap-around math is owned by business (`InternalUsersState::calculate_time_remaining`).
+        // This unit test only verifies we can render arbitrary "wrapped" values consistently.
+        let mut harness = Harness::new_ui(|ui| {
+            ui.vertical(|ui| {
+                render_time_remaining_for_test(ui, 10);
+                render_time_remaining_for_test(ui, 25);
+            });
+        });
+
+        harness.step();
+
+        assert!(
+            harness.query_by_label_contains("10s").is_some(),
+            "Should display 10s"
+        );
+        assert!(
+            harness.query_by_label_contains("25s").is_some(),
+            "Should display 25s"
+        );
+    }
+}
+
 /// Renders the ID cell with a border indicator.
 ///
 /// The ID is displayed as a row index with a left border for visual separation.

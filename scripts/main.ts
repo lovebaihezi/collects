@@ -30,6 +30,7 @@ import {
   promptForR2Credentials,
   setupR2Secrets,
 } from "./services/r2-setup.ts";
+import { setupJwtSecrets, listJwtSecrets } from "./services/jwt-setup.ts";
 
 const cli = cac("services");
 
@@ -228,6 +229,59 @@ cli
 
     await listR2Secrets(projectId as string);
   });
+
+cli
+  .command(
+    "jwt-setup",
+    "Setup JWT secrets in Google Cloud Secret Manager (auto-generates secure secrets)",
+  )
+  .option("--project-id <projectId>", "Google Cloud Project ID")
+  .action(async (options) => {
+    p.intro("JWT Secret Setup");
+
+    const projectId = options.projectId
+      ? options.projectId
+      : await p.text({
+          message: "Enter your Google Cloud Project ID:",
+          placeholder: "my-gcp-project-id",
+          validate: (value) => {
+            if (!value) return "Project ID is required";
+          },
+        });
+
+    if (p.isCancel(projectId)) {
+      p.cancel("Operation cancelled.");
+      process.exit(0);
+    }
+
+    await setupJwtSecrets(projectId as string);
+    p.outro("JWT setup complete!");
+  });
+
+cli
+  .command("jwt-list", "List JWT secrets status")
+  .option("--project-id <projectId>", "Google Cloud Project ID")
+  .action(async (options) => {
+    p.intro("JWT Secrets Status");
+
+    const projectId = options.projectId
+      ? options.projectId
+      : await p.text({
+          message: "Enter your Google Cloud Project ID:",
+          placeholder: "my-gcp-project-id",
+          validate: (value) => {
+            if (!value) return "Project ID is required";
+          },
+        });
+
+    if (p.isCancel(projectId)) {
+      p.cancel("Operation cancelled.");
+      process.exit(0);
+    }
+
+    await listJwtSecrets(projectId as string);
+  });
+
 cli
   .command("ci-feedback", "Post CI failure feedback to PR (for GitHub Actions)")
   .action(() => {

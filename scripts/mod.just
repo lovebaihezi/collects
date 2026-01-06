@@ -59,6 +59,17 @@ r2-setup *args: install
 # Usage: just scripts::r2-list my-gcp-project-id
 r2-list *args: install
     bun run main.ts r2-list {{args}}
+
+# Setup JWT secrets in Google Cloud Secret Manager (auto-generates secure secrets)
+# Usage: just scripts::jwt-setup --project-id my-gcp-project-id
+jwt-setup *args: install
+    bun run main.ts jwt-setup {{args}}
+
+# List JWT secrets status
+# Usage: just scripts::jwt-list --project-id my-gcp-project-id
+jwt-list *args: install
+    bun run main.ts jwt-list {{args}}
+
 # Post CI failure feedback to PR (for GitHub Actions)
 # Requires environment variables: GITHUB_TOKEN, WORKFLOW_RUN_ID, HEAD_SHA, WORKFLOW_RUN_URL
 ci-feedback: install

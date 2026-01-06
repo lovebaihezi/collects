@@ -1,0 +1,46 @@
+name: Scheduled Job Failure Monitor
+
+# This workflow monitors scheduled jobs and creates issues when they fail
+on:
+  workflow_run:
+    workflows:
+      - "Artifact Cleanup"
+      # Add other scheduled workflows here as needed
+    types:
+      - completed
+
+jobs:
+  create-issue:
+    name: "Monitor: Create Issue for Failure"
+    # Only run when the workflow failed and it was triggered by schedule
+    if: >
+      github.event.workflow_run.conclusion == 'failure' &&
+      github.event.workflow_run.event == 'schedule'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      actions: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create Issue for Scheduled Job Failure
+        uses: ./.github/actions/scheduled-job-issue
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          workflow-name: ${{ github.event.workflow_run.name }}
+          workflow-run-id: ${{ github.event.workflow_run.id }}
+          workflow-run-url: ${{ github.event.workflow_run.html_url }}
+          head-sha: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Summary
+        run: |
+          echo "## Scheduled Job Failure Monitor" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Workflow:** ${{ github.event.workflow_run.name }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Run ID:** ${{ github.event.workflow_run.id }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Conclusion:** ${{ github.event.workflow_run.conclusion }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Event:** ${{ github.event.workflow_run.event }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "An issue has been created (or updated) for this failure." >> $GITHUB_STEP_SUMMARY

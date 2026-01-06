@@ -1,15 +1,10 @@
 import { Octokit } from "@octokit/rest";
 import { appendFileSync } from "fs";
+import { type JobSummary, formatCommitSha } from "./shared.ts";
 
 /**
  * CI Feedback Bot - Collects failures from CI workflow runs and posts feedback to PRs
  */
-
-interface JobSummary {
-  name: string;
-  url: string;
-  logs: string;
-}
 
 interface CIFeedbackOptions {
   token: string;
@@ -186,7 +181,7 @@ export function buildCommentBody(
 ): string {
   let commentBody = `<!-- CI-FEEDBACK-BOT -->\n## 🚨 CI Failure Report\n\n`;
   commentBody += `**Workflow Run:** [#${runId}](${workflowRunUrl})\n`;
-  commentBody += `**Commit:** \`${headSha.substring(0, 7)}\`\n\n`;
+  commentBody += `**Commit:** \`${formatCommitSha(headSha)}\`\n\n`;
   commentBody += `The following CI jobs have failed:\n\n`;
 
   for (const summary of jobsToReport) {

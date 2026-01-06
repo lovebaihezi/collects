@@ -73,7 +73,7 @@ pub fn show_edit_username_modal(
                     d.remove::<String>(draft_id);
                 });
                 // Close the action and refresh.
-                state_ctx.state_mut::<InternalUsersState>().close_action();
+                state_ctx.update::<InternalUsersState>(|s| s.close_action());
                 state_ctx.dispatch::<RefreshInternalUsersCommand>();
                 state_ctx.dispatch::<ResetInternalUsersActionCommand>();
                 return;
@@ -125,13 +125,13 @@ pub fn show_edit_username_modal(
                 }
 
                 if ui.button("Cancel").clicked() {
-                    state_ctx.state_mut::<InternalUsersState>().close_action();
+                    state_ctx.update::<InternalUsersState>(|s| s.close_action());
                 }
             });
         });
 
     if !open {
-        state_ctx.state_mut::<InternalUsersState>().close_action();
+        state_ctx.update::<InternalUsersState>(|s| s.close_action());
     }
 }
 
@@ -217,7 +217,7 @@ pub fn show_edit_profile_modal(
                     d.remove::<String>(avatar_id);
                 });
                 // Close the action and refresh.
-                state_ctx.state_mut::<InternalUsersState>().close_action();
+                state_ctx.update::<InternalUsersState>(|s| s.close_action());
                 state_ctx.dispatch::<RefreshInternalUsersCommand>();
                 state_ctx.dispatch::<ResetInternalUsersActionCommand>();
                 return;
@@ -289,13 +289,13 @@ pub fn show_edit_profile_modal(
                 }
 
                 if ui.button("Cancel").clicked() {
-                    state_ctx.state_mut::<InternalUsersState>().close_action();
+                    state_ctx.update::<InternalUsersState>(|s| s.close_action());
                 }
             });
         });
 
     if !open {
-        state_ctx.state_mut::<InternalUsersState>().close_action();
+        state_ctx.update::<InternalUsersState>(|s| s.close_action());
     }
 }
 
@@ -348,7 +348,7 @@ pub fn show_delete_user_modal(
             // Handle success: close modal, trigger refresh, and reset compute.
             if is_success {
                 // Close the action and refresh.
-                state_ctx.state_mut::<InternalUsersState>().close_action();
+                state_ctx.update::<InternalUsersState>(|s| s.close_action());
                 state_ctx.dispatch::<RefreshInternalUsersCommand>();
                 state_ctx.dispatch::<ResetInternalUsersActionCommand>();
                 return;
@@ -392,13 +392,13 @@ pub fn show_delete_user_modal(
                 }
 
                 if ui.button("Cancel").clicked() {
-                    state_ctx.state_mut::<InternalUsersState>().close_action();
+                    state_ctx.update::<InternalUsersState>(|s| s.close_action());
                 }
             });
         });
 
     if !open {
-        state_ctx.state_mut::<InternalUsersState>().close_action();
+        state_ctx.update::<InternalUsersState>(|s| s.close_action());
     }
 }
 
@@ -499,7 +499,7 @@ pub fn show_revoke_otp_modal(
                 ui.add_space(8.0);
                 if ui.button("Close").clicked() {
                     // Close the action, trigger refresh, and reset compute.
-                    state_ctx.state_mut::<InternalUsersState>().close_action();
+                    state_ctx.update::<InternalUsersState>(|s| s.close_action());
                     state_ctx.dispatch::<RefreshInternalUsersCommand>();
                     state_ctx.dispatch::<ResetInternalUsersActionCommand>();
                 }
@@ -531,14 +531,14 @@ pub fn show_revoke_otp_modal(
                     }
 
                     if ui.button("Cancel").clicked() {
-                        state_ctx.state_mut::<InternalUsersState>().close_action();
+                        state_ctx.update::<InternalUsersState>(|s| s.close_action());
                     }
                 });
             }
         });
 
     if !open {
-        state_ctx.state_mut::<InternalUsersState>().close_action();
+        state_ctx.update::<InternalUsersState>(|s| s.close_action());
     }
 }
 
@@ -583,9 +583,7 @@ pub fn show_create_user_modal(state_ctx: &mut StateCtx, ui: &mut Ui) {
                         }
 
                         if ui.button("Cancel").clicked() {
-                            state_ctx
-                                .state_mut::<InternalUsersState>()
-                                .close_create_modal();
+                            state_ctx.update::<InternalUsersState>(|s| s.close_create_modal());
                         }
                     });
                 }
@@ -625,9 +623,7 @@ pub fn show_create_user_modal(state_ctx: &mut StateCtx, ui: &mut Ui) {
                     ui.add_space(8.0);
                     if ui.button("Done").clicked() {
                         super::panel::reset_create_user_compute(state_ctx);
-                        state_ctx
-                            .state_mut::<InternalUsersState>()
-                            .close_create_modal();
+                        state_ctx.update::<InternalUsersState>(|s| s.close_create_modal());
                         state_ctx.dispatch::<RefreshInternalUsersCommand>();
                     }
                 }
@@ -637,9 +633,7 @@ pub fn show_create_user_modal(state_ctx: &mut StateCtx, ui: &mut Ui) {
 
                     if ui.button("Close").clicked() {
                         super::panel::reset_create_user_compute(state_ctx);
-                        state_ctx
-                            .state_mut::<InternalUsersState>()
-                            .close_create_modal();
+                        state_ctx.update::<InternalUsersState>(|s| s.close_create_modal());
                     }
                 }
             }
@@ -647,8 +641,6 @@ pub fn show_create_user_modal(state_ctx: &mut StateCtx, ui: &mut Ui) {
 
     if !open {
         super::panel::reset_create_user_compute(state_ctx);
-        state_ctx
-            .state_mut::<InternalUsersState>()
-            .close_create_modal();
+        state_ctx.update::<InternalUsersState>(|s| s.close_create_modal());
     }
 }

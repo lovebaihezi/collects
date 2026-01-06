@@ -274,21 +274,27 @@ The application uses a reactive state management system with `StateCtx` for stat
 
 There are two distinct patterns for updating state, depending on where the update happens:
 
-#### 1) UI code → State: use `state_mut` directly
+#### 1) UI code → State: use `update()` for mutations (preferred)
 
-For synchronous state mutations in UI code (e.g., opening/closing modals, toggling visibility):
+For synchronous state mutations in UI code, **prefer `update()`** over `state_mut()` because `update()` automatically marks dependent computes as dirty:
 
 ```rust
-// UI directly mutates state for synchronous operations
-state_ctx.state_mut::<InternalUsersState>().close_action();
-state_ctx.state_mut::<InternalUsersState>().start_action(action);
-state_ctx.state_mut::<InternalUsersState>().toggle_otp_visibility(username);
+// UI mutates state with auto dirty propagation
+state_ctx.update::<InternalUsersState>(|s| s.close_action());
+state_ctx.update::<InternalUsersState>(|s| s.start_action(action));
+state_ctx.update::<InternalUsersState>(|s| s.toggle_otp_visibility(username));
 ```
 
-**When to use `state_mut`:**
+**When to use `update()`:**
 - Opening/closing modals or panels
 - Toggling UI visibility flags
 - Any synchronous state change that doesn't require network IO
+- Any state mutation where dependent computes should be re-run
+
+**When to use `state_mut()`:**
+- Read-only access to state (e.g., reading `.users`, `.current_action`)
+- Binding mutable references to UI widgets (e.g., `text_edit_singleline(&mut state.new_username)`)
+- When you explicitly don't want to trigger dirty propagation
 
 #### 2) Commands → Compute/State: use `Updater::set()` / `Updater::set_state()`
 
@@ -320,7 +326,7 @@ All application/domain `State`, `Compute`, and `Command` definitions **MUST** li
 
 UI code under `ui/` (including `ui/src/widgets/**`) must be UI-only:
 - **Read** via `ctx.cached::<T>()` for Computes, `ctx.state_mut::<T>()` for reading State.
-- **Write to State** directly via `state_ctx.state_mut::<T>()` for synchronous operations.
+- **Write to State** via `state_ctx.update::<T>(|s| ...)` for synchronous operations (auto dirty propagation).
 - **Write to Compute** only by dispatching commands via `ctx.dispatch::<SomeCommand>()`.
 - UI-local transient state (e.g. draft text for chatty inputs) may live in UI, but must not be stored in business state unless it needs cross-view persistence.
 - Must not define new domain `State`/`Compute`/`Command` types.
@@ -360,7 +366,7 @@ Do not store half-typed draft strings in business state unless you need cross-vi
   - set `Loading` immediately
   - set `Loaded` / `Error` on completion
 - Commands can update State using `Updater::set_state()` for async callbacks (if State is Send-safe).
-- For synchronous State changes, UI should use `state_mut` directly instead of dispatching a command.
+- For synchronous State changes, UI should use `update()` directly instead of dispatching a command.
 
 Do not run network IO inside a Compute's `compute()` method.
 
@@ -375,7 +381,7 @@ Using egui memory for widget-internal ephemeral UI concerns is fine; using it to
 **Computes** must only be updated through the Command pattern using `Updater::set()`. Never mutate computes directly.
 
 **States** can be updated in two ways:
-1. **UI code**: Use `state_ctx.state_mut::<T>()` for synchronous mutations
+1. **UI code**: Use `state_ctx.update::<T>(|s| ...)` for synchronous mutations (auto dirty propagation)
 2. **Command callbacks**: Use `Updater::set_state::<T>()` for async updates (if T is Send-safe)
 
 **Why this pattern:**

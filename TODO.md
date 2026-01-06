@@ -51,13 +51,13 @@ This pattern is:
   - UI handles side effects directly: close action, trigger refresh, reset compute
   - Removed all exports and call sites for `poll_internal_users_responses`
 - ✅ Internal Users: Simplify state update pattern
-  - UI now uses `state_ctx.state_mut::<T>()` directly for synchronous state mutations (modals, toggles, etc.)
+  - UI now uses `state_ctx.update::<T>(|s| ...)` for synchronous state mutations with auto dirty propagation
   - Commands use `Updater::set_state::<T>()` for async state updates (when state is Send-safe)
-  - Removed unnecessary workflow commands that only existed to wrap `state_mut` calls
-  - UI directly calls: `.start_action()`, `.close_action()`, `.toggle_otp_visibility()`, `.open_create_modal()`, `.close_create_modal()`
+  - Removed unnecessary workflow commands that only existed to wrap state mutation calls
+  - UI directly calls: `update::<InternalUsersState>(|s| s.start_action())`, `.close_action()`, `.toggle_otp_visibility()`, etc.
   - Updated `Updater` to support both `set::<Compute>()` and `set_state::<State>()` via `UpdateMessage` enum
   - Added `State::assign_box()` trait method for states that can be updated via Updater
-  - States with non-Send types (e.g., `egui::TextureHandle`) cannot use `Updater::set_state()` - use `state_mut` in UI
+  - States with non-Send types (e.g., `egui::TextureHandle`) cannot use `Updater::set_state()` - use `update()` or `state_mut` in UI
   - Un-ignored 14 integration tests that were blocked by the refactor
 
 ---
@@ -69,6 +69,7 @@ This pattern is:
 - Do not introduce new `ctx.memory_mut`-based async transports. Use Commands + Computes.
 - It is OK to use UI-local state for draft text and widget-only ephemeral UI behavior.
 - **State update patterns:**
-  - UI code: use `state_ctx.state_mut::<T>()` for synchronous state mutations
+  - UI code: use `state_ctx.update::<T>(|s| ...)` for synchronous state mutations (auto dirty propagation)
+  - UI code: use `state_ctx.state_mut::<T>()` for read-only access or binding to widgets
   - Commands: use `Updater::set_state::<T>()` for async callbacks (state must be Send-safe)
-  - States with non-Send types (e.g., `egui::TextureHandle`) must only be mutated via `state_mut` in UI
+  - States with non-Send types (e.g., `egui::TextureHandle`) must be mutated via `update()` or `state_mut` in UI

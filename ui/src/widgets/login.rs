@@ -97,8 +97,8 @@ fn show_loading(ui: &mut Ui) -> Response {
 
 /// Shows the login form with optional error message.
 fn show_login_form(state_ctx: &mut StateCtx, ui: &mut Ui, error: Option<&str>) -> Response {
-    // Get mutable reference to login input
-    let login_input = state_ctx.state_mut::<LoginInput>();
+    // Get read-only reference to login input for initial values
+    let login_input = state_ctx.state::<LoginInput>();
 
     let mut username = login_input.username.clone();
     let mut otp = login_input.otp.clone();
@@ -167,13 +167,15 @@ fn show_login_form(state_ctx: &mut StateCtx, ui: &mut Ui, error: Option<&str>) -
         })
         .response;
 
-    // Update state if values changed
-    let login_input = state_ctx.state_mut::<LoginInput>();
-    if login_input.username != username {
-        login_input.username = username;
-    }
-    if login_input.otp != otp {
-        login_input.otp = otp;
+    // Update state if values changed using update() for proper dirty propagation
+    let current_input = state_ctx.state::<LoginInput>();
+    if current_input.username != username || current_input.otp != otp {
+        let new_username = username;
+        let new_otp = otp;
+        state_ctx.update::<LoginInput>(|input| {
+            input.username = new_username;
+            input.otp = new_otp;
+        });
     }
 
     // Trigger login if requested

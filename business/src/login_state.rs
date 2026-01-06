@@ -72,6 +72,10 @@ pub struct LoginInput {
 }
 
 impl State for LoginInput {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
     }
@@ -186,6 +190,10 @@ impl Compute for AuthCompute {
 }
 
 impl State for AuthCompute {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
     }
@@ -379,6 +387,10 @@ pub struct PendingTokenValidation {
 }
 
 impl State for PendingTokenValidation {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
     }

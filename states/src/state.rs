@@ -11,6 +11,10 @@ use crate::{Compute, StateRuntime};
 ///
 /// It provides basic identity and initialization logic for state objects.
 pub trait State: Any + Debug {
+    /// Returns a reference to self as `&dyn Any` for read-only downcasting.
+    fn as_any(&self) -> &dyn Any;
+
+    /// Returns a mutable reference to self as `&mut dyn Any` for mutable downcasting.
     fn as_any_mut(&mut self) -> &mut dyn Any;
 
     /// Initializes the state.

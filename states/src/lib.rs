@@ -52,6 +52,10 @@ mod state_runtime_test {
     }
 
     impl State for DummyState {
+        fn as_any(&self) -> &dyn Any {
+            self
+        }
+
         fn as_any_mut(&mut self) -> &mut dyn Any {
             self
         }
@@ -67,6 +71,10 @@ mod state_runtime_test {
     }
 
     impl State for DummyComputeA {
+        fn as_any(&self) -> &dyn Any {
+            self
+        }
+
         fn as_any_mut(&mut self) -> &mut dyn Any {
             self
         }
@@ -120,6 +128,10 @@ mod state_runtime_test {
     }
 
     impl State for DummyComputeB {
+        fn as_any(&self) -> &dyn Any {
+            self
+        }
+
         fn as_any_mut(&mut self) -> &mut dyn Any {
             self
         }
@@ -231,6 +243,10 @@ mod state_runtime_test {
     }
 
     impl State for DummyComputeC {
+        fn as_any(&self) -> &dyn Any {
+            self
+        }
+
         fn as_any_mut(&mut self) -> &mut dyn Any {
             self
         }
@@ -301,6 +317,10 @@ mod state_runtime_test {
     }
 
     impl State for SideEffectCountState {
+        fn as_any(&self) -> &dyn Any {
+            self
+        }
+
         fn as_any_mut(&mut self) -> &mut dyn Any {
             self
         }
@@ -350,6 +370,10 @@ mod state_runtime_test {
     }
 
     impl State for DummyComputeFromCommand {
+        fn as_any(&self) -> &dyn Any {
+            self
+        }
+
         fn as_any_mut(&mut self) -> &mut dyn Any {
             self
         }
@@ -414,6 +438,10 @@ mod state_runtime_test {
     }
 
     impl State for UnregisteredCompute {
+        fn as_any(&self) -> &dyn Any {
+            self
+        }
+
         fn as_any_mut(&mut self) -> &mut dyn Any {
             self
         }
@@ -477,6 +505,10 @@ mod state_runtime_test {
     }
 
     impl State for ExecutionCountingCompute {
+        fn as_any(&self) -> &dyn Any {
+            self
+        }
+
         fn as_any_mut(&mut self) -> &mut dyn Any {
             self
         }

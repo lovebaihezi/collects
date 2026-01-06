@@ -382,7 +382,7 @@ async fn test_pending_token_validation_initial_state() {
     let mut ctx = setup_test(|ui, state| {
         ui.label("Token Validation Test");
         // Check pending token state
-        let pending = state.ctx.state_mut::<PendingTokenValidation>();
+        let pending = state.ctx.state::<PendingTokenValidation>();
         if pending.token.is_some() {
             ui.label("Has pending token");
         } else {

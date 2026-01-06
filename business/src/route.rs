@@ -20,6 +20,10 @@ pub enum Route {
 }
 
 impl State for Route {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
     }

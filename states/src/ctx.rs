@@ -330,10 +330,21 @@ impl StateCtx {
         }
     }
 
+    /// Returns a read-only reference to a state.
+    ///
+    /// Use this method when you only need to read state values without modifying them.
+    /// For modifications, use `update::<T>()` which automatically propagates dirty status.
+    pub fn state<T: State>(&self) -> &T {
+        self.get_state_mut(&TypeId::of::<T>())
+            .as_any()
+            .downcast_ref::<T>()
+            .unwrap()
+    }
+
     /// Returns a mutable reference to a state.
     ///
-    /// **Warning**: Prefer using `update::<T>()` instead, as it automatically
-    /// propagates dirty status to dependent computes.
+    /// **Warning**: Prefer using `update::<T>()` instead for modifications, as it automatically
+    /// propagates dirty status to dependent computes. Use `state::<T>()` for read-only access.
     pub fn state_mut<T: State>(&self) -> &'static mut T {
         self.get_state_mut(&TypeId::of::<T>())
             .as_any_mut()

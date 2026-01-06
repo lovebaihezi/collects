@@ -147,7 +147,7 @@ async fn setup_with_create_user_server_error<'a>(
 async fn test_create_user_input_initial_state() {
     let mut ctx = setup_create_user_test(|ui, state| {
         // Just render something to get access to state
-        let input = state.ctx.state_mut::<CreateUserInput>();
+        let input = state.ctx.state::<CreateUserInput>();
         let label_text = format!("Username: {:?}", input.username);
         ui.label(label_text);
     })
@@ -158,7 +158,7 @@ async fn test_create_user_input_initial_state() {
 
     // Initial state should have no username
     let state = harness.state();
-    let input = state.ctx.state_mut::<CreateUserInput>();
+    let input = state.ctx.state::<CreateUserInput>();
     assert!(
         input.username.is_none(),
         "CreateUserInput should start with no username"

@@ -16,6 +16,10 @@ impl Default for Time {
 }
 
 impl State for Time {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
     }

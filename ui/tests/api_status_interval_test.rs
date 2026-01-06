@@ -497,13 +497,13 @@ async fn test_time_mocking_works() {
     let harness = ctx.harness_mut();
 
     // Get initial time
-    let initial_time = *harness.state().ctx.state_mut::<Time>().as_ref();
+    let initial_time = *harness.state().ctx.state::<Time>().as_ref();
 
     // Advance time
     advance_time_by_minutes(harness, 10);
 
     // Verify time advanced
-    let new_time = *harness.state().ctx.state_mut::<Time>().as_ref();
+    let new_time = *harness.state().ctx.state::<Time>().as_ref();
     let diff = new_time.signed_duration_since(initial_time);
 
     assert_eq!(
@@ -525,7 +525,7 @@ async fn test_time_can_be_set_to_specific_value() {
     });
 
     // Verify time was set
-    let current_time = *harness.state().ctx.state_mut::<Time>().as_ref();
+    let current_time = *harness.state().ctx.state::<Time>().as_ref();
     assert_eq!(
         current_time, specific_time,
         "Time should be set to specific value"

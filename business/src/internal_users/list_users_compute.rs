@@ -94,6 +94,10 @@ impl Compute for InternalUsersListUsersCompute {
 }
 
 impl State for InternalUsersListUsersCompute {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
     }
@@ -118,6 +122,10 @@ pub struct InternalUsersListUsersInput {
 }
 
 impl State for InternalUsersListUsersInput {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
     }

@@ -142,7 +142,23 @@ pub fn show_edit_profile_modal(
     ui: &mut Ui,
 ) {
     let mut open = true;
-    let state = state_ctx.state_mut::<InternalUsersState>();
+    // Clone the seed values upfront to avoid borrow conflicts inside closure
+    let (seed_nickname, seed_avatar_url) = {
+        let state = state_ctx.state::<InternalUsersState>();
+        let seed_nickname = state
+            .users
+            .iter()
+            .find(|u| u.username == username.as_str())
+            .and_then(|u| u.nickname.clone())
+            .unwrap_or_default();
+        let seed_avatar_url = state
+            .users
+            .iter()
+            .find(|u| u.username == username.as_str())
+            .and_then(|u| u.avatar_url.clone())
+            .unwrap_or_default();
+        (seed_nickname, seed_avatar_url)
+    };
 
     Window::new(format!("Edit Profile - {}", username))
         .open(&mut open)
@@ -150,18 +166,6 @@ pub fn show_edit_profile_modal(
         .resizable(false)
         .show(ui.ctx(), |ui| {
             // Local drafts (UI-only). Seed once from the selected business state snapshot.
-            let seed_nickname = state
-                .users
-                .iter()
-                .find(|u| u.username == username.as_str())
-                .and_then(|u| u.nickname.clone())
-                .unwrap_or_default();
-            let seed_avatar_url = state
-                .users
-                .iter()
-                .find(|u| u.username == username.as_str())
-                .and_then(|u| u.avatar_url.clone())
-                .unwrap_or_default();
 
             let nickname_id =
                 egui::Id::new(("internal_users_edit_profile_nickname_draft", username));
@@ -409,7 +413,6 @@ pub fn show_revoke_otp_modal(
     ui: &mut Ui,
 ) {
     let mut open = true;
-    let state = state_ctx.state_mut::<InternalUsersState>();
 
     Window::new(format!("Revoke OTP - {}", username))
         .open(&mut open)
@@ -474,9 +477,11 @@ pub fn show_revoke_otp_modal(
                 ui.label("The user must scan this new QR code:");
                 ui.add_space(4.0);
 
-                if state.qr_texture.is_none()
-                    && let Some(qr_image) = generate_qr_image(otpauth_url, 200)
-                {
+                // Check if texture needs to be created (read-only check first)
+                let needs_texture = state_ctx.state::<InternalUsersState>().qr_texture.is_none();
+                if needs_texture && let Some(qr_image) = generate_qr_image(otpauth_url, 200) {
+                    // Need state_mut to set non-Send TextureHandle
+                    let state = state_ctx.state_mut::<InternalUsersState>();
                     state.qr_texture = Some(ui.ctx().load_texture(
                         "qr_code_revoke",
                         qr_image,
@@ -489,7 +494,8 @@ pub fn show_revoke_otp_modal(
                     .inner_margin(egui::Margin::same(8))
                     .corner_radius(4.0)
                     .show(ui, |ui| {
-                        if let Some(texture) = &state.qr_texture {
+                        // Read-only access to display texture
+                        if let Some(texture) = &state_ctx.state::<InternalUsersState>().qr_texture {
                             ui.image(texture);
                         } else {
                             ui.label(RichText::new(otpauth_url).monospace().small());
@@ -543,7 +549,7 @@ pub fn show_revoke_otp_modal(
 }
 
 pub fn show_create_user_modal(state_ctx: &mut StateCtx, ui: &mut Ui) {
-    let state = state_ctx.state_mut::<InternalUsersState>();
+    let state = state_ctx.state::<InternalUsersState>();
     let mut open = state.create_modal_open;
 
     Window::new("Create User")
@@ -562,6 +568,7 @@ pub fn show_create_user_modal(state_ctx: &mut StateCtx, ui: &mut Ui) {
                     ui.label("Enter username for the new user:");
                     ui.add_space(8.0);
 
+                    // Need state_mut for text_edit_singleline binding
                     let state = state_ctx.state_mut::<InternalUsersState>();
                     ui.horizontal(|ui| {
                         ui.label("Username:");
@@ -571,14 +578,22 @@ pub fn show_create_user_modal(state_ctx: &mut StateCtx, ui: &mut Ui) {
                     ui.add_space(16.0);
 
                     ui.horizontal(|ui| {
-                        let state = state_ctx.state_mut::<InternalUsersState>();
-                        let can_create = !state.new_username.trim().is_empty();
+                        // Read-only check uses state()
+                        let can_create = !state_ctx
+                            .state::<InternalUsersState>()
+                            .new_username
+                            .trim()
+                            .is_empty();
 
                         if ui
                             .add_enabled(can_create, egui::Button::new("Create"))
                             .clicked()
                         {
-                            let username = state.new_username.trim().to_string();
+                            let username = state_ctx
+                                .state::<InternalUsersState>()
+                                .new_username
+                                .trim()
+                                .to_string();
                             super::panel::trigger_create_user(state_ctx, &username);
                         }
 
@@ -597,10 +612,14 @@ pub fn show_create_user_modal(state_ctx: &mut StateCtx, ui: &mut Ui) {
                     ui.label("Scan the QR code below to set up OTP:");
                     ui.add_space(4.0);
 
-                    let state = state_ctx.state_mut::<InternalUsersState>();
-                    if state.qr_texture.is_none()
+                    // Check if texture needs to be created (read-only check first)
+                    let needs_texture =
+                        state_ctx.state::<InternalUsersState>().qr_texture.is_none();
+                    if needs_texture
                         && let Some(qr_image) = generate_qr_image(&created.otpauth_url, 200)
                     {
+                        // Need state_mut to set non-Send TextureHandle
+                        let state = state_ctx.state_mut::<InternalUsersState>();
                         state.qr_texture = Some(ui.ctx().load_texture(
                             "qr_code_create",
                             qr_image,
@@ -613,7 +632,10 @@ pub fn show_create_user_modal(state_ctx: &mut StateCtx, ui: &mut Ui) {
                         .inner_margin(egui::Margin::same(8))
                         .corner_radius(4.0)
                         .show(ui, |ui| {
-                            if let Some(texture) = &state.qr_texture {
+                            // Read-only access to display texture
+                            if let Some(texture) =
+                                &state_ctx.state::<InternalUsersState>().qr_texture
+                            {
                                 ui.image(texture);
                             } else {
                                 ui.label(RichText::new(&created.otpauth_url).monospace().small());

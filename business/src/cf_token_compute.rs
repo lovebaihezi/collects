@@ -50,6 +50,10 @@ pub struct CFTokenInput {
 }
 
 impl State for CFTokenInput {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
     }
@@ -127,6 +131,10 @@ impl Compute for CFTokenCompute {
 }
 
 impl State for CFTokenCompute {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
     }

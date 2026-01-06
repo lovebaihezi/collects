@@ -113,6 +113,10 @@ impl Compute for InternalUsersActionCompute {
 }
 
 impl State for InternalUsersActionCompute {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
     }
@@ -146,6 +150,10 @@ pub struct InternalUsersActionInput {
 }
 
 impl State for InternalUsersActionInput {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
     }

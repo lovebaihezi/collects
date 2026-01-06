@@ -134,7 +134,7 @@ impl<P: PasteHandler, D: DropHandler> eframe::App for CollectsApp<P, D> {
         // updates on every frame. Time-dependent computes (ApiStatus, InternalApiStatus)
         // have internal throttling to avoid unnecessary network requests.
         let now = Utc::now();
-        let current_time = self.state.ctx.state_mut::<Time>();
+        let current_time = self.state.ctx.state::<Time>();
         let current_second = current_time.as_ref().second();
         let new_second = now.second();
         if current_second != new_second {
@@ -210,7 +210,7 @@ impl<P: PasteHandler, D: DropHandler> CollectsApp<P, D> {
             .cached::<AuthCompute>()
             .is_some_and(|c| c.is_authenticated());
 
-        let current_route = self.state.ctx.state_mut::<Route>().clone();
+        let current_route = self.state.ctx.state::<Route>().clone();
 
         let new_route = if is_authenticated {
             #[cfg(any(feature = "env_internal", feature = "env_test_internal"))]
@@ -234,7 +234,7 @@ impl<P: PasteHandler, D: DropHandler> CollectsApp<P, D> {
 
     /// Renders the appropriate page based on the current route.
     fn render_page(&mut self, ui: &mut egui::Ui) {
-        let route = self.state.ctx.state_mut::<Route>().clone();
+        let route = self.state.ctx.state::<Route>().clone();
 
         match route {
             Route::Login => {

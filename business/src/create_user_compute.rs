@@ -49,6 +49,10 @@ pub struct CreateUserInput {
 }
 
 impl State for CreateUserInput {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
     }
@@ -139,6 +143,10 @@ impl Compute for CreateUserCompute {
 }
 
 impl State for CreateUserCompute {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
     }

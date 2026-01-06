@@ -48,6 +48,7 @@ reqwest = { workspace = true, default-features = true }
 arboard = { version = "3.6", features = ["wayland-data-control", "image-data"] }
 image = "0.25"
 urlencoding = "2.1"
+rfd = "0.16"
 
 # web:
 [target.'cfg(target_arch = "wasm32")'.dependencies]
@@ -60,6 +61,7 @@ kittest = "0.3"
 wiremock = "0.6"
 egui_kittest = { version = "0.33", features = ["snapshot", "eframe"] }
 tokio = { workspace = true, features = ["full", "test-util"] }
+tempfile = "3.15"
 
 [build-dependencies]
 ico = "0.3"

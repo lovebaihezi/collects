@@ -4,6 +4,7 @@ use crate::{
     pages,
     state::State,
     utils::drop_handler::{DropHandler, SystemDropHandler},
+    utils::file_picker::{FilePickerHandler, SystemFilePickerHandler},
     utils::paste_handler::{PasteHandler, SystemPasteHandler},
     widgets,
 };
@@ -19,7 +20,11 @@ const API_STATUS_WINDOW_OFFSET_X: f32 = -8.0;
 const API_STATUS_WINDOW_OFFSET_Y: f32 = 8.0;
 
 /// Main application state and logic for the Collects app.
-pub struct CollectsApp<P: PasteHandler = SystemPasteHandler, D: DropHandler = SystemDropHandler> {
+pub struct CollectsApp<
+    P: PasteHandler = SystemPasteHandler,
+    D: DropHandler = SystemDropHandler,
+    F: FilePickerHandler = SystemFilePickerHandler,
+> {
     /// The application state (public for testing access).
     pub state: State,
     paste_handler: P,
@@ -27,9 +32,10 @@ pub struct CollectsApp<P: PasteHandler = SystemPasteHandler, D: DropHandler = Sy
     #[cfg(not(any(feature = "env_internal", feature = "env_test_internal")))]
     token_validation_started: bool,
     drop_handler: D,
+    file_picker_handler: F,
 }
 
-impl CollectsApp<SystemPasteHandler, SystemDropHandler> {
+impl CollectsApp<SystemPasteHandler, SystemDropHandler, SystemFilePickerHandler> {
     /// Called once before the first frame.
     pub fn new(state: State) -> Self {
         Self {
@@ -38,24 +44,26 @@ impl CollectsApp<SystemPasteHandler, SystemDropHandler> {
             #[cfg(not(any(feature = "env_internal", feature = "env_test_internal")))]
             token_validation_started: false,
             drop_handler: SystemDropHandler,
+            file_picker_handler: SystemFilePickerHandler,
         }
     }
 }
 
-impl<P: PasteHandler, D: DropHandler> CollectsApp<P, D> {
-    /// Create a new app with custom paste and drop handlers (for testing).
-    pub fn with_handlers(state: State, paste_handler: P, drop_handler: D) -> Self {
+impl<P: PasteHandler, D: DropHandler, F: FilePickerHandler> CollectsApp<P, D, F> {
+    /// Create a new app with custom paste, drop and file picker handlers (for testing).
+    pub fn with_handlers(state: State, paste_handler: P, drop_handler: D, file_picker_handler: F) -> Self {
         Self {
             state,
             paste_handler,
             #[cfg(not(any(feature = "env_internal", feature = "env_test_internal")))]
             token_validation_started: false,
             drop_handler,
+            file_picker_handler,
         }
     }
 }
 
-impl<P: PasteHandler, D: DropHandler> eframe::App for CollectsApp<P, D> {
+impl<P: PasteHandler, D: DropHandler, F: FilePickerHandler> eframe::App for CollectsApp<P, D, F> {
     /// Called each time the UI needs repainting, which may be many times per second.
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // On first frame (for non-internal builds), try to restore auth from storage
@@ -120,6 +128,29 @@ impl<P: PasteHandler, D: DropHandler> eframe::App for CollectsApp<P, D> {
                 log::info!("Dropped image set successfully");
             } else {
                 log::warn!("Failed to set dropped image");
+            }
+        }
+
+        // Handle file picker shortcut (Ctrl+O / Cmd+O) to open file dialog
+        // If an image was selected, replace the current displayed image
+        if let Some(picked_image) = self.file_picker_handler.handle_file_pick(ctx) {
+            log::info!(
+                "Processing picked image: {}x{}, {} bytes",
+                picked_image.width,
+                picked_image.height,
+                picked_image.bytes.len()
+            );
+            let image_state = self.state.ctx.state_mut::<widgets::ImagePreviewState>();
+            let success = image_state.set_image_rgba(
+                ctx,
+                picked_image.width,
+                picked_image.height,
+                picked_image.bytes,
+            );
+            if success {
+                log::info!("Picked image set successfully");
+            } else {
+                log::warn!("Failed to set picked image");
             }
         }
 
@@ -201,7 +232,7 @@ impl<P: PasteHandler, D: DropHandler> eframe::App for CollectsApp<P, D> {
     }
 }
 
-impl<P: PasteHandler, D: DropHandler> CollectsApp<P, D> {
+impl<P: PasteHandler, D: DropHandler, F: FilePickerHandler> CollectsApp<P, D, F> {
     /// Updates the route based on authentication state.
     fn update_route(&mut self) {
         let is_authenticated = self

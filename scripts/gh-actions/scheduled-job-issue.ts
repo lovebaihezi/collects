@@ -1,5 +1,6 @@
 import { Octokit } from "@octokit/rest";
 import { extractErrorLines } from "./ci-feedback.ts";
+import { type JobSummary, formatCommitSha } from "./shared.ts";
 
 /**
  * Scheduled Job Issue Creator - Creates issues when scheduled jobs fail
@@ -16,12 +17,6 @@ interface ScheduledJobIssueOptions {
   workflowName: string;
   workflowRunUrl: string;
   headSha: string;
-}
-
-interface JobSummary {
-  name: string;
-  url: string;
-  logs: string;
 }
 
 interface DiagnosisPlan {
@@ -256,7 +251,7 @@ export function buildIssueBody(
   body += `## 🚨 Scheduled Job Failure: ${workflowName}\n\n`;
   body += `A scheduled background job has failed and requires attention.\n\n`;
   body += `**Workflow Run:** [#${runId}](${workflowRunUrl})\n`;
-  body += `**Commit:** \`${headSha.substring(0, 7)}\`\n`;
+  body += `**Commit:** \`${formatCommitSha(headSha)}\`\n`;
   body += `**Time:** ${new Date().toISOString()}\n\n`;
 
   body += `---\n\n`;
@@ -440,7 +435,7 @@ export async function createScheduledJobIssue(
 
     let commentBody = `## 🔄 New Failure Occurrence\n\n`;
     commentBody += `**Workflow Run:** [#${runId}](${workflowRunUrl})\n`;
-    commentBody += `**Commit:** \`${headSha.substring(0, 7)}\`\n`;
+    commentBody += `**Commit:** \`${formatCommitSha(headSha)}\`\n`;
     commentBody += `**Time:** ${new Date().toISOString()}\n\n`;
 
     for (const summary of jobSummaries) {

@@ -97,14 +97,12 @@ impl<P: PasteHandler, D: DropHandler> eframe::App for CollectsApp<P, D> {
             if success {
                 log::info!("Pasted image set successfully");
                 // Record successful paste event
-                self.state
-                    .ctx
-                    .record_command(RecordImageEventCommand {
-                        event_type: ImageEventType::Paste,
-                        width,
-                        height,
-                        bytes: bytes_len,
-                    });
+                self.state.ctx.record_command(RecordImageEventCommand {
+                    event_type: ImageEventType::Paste,
+                    width,
+                    height,
+                    bytes: bytes_len,
+                });
                 self.state.ctx.dispatch::<RecordImageEventCommand>();
             } else {
                 log::warn!("Failed to set pasted image");

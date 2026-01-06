@@ -66,12 +66,7 @@ pub struct ImageDiagEvent {
 
 impl ImageDiagEvent {
     /// Creates a new successful event.
-    pub fn success(
-        event_type: ImageEventType,
-        width: usize,
-        height: usize,
-        bytes: usize,
-    ) -> Self {
+    pub fn success(event_type: ImageEventType, width: usize, height: usize, bytes: usize) -> Self {
         Self {
             timestamp: Utc::now(),
             event_type,
@@ -207,12 +202,8 @@ impl Command for RecordImageEventCommand {
     fn run(&self, deps: Dep, updater: Updater) {
         let current = deps.get_compute_ref::<ImageDiagState>();
 
-        let event = ImageDiagEvent::success(
-            self.event_type.clone(),
-            self.width,
-            self.height,
-            self.bytes,
-        );
+        let event =
+            ImageDiagEvent::success(self.event_type.clone(), self.width, self.height, self.bytes);
 
         let mut events = vec![event];
         events.extend(current.events.iter().cloned());

@@ -20,7 +20,10 @@ use crate::utils::colors::{COLOR_AMBER, COLOR_GREEN, COLOR_RED};
 /// * `ui` - The egui UI to render into
 pub fn image_diag_window(state_ctx: &mut StateCtx, ui: &mut Ui) {
     let diag = state_ctx.cached::<ImageDiagState>();
-    let events = diag.as_ref().map(|d| d.events().to_vec()).unwrap_or_default();
+    let events = diag
+        .as_ref()
+        .map(|d| d.events().to_vec())
+        .unwrap_or_default();
     let has_events = !events.is_empty();
 
     ui.horizontal(|ui| {
@@ -100,7 +103,11 @@ pub fn image_diag_window(state_ctx: &mut StateCtx, ui: &mut Ui) {
 
     // Footer with instructions
     ui.horizontal(|ui| {
-        ui.label(RichText::new("Press F2 to close").size(11.0).color(Color32::GRAY));
+        ui.label(
+            RichText::new("Press F2 to close")
+                .size(11.0)
+                .color(Color32::GRAY),
+        );
     });
 }
 
@@ -147,7 +154,9 @@ mod tests {
 
         // Should show the heading
         assert!(
-            harness.query_by_label_contains("Image Event History").is_some(),
+            harness
+                .query_by_label_contains("Image Event History")
+                .is_some(),
             "Should show 'Image Event History' heading"
         );
     }

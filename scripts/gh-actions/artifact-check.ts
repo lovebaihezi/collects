@@ -6,6 +6,7 @@
  */
 
 import { $ } from "bun";
+import { parseTags } from "./shared.ts";
 
 interface DockerImage {
   digest: string;
@@ -95,13 +96,13 @@ async function listImages(options: CheckOptions): Promise<DockerImage[]> {
     const rawImages = JSON.parse(result) as Array<{
       package: string;
       version: string;
-      tags: string;
+      tags: string | string[];
       createTime: string;
     }>;
 
     return rawImages.map((img) => ({
       digest: img.version,
-      tags: img.tags ? img.tags.split(",").map((t) => t.trim()) : [],
+      tags: parseTags(img.tags),
       createTime: new Date(img.createTime),
     }));
   } catch (error) {

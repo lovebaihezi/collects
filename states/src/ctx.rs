@@ -265,7 +265,7 @@ impl StateCtx {
                 .map(|&dep_id| (dep_id, self.get_compute_ptr(&dep_id))),
         );
 
-        info!("Run compute: {:?}", borrowed.name());
+        trace!("Run compute: {:?}", borrowed.name());
         borrowed.compute(deps, self.updater());
         drop(borrowed);
 
@@ -292,8 +292,8 @@ impl StateCtx {
                     .iter()
                     .map(|&dep_id| (dep_id, self.get_compute_ptr(&dep_id))),
             );
-            info!("Run compute: {:?}", dirty_compute.name());
-            if log_enabled!(Level::Info) {
+            trace!("Run compute: {:?}", dirty_compute.name());
+            if log_enabled!(Level::Trace) {
                 pending_compute_names.push(dirty_compute.name());
             }
             pending_ids.push(*id);
@@ -302,9 +302,9 @@ impl StateCtx {
         for id in pending_ids {
             self.mark_pending(&id);
         }
-        if log_enabled!(Level::Info) {
+        if log_enabled!(Level::Trace) {
             for name in pending_compute_names {
-                info!("Compute pending: {:?}", name);
+                trace!("Compute pending: {:?}", name);
             }
         }
     }

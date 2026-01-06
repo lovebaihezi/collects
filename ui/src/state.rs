@@ -1,5 +1,6 @@
 use collects_business::ApiStatus;
 use collects_business::BusinessConfig;
+use collects_business::ImageDiagState;
 use collects_business::Route;
 use collects_business::ToggleApiStatusCommand;
 use collects_business::{
@@ -56,6 +57,10 @@ impl Default for State {
 
         // Add image preview state for clipboard/drop image handling
         ctx.add_state(ImagePreviewState::new());
+
+        // Add image diagnostic state (for debugging paste/drop across environments)
+        // Uses direct state update pattern via update::<ImageDiagState>() for simplicity
+        ctx.add_state(ImageDiagState::new());
 
         // Add internal states and computes for internal builds
         #[cfg(any(feature = "env_internal", feature = "env_test_internal"))]
@@ -114,6 +119,10 @@ impl State {
 
         // Add image preview state for clipboard/drop image handling
         ctx.add_state(ImagePreviewState::new());
+
+        // Add image diagnostic state (for debugging paste/drop across environments)
+        // Uses direct state update pattern via update::<ImageDiagState>() for simplicity
+        ctx.add_state(ImageDiagState::new());
 
         // Add internal states and computes for internal builds
         #[cfg(any(feature = "env_internal", feature = "env_test_internal"))]

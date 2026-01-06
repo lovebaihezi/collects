@@ -15,6 +15,7 @@ import {
   runCIFeedbackCLI,
   runPostJobFeedbackCLI,
 } from "./gh-actions/ci-feedback.ts";
+import { runScheduledJobIssueCLI } from "./gh-actions/scheduled-job-issue.ts";
 import { runArtifactCleanupCLI } from "./gh-actions/artifact-cleanup.ts";
 import { runArtifactCheckCLI } from "./gh-actions/artifact-check.ts";
 import {
@@ -232,6 +233,15 @@ cli
 
 cli
   .command(
+    "scheduled-job-issue",
+    "Create GitHub issue when scheduled job fails (for GitHub Actions)",
+  )
+  .action(() => {
+    runScheduledJobIssueCLI();
+  });
+
+cli
+  .command(
     "artifact-cleanup",
     "Cleanup old Docker images from Artifact Registry (for GitHub Actions)",
   )
@@ -442,6 +452,43 @@ Personal Access Token (PAT) so the comment appears to come from your account.
 If you prefer a classic token, create one with the \`repo\` scope and save it as \`COPILOT_INVOKER_TOKEN\`.
 
 That's it! Now when CI fails on a PR, Copilot will automatically be asked to help.
+
+### \`scheduled-job-issue\`
+
+Creates GitHub issues when scheduled background jobs fail. This tool monitors scheduled workflow runs 
+and automatically creates detailed issues with diagnosis plans and possible root causes.
+
+**How it works:**
+When a scheduled job (like \`Artifact Cleanup\`) fails, this command:
+1. Collects error logs from the failed jobs
+2. Analyzes the errors to generate diagnosis plans
+3. Creates (or updates) a GitHub issue with:
+   - Error summaries
+   - Possible root causes
+   - Step-by-step diagnosis instructions
+   - Suggested actions
+
+**Features:**
+- **Deduplication**: If an issue already exists for the same workflow, adds a comment instead of creating a new issue
+- **Smart Diagnosis**: Automatically categorizes errors (authentication, network, Docker, etc.)
+- **Actionable**: Provides specific diagnosis steps based on error patterns
+
+**Environment Variables:**
+- \`GITHUB_TOKEN\` - GitHub token with issues:write permission
+- \`WORKFLOW_RUN_ID\` - ID of the failed workflow run
+- \`WORKFLOW_NAME\` - Name of the workflow that failed
+- \`WORKFLOW_RUN_URL\` - URL to the failed workflow run
+- \`HEAD_SHA\` - Git SHA of the commit that triggered the workflow
+
+**Labels Applied:**
+- \`scheduled-job-failure\`
+- \`automated\`
+
+**Example:**
+\`\`\`bash
+# Usually called from the scheduled-job-monitor.yml workflow
+bun run main.ts scheduled-job-issue
+\`\`\`
 
 ### \`artifact-cleanup\`
 

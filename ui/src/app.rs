@@ -11,6 +11,8 @@ use chrono::{Timelike, Utc};
 use collects_business::{ApiStatus, AuthCompute, Route, ToggleApiStatusCommand};
 #[cfg(not(any(feature = "env_internal", feature = "env_test_internal")))]
 use collects_business::{PendingTokenValidation, ValidateTokenCommand};
+#[cfg(any(feature = "env_internal", feature = "env_test_internal"))]
+use collects_business::RefreshInternalUsersCommand;
 use collects_states::Time;
 
 /// Horizontal offset for the API status window from the right edge (in pixels)
@@ -227,8 +229,14 @@ impl<P: PasteHandler, D: DropHandler> CollectsApp<P, D> {
 
         if current_route != new_route {
             self.state.ctx.update::<Route>(|route| {
-                *route = new_route;
+                *route = new_route.clone();
             });
+
+            // Auto-fetch users when navigating to Internal route
+            #[cfg(any(feature = "env_internal", feature = "env_test_internal"))]
+            if matches!(new_route, Route::Internal) {
+                self.state.ctx.dispatch::<RefreshInternalUsersCommand>();
+            }
         }
     }
 

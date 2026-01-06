@@ -29,7 +29,6 @@ eframe = { workspace = true, features = [
     "glow",          # OpenGL rendering backend (for web/fallback)
     "wgpu",          # WebGPU/Vulkan/Metal/DX12 rendering backend (for native)
     "wayland",       # Wayland windowing support (Linux)
-    "x11",           # X11 windowing support (Linux)
 ] }
 # Enable wgpu GPU backends for all platforms
 wgpu = { version = "*", features = [
@@ -46,8 +45,9 @@ env_logger = "0.11.8"
 mimalloc = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 reqwest = { workspace = true, default-features = true }
-arboard = "3.6"
+arboard = { version = "3.6", features = ["wayland-data-control", "image-data"] }
 image = "0.25"
+urlencoding = "2.1"
 
 # web:
 [target.'cfg(target_arch = "wasm32")'.dependencies]

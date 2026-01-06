@@ -4,11 +4,13 @@
 //! - A simple state for storing a single image texture
 //! - A widget for displaying the current image preview
 //! - A maximized view modal for full-size image display
+//! - Automatic downscaling for images that exceed GPU texture limits
 //!
 //! # Architecture
 //!
 //! Only one image is stored at a time. Each paste replaces the current image.
 //! The image is stored as an `egui::TextureHandle` for efficient rendering.
+//! Large images are automatically downscaled to fit within GPU texture limits.
 //!
 //! # Usage
 //!
@@ -95,6 +97,9 @@ impl ImagePreviewState {
 
     /// Set image from raw RGBA bytes, replacing any existing image.
     ///
+    /// Large images are automatically downscaled to fit within GPU texture limits
+    /// while preserving aspect ratio.
+    ///
     /// # Arguments
     ///
     /// * `ctx` - The egui context for creating textures
@@ -125,13 +130,38 @@ impl ImagePreviewState {
             return false;
         }
 
+        // Check if image needs downscaling for GPU texture limits
+        let max_texture_size = max_texture_size(ctx);
+        let (final_width, final_height, final_bytes) =
+            if width > max_texture_size || height > max_texture_size {
+                match downscale_image(&rgba_bytes, width, height, max_texture_size) {
+                    Some((new_w, new_h, new_bytes)) => {
+                        log::info!(
+                            "Downscaled image from {}x{} to {}x{} (max texture size: {})",
+                            width,
+                            height,
+                            new_w,
+                            new_h,
+                            max_texture_size
+                        );
+                        (new_w, new_h, new_bytes)
+                    }
+                    None => {
+                        log::warn!("Failed to downscale image {}x{}", width, height);
+                        return false;
+                    }
+                }
+            } else {
+                (width, height, rgba_bytes)
+            };
+
         // Convert bytes to Color32 pixels
-        let pixels: Vec<Color32> = rgba_bytes
+        let pixels: Vec<Color32> = final_bytes
             .chunks_exact(4)
             .map(|chunk| Color32::from_rgba_unmultiplied(chunk[0], chunk[1], chunk[2], chunk[3]))
             .collect();
 
-        let image = ColorImage::new([width, height], pixels);
+        let image = ColorImage::new([final_width, final_height], pixels);
         self.set_image(ctx, image);
         true
     }
@@ -165,6 +195,58 @@ impl ImagePreviewState {
 
 /// Maximum display size for the preview image (pixels).
 const MAX_PREVIEW_SIZE: f32 = 400.0;
+
+/// Default maximum texture size if we can't query the GPU.
+/// Most modern GPUs support at least 8192x8192, many support 16384x16384.
+const DEFAULT_MAX_TEXTURE_SIZE: usize = 8192;
+
+/// Gets the maximum texture size supported by the GPU.
+///
+/// Returns a reasonable default if the value cannot be queried.
+fn max_texture_size(ctx: &Context) -> usize {
+    ctx.input(|i| i.max_texture_side)
+        .max(DEFAULT_MAX_TEXTURE_SIZE)
+}
+
+/// Downscales an image to fit within the maximum texture size while preserving aspect ratio.
+///
+/// # Arguments
+///
+/// * `rgba_bytes` - Raw RGBA pixel data (4 bytes per pixel)
+/// * `width` - Original image width
+/// * `height` - Original image height
+/// * `max_size` - Maximum allowed dimension (width or height)
+///
+/// # Returns
+///
+/// A tuple of (new_width, new_height, new_rgba_bytes) if successful, None on error.
+fn downscale_image(
+    rgba_bytes: &[u8],
+    width: usize,
+    height: usize,
+    max_size: usize,
+) -> Option<(usize, usize, Vec<u8>)> {
+    use image::{ImageBuffer, Rgba};
+
+    // Calculate new dimensions preserving aspect ratio
+    let scale = (max_size as f64 / width as f64).min(max_size as f64 / height as f64);
+    let new_width = ((width as f64 * scale) as usize).max(1);
+    let new_height = ((height as f64 * scale) as usize).max(1);
+
+    // Create image buffer from raw bytes
+    let img: ImageBuffer<Rgba<u8>, Vec<u8>> =
+        ImageBuffer::from_raw(width as u32, height as u32, rgba_bytes.to_vec())?;
+
+    // Use the image crate's resize with high-quality Lanczos3 filter
+    let resized = image::imageops::resize(
+        &img,
+        new_width as u32,
+        new_height as u32,
+        image::imageops::FilterType::Lanczos3,
+    );
+
+    Some((new_width, new_height, resized.into_raw()))
+}
 
 /// Renders the image in fullscreen mode.
 ///

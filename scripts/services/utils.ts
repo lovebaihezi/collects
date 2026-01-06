@@ -78,14 +78,21 @@ export async function checkResource(command: string): Promise<boolean> {
 }
 
 /**
- * Validates and parses repository format
+ * Validates and parses repository format.
+ * Only allows alphanumeric characters, hyphens, underscores, and periods
+ * in owner and repo names to prevent shell injection.
  */
 export function validateRepo(repo: string): { owner: string; repo: string } {
-  const repoType = type(/^[^/]+\/[^/]+$/);
+  // Strict pattern: owner/repo where each part contains only safe characters
+  // GitHub repo naming rules: alphanumeric, hyphen, underscore, period
+  const repoType = type(/^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/);
   const result = repoType(repo);
 
   if (result instanceof type.errors) {
     p.log.error(`Invalid repository format: ${result.summary}`);
+    p.log.error(
+      "Repository must be in format 'owner/repo' with only alphanumeric characters, hyphens, underscores, and periods.",
+    );
     process.exit(1);
   }
 

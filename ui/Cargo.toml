@@ -23,6 +23,22 @@ qrcode = "0.14"
 ustr = { workspace = true }
 collects-business = { path = "../business" }
 collects-states = { path = "../states" }
+# eframe with all rendering backends and platform support
+# Following best practice: single eframe dependency with all features
+eframe = { workspace = true, features = [
+    "glow",          # OpenGL rendering backend (for web/fallback)
+    "wgpu",          # WebGPU/Vulkan/Metal/DX12 rendering backend (for native)
+    "wayland",       # Wayland windowing support (Linux)
+    "x11",           # X11 windowing support (Linux)
+] }
+# Enable wgpu GPU backends for all platforms
+wgpu = { version = "*", features = [
+    "vulkan",        # Vulkan backend (Linux, Windows, Android)
+    "metal",         # Metal backend (macOS, iOS)
+    "dx12",          # DirectX 12 backend (Windows)
+    "webgpu",        # WebGPU backend (web)
+    "webgl",         # WebGL backend (web fallback)
+] }
 
 # native:
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
@@ -31,7 +47,6 @@ mimalloc = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 reqwest = { workspace = true, default-features = true }
 arboard = "3.6"
-eframe = { workspace = true, features = ["wgpu", "wayland"] }
 image = "0.25"
 
 # web:
@@ -39,7 +54,6 @@ image = "0.25"
 wasm-bindgen-futures = "0.4.50"
 web-sys = "0.3.70"
 getrandom = { version = "0.2", features = ["js"] }
-eframe = { workspace = true, features = ["glow"] }
 
 [dev-dependencies]
 kittest = "0.3"

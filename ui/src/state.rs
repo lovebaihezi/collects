@@ -8,9 +8,11 @@ use collects_business::{
 };
 #[cfg(any(feature = "env_internal", feature = "env_test_internal"))]
 use collects_business::{
-    CFTokenCompute, CFTokenInput, CreateUserCommand, CreateUserCompute, CreateUserInput,
-    InternalApiStatus, InternalUsersListUsersCompute, InternalUsersListUsersInput,
-    RefreshInternalUsersCommand, SetCFTokenCommand,
+    CFTokenCompute, CFTokenInput, CloseCreateUserModalCommand, CloseInternalUsersActionCommand,
+    CreateUserCommand, CreateUserCompute, CreateUserInput, InternalApiStatus,
+    InternalUsersListUsersCompute, InternalUsersListUsersInput, OpenCreateUserModalCommand,
+    OpenInternalUsersActionCommand, RefreshInternalUsersCommand, SetCFTokenCommand,
+    ToggleOtpVisibilityCommand, WorkflowInput,
 };
 use collects_states::{StateCtx, Time};
 use serde::{Deserialize, Serialize};
@@ -81,6 +83,14 @@ impl Default for State {
             ctx.add_state(InternalUsersListUsersInput::default());
             ctx.record_compute(InternalUsersListUsersCompute::default());
             ctx.record_command(RefreshInternalUsersCommand);
+
+            // Workflow commands for internal users state management
+            ctx.add_state(WorkflowInput::default());
+            ctx.record_command(OpenInternalUsersActionCommand);
+            ctx.record_command(CloseInternalUsersActionCommand);
+            ctx.record_command(ToggleOtpVisibilityCommand);
+            ctx.record_command(OpenCreateUserModalCommand);
+            ctx.record_command(CloseCreateUserModalCommand);
         }
 
         Self { ctx }
@@ -139,6 +149,14 @@ impl State {
             ctx.add_state(InternalUsersListUsersInput::default());
             ctx.record_compute(InternalUsersListUsersCompute::default());
             ctx.record_command(RefreshInternalUsersCommand);
+
+            // Workflow commands for internal users state management
+            ctx.add_state(WorkflowInput::default());
+            ctx.record_command(OpenInternalUsersActionCommand);
+            ctx.record_command(CloseInternalUsersActionCommand);
+            ctx.record_command(ToggleOtpVisibilityCommand);
+            ctx.record_command(OpenCreateUserModalCommand);
+            ctx.record_command(CloseCreateUserModalCommand);
         }
 
         Self { ctx }

@@ -50,24 +50,15 @@ This pattern is:
   - Added `ResetInternalUsersActionCommand` to reset compute to Idle after handling results
   - UI handles side effects directly: close action, trigger refresh, reset compute
   - Removed all exports and call sites for `poll_internal_users_responses`
-
----
-
-## Remaining legacy refactors (in priority order)
-
-### 2) Internal Users: Remove direct business state mutation from UI
-
-Even after async compute migration, UI still calls methods like:
-- `state_ctx.state_mut::<InternalUsersState>().start_action(...)`
-- `.toggle_otp_visibility(...)`
-- `.open_create_modal()`, `.close_action()`, etc.
-
-**Target**
-- UI dispatches workflow commands instead:
-  - `OpenInternalUsersActionCommand(UserAction)`
-  - `CloseInternalUsersActionCommand`
-  - `ToggleOtpVisibilityCommand { username: Ustr }`
-  - `OpenCreateUserModalCommand`, `CloseCreateUserModalCommand`, etc.
+- ✅ Internal Users: Simplify state update pattern
+  - UI now uses `state_ctx.state_mut::<T>()` directly for synchronous state mutations (modals, toggles, etc.)
+  - Commands use `Updater::set_state::<T>()` for async state updates (when state is Send-safe)
+  - Removed unnecessary workflow commands that only existed to wrap `state_mut` calls
+  - UI directly calls: `.start_action()`, `.close_action()`, `.toggle_otp_visibility()`, `.open_create_modal()`, `.close_create_modal()`
+  - Updated `Updater` to support both `set::<Compute>()` and `set_state::<State>()` via `UpdateMessage` enum
+  - Added `State::assign_box()` trait method for states that can be updated via Updater
+  - States with non-Send types (e.g., `egui::TextureHandle`) cannot use `Updater::set_state()` - use `state_mut` in UI
+  - Un-ignored 14 integration tests that were blocked by the refactor
 
 ---
 
@@ -77,3 +68,7 @@ Even after async compute migration, UI still calls methods like:
 - Avoid outcome strings like `"user_deleted"`; use enums.
 - Do not introduce new `ctx.memory_mut`-based async transports. Use Commands + Computes.
 - It is OK to use UI-local state for draft text and widget-only ephemeral UI behavior.
+- **State update patterns:**
+  - UI code: use `state_ctx.state_mut::<T>()` for synchronous state mutations
+  - Commands: use `Updater::set_state::<T>()` for async callbacks (state must be Send-safe)
+  - States with non-Send types (e.g., `egui::TextureHandle`) must only be mutated via `state_mut` in UI

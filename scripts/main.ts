@@ -21,6 +21,7 @@ import { runArtifactCheckCLI } from "./gh-actions/artifact-check.ts";
 import {
   getCargoFeature,
   getDatabaseSecret,
+  getJwtSecret,
   listEnvironments,
 } from "./services/env-config.ts";
 import { runPrTitleCheck } from "./services/pr-title.ts";
@@ -29,6 +30,7 @@ import {
   promptForR2Credentials,
   setupR2Secrets,
 } from "./services/r2-setup.ts";
+import { setupJwtSecrets, listJwtSecrets } from "./services/jwt-setup.ts";
 
 const cli = cac("services");
 
@@ -146,6 +148,17 @@ cli
     console.log(getDatabaseSecret(env));
   });
 
+cli
+  .command(
+    "jwt-secret <env>",
+    "Get JWT secret name for an environment (used by justfiles)",
+  )
+  .action((env: string) => {
+    // Output only the secret name, suitable for command substitution
+    // Returns empty string if the environment uses default local secret
+    console.log(getJwtSecret(env));
+  });
+
 cli.command("env-list", "List all available environment names").action(() => {
   console.log(listEnvironments().join("\n"));
 });
@@ -216,6 +229,59 @@ cli
 
     await listR2Secrets(projectId as string);
   });
+
+cli
+  .command(
+    "jwt-setup",
+    "Setup JWT secrets in Google Cloud Secret Manager (auto-generates secure secrets)",
+  )
+  .option("--project-id <projectId>", "Google Cloud Project ID")
+  .action(async (options) => {
+    p.intro("JWT Secret Setup");
+
+    const projectId = options.projectId
+      ? options.projectId
+      : await p.text({
+          message: "Enter your Google Cloud Project ID:",
+          placeholder: "my-gcp-project-id",
+          validate: (value) => {
+            if (!value) return "Project ID is required";
+          },
+        });
+
+    if (p.isCancel(projectId)) {
+      p.cancel("Operation cancelled.");
+      process.exit(0);
+    }
+
+    await setupJwtSecrets(projectId as string);
+    p.outro("JWT setup complete!");
+  });
+
+cli
+  .command("jwt-list", "List JWT secrets status")
+  .option("--project-id <projectId>", "Google Cloud Project ID")
+  .action(async (options) => {
+    p.intro("JWT Secrets Status");
+
+    const projectId = options.projectId
+      ? options.projectId
+      : await p.text({
+          message: "Enter your Google Cloud Project ID:",
+          placeholder: "my-gcp-project-id",
+          validate: (value) => {
+            if (!value) return "Project ID is required";
+          },
+        });
+
+    if (p.isCancel(projectId)) {
+      p.cancel("Operation cancelled.");
+      process.exit(0);
+    }
+
+    await listJwtSecrets(projectId as string);
+  });
+
 cli
   .command("ci-feedback", "Post CI failure feedback to PR (for GitHub Actions)")
   .action(() => {
@@ -370,6 +436,18 @@ Gets database secret name for an environment. Used by justfiles to centralize en
 bun run main.ts env-secret pr         # Output: database-url-pr
 bun run main.ts env-secret prod       # Output: database-url
 bun run main.ts env-secret local      # Output: database-url-local
+\`\`\`
+
+### \`jwt-secret\`
+
+Gets JWT secret name for an environment. Used by justfiles to centralize environment configuration.
+Returns an empty string for environments that use the default local secret (local, test, test-internal).
+
+**Example:**
+\`\`\`bash
+bun run main.ts jwt-secret pr         # Output: jwt-secret-pr
+bun run main.ts jwt-secret prod       # Output: jwt-secret
+bun run main.ts jwt-secret local      # Output: (empty - uses default local secret)
 \`\`\`
 
 ### \`env-list\`

@@ -154,6 +154,44 @@ Each environment (except nightly) uses a separate database:
 - `database-url-pr` - PR
 - `database-url-local` - Local development
 
+## JWT Secret Configuration
+
+JWT secrets are used for session token signing. The following secrets must be created in Google Cloud Secret Manager:
+- `jwt-secret` - Used by Production, Internal, and Nightly environments
+- `jwt-secret-pr` - Used by PR environment
+
+Local, Test, and Test-Internal environments use a default local secret and do not require a GCP secret.
+
+### Automated Setup (Recommended)
+
+Run the following command to automatically generate and create JWT secrets:
+```bash
+just scripts::jwt-setup --project-id <your-gcp-project-id>
+```
+
+This will:
+1. Create the secrets in Google Cloud Secret Manager if they don't exist
+2. Generate cryptographically secure random secrets (32 bytes, base64 encoded)
+3. Update the secret values
+
+To check the status of JWT secrets:
+```bash
+just scripts::jwt-list --project-id <your-gcp-project-id>
+```
+
+### Manual Setup
+
+If you prefer to create secrets manually:
+```bash
+# Generate and create jwt-secret for production/internal/nightly
+openssl rand -base64 32 | gcloud secrets create jwt-secret --data-file=-
+
+# Generate and create jwt-secret-pr for PR environment
+openssl rand -base64 32 | gcloud secrets create jwt-secret-pr --data-file=-
+```
+
+After creating the secrets, run `just scripts::actions-setup` to grant the Compute Service Account access to these secrets.
+
 ## Access and Security
 
 For information about authentication and access control, see [ZERO_TRUST.md](./services/ZERO_TRUST.md).

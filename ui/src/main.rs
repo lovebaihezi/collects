@@ -15,9 +15,16 @@ fn main() -> eframe::Result {
     use std::fs;
 
     // Log to stderr (if you run with `RUST_LOG=debug`).
-    // Filter out egui_winit clipboard errors - they occur when clipboard content
-    // is not in a supported text format (e.g., when copying images from browser)
-    env_logger::Builder::from_env(env_logger::Env::default())
+    // Default level: INFO, with noisy subsystems silenced.
+    // Override with `RUST_LOG=...` when needed (e.g., `RUST_LOG=collects_ui::paste=trace`).
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
+        // Common noise sources (keep warnings/errors):
+        .filter_module("wgpu", log::LevelFilter::Warn)
+        .filter_module("winit", log::LevelFilter::Warn)
+        .filter_module("egui_winit", log::LevelFilter::Warn)
+        .filter_module("egui_wgpu", log::LevelFilter::Warn)
+        // Filter out egui_winit clipboard errors - they occur when clipboard content
+        // is not in a supported text format (e.g., when copying images from browser)
         .filter_module("egui_winit::clipboard", log::LevelFilter::Off)
         .init();
 

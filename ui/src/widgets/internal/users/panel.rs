@@ -1,20 +1,23 @@
 //! Main panel for internal users management.
 
-use collects_business::{CreateUserCommand, CreateUserCompute, CreateUserInput, InternalUserItem};
+use collects_business::{
+    CreateUserCommand, CreateUserCompute, CreateUserInput, InternalUserItem,
+    InternalUsersListUsersCompute, InternalUsersListUsersResult, RefreshInternalUsersCommand,
+};
 use collects_states::{StateCtx, Time};
 use egui::{Color32, Response, Ui};
 use egui_extras::TableBuilder;
 use std::any::TypeId;
 use ustr::Ustr;
 
-use super::api::fetch_users;
 use super::modals::{
-    show_create_user_modal, show_delete_user_modal, show_edit_username_modal, show_revoke_otp_modal,
+    show_create_user_modal, show_delete_user_modal, show_edit_profile_modal,
+    show_edit_username_modal, show_revoke_otp_modal,
 };
-use super::state::{InternalUsersState, UserAction};
-use super::table::columns::{HEADER_HEIGHT, QR_ROW_HEIGHT, ROW_HEIGHT, table_columns};
+use super::table::columns::{HEADER_HEIGHT, ROW_HEIGHT, table_columns};
 use super::table::header::render_table_header;
 use super::table::row::{prepare_user_row_data, render_qr_expansion, render_user_row};
+use collects_business::{InternalUsersState, UserAction};
 
 /// Displays the internal users panel with a table and create button.
 pub fn internal_users_panel(state_ctx: &mut StateCtx, api_base_url: &str, ui: &mut Ui) -> Response {
@@ -22,12 +25,12 @@ pub fn internal_users_panel(state_ctx: &mut StateCtx, api_base_url: &str, ui: &m
         // Controls row: Refresh and Create buttons
         render_controls_row(state_ctx, api_base_url, ui);
 
-        // Error display
+        // Error display (from compute)
         render_error_display(state_ctx, ui);
 
         ui.add_space(8.0);
 
-        // Render the users table
+        // Render the users table (from compute)
         let (username_to_toggle, action_to_start) = render_users_table(state_ctx, ui);
 
         // Apply toggle action after table iteration
@@ -59,17 +62,26 @@ pub fn internal_users_panel(state_ctx: &mut StateCtx, api_base_url: &str, ui: &m
 fn render_controls_row(state_ctx: &mut StateCtx, api_base_url: &str, ui: &mut Ui) {
     let should_open_create = ui
         .horizontal(|ui| {
-            let state = state_ctx.state_mut::<InternalUsersState>();
-            if ui.button("🔄 Refresh").clicked() && !state.is_fetching {
-                state.set_fetching();
-                fetch_users(api_base_url, ui.ctx().clone());
+            // Refresh: dispatch business command (no egui memory temp plumbing)
+            if ui.button("🔄 Refresh").clicked() {
+                // Prefer passing the base URL through the existing function parameter for now.
+                // The command will fall back to `BusinessConfig::api_url()` if input is unset.
+                state_ctx.update::<collects_business::InternalUsersListUsersInput>(|input| {
+                    input.api_base_url = Some(Ustr::from(api_base_url));
+                });
+                state_ctx.dispatch::<RefreshInternalUsersCommand>();
             }
 
             let should_open_create = ui.button("➕ Create User").clicked();
-            if state.is_fetching {
+
+            // Loading indicator from compute
+            if let Some(compute) = state_ctx.cached::<InternalUsersListUsersCompute>()
+                && compute.is_loading()
+            {
                 ui.spinner();
                 ui.label("Loading...");
             }
+
             should_open_create
         })
         .inner;
@@ -86,8 +98,12 @@ fn render_controls_row(state_ctx: &mut StateCtx, api_base_url: &str, ui: &mut Ui
 /// Renders error display if present.
 #[inline]
 fn render_error_display(state_ctx: &mut StateCtx, ui: &mut Ui) {
-    let state = state_ctx.state_mut::<InternalUsersState>();
-    if let Some(error) = &state.error {
+    // Error is now sourced from the list-users compute (refresh slice).
+    let Some(compute) = state_ctx.cached::<InternalUsersListUsersCompute>() else {
+        return;
+    };
+
+    if let Some(error) = compute.error_message() {
         ui.colored_label(Color32::RED, format!("Error: {error}"));
     }
 }
@@ -101,12 +117,20 @@ fn render_users_table(state_ctx: &mut StateCtx, ui: &mut Ui) -> (Option<Ustr>, O
     // Get current time for calculating real-time OTP time remaining
     let now = *state_ctx.state_mut::<Time>().as_ref();
 
+    // Source users from the list-users compute (refresh slice).
+    let users: Vec<InternalUserItem> = match state_ctx.cached::<InternalUsersListUsersCompute>() {
+        Some(c) => match &c.result {
+            InternalUsersListUsersResult::Loaded(users) => users.clone(),
+            _ => Vec::new(),
+        },
+        None => Vec::new(),
+    };
+
     // Users table using native egui_extras TableBuilder
     let state = state_ctx.state_mut::<InternalUsersState>();
 
     // Prepare user row data outside the table body closure
-    let user_data: Vec<_> = state
-        .users
+    let user_data: Vec<_> = users
         .iter()
         .enumerate()
         .map(|(i, user)| prepare_user_row_data(i, user, state, now))
@@ -127,14 +151,8 @@ fn render_users_table(state_ctx: &mut StateCtx, ui: &mut Ui) -> (Option<Ustr>, O
             for data in &user_data {
                 let username_ustr = Ustr::from(&data.user.username);
 
-                // Determine row height - taller if QR is expanded
-                let row_height = if data.is_qr_expanded {
-                    ROW_HEIGHT + QR_ROW_HEIGHT
-                } else {
-                    ROW_HEIGHT
-                };
-
-                body.row(row_height, |mut row| {
+                // Use fixed row height - QR code is rendered outside the table
+                body.row(ROW_HEIGHT, |mut row| {
                     let result = render_user_row(&mut row, data);
 
                     if result.toggle_otp {
@@ -156,7 +174,7 @@ fn render_inline_qr_expansion(state_ctx: &mut StateCtx, api_base_url: &str, ui: 
     let state = state_ctx.state_mut::<InternalUsersState>();
 
     if let UserAction::ShowQrCode(username) = &state.current_action.clone() {
-        render_qr_expansion(state, api_base_url, username, ui);
+        render_qr_expansion(state_ctx, state, api_base_url, username, ui);
     }
 }
 
@@ -175,6 +193,9 @@ fn render_modals(state_ctx: &mut StateCtx, api_base_url: &str, ui: &mut Ui) {
         UserAction::EditUsername(username) => {
             show_edit_username_modal(state_ctx, api_base_url, *username, ui);
         }
+        UserAction::EditProfile(username) => {
+            show_edit_profile_modal(state_ctx, api_base_url, *username, ui);
+        }
         UserAction::DeleteUser(username) => {
             show_delete_user_modal(state_ctx, api_base_url, *username, ui);
         }
@@ -188,33 +209,13 @@ fn render_modals(state_ctx: &mut StateCtx, api_base_url: &str, ui: &mut Ui) {
 /// Poll for async responses and update state.
 /// Call this in the update loop.
 pub fn poll_internal_users_responses(state_ctx: &mut StateCtx, ctx: &egui::Context) {
-    // Check for users list response
-    if let Some(users) = ctx.memory(|mem| {
-        mem.data
-            .get_temp::<Vec<InternalUserItem>>(egui::Id::new("internal_users_response"))
-    }) {
-        // Get current time from Time state for mockability
-        let now = *state_ctx.state_mut::<Time>().as_ref();
-        state_ctx
-            .state_mut::<InternalUsersState>()
-            .update_users(users, now);
-        ctx.memory_mut(|mem| {
-            mem.data
-                .remove::<Vec<InternalUserItem>>(egui::Id::new("internal_users_response"));
-        });
-    }
-
-    // Check for users list error
-    if let Some(error) = ctx.memory(|mem| {
-        mem.data
-            .get_temp::<String>(egui::Id::new("internal_users_error"))
-    }) {
-        state_ctx.state_mut::<InternalUsersState>().set_error(error);
-        ctx.memory_mut(|mem| {
-            mem.data
-                .remove::<String>(egui::Id::new("internal_users_error"));
-        });
-    }
+    // NOTE (refresh slice):
+    // List-users refresh no longer uses egui memory temps. It is now represented by
+    // `InternalUsersListUsersCompute` and updated by `RefreshInternalUsersCommand`.
+    //
+    // This poller remains temporarily for the legacy action flows (modals) that still
+    // use egui memory temps. Once those are migrated to Commands + Computes, this
+    // function should be deleted entirely.
 
     // Check for action error
     if let Some(error) =
@@ -238,7 +239,7 @@ pub fn poll_internal_users_responses(state_ctx: &mut StateCtx, ctx: &egui::Conte
         // Close action modal and mark for refresh
         let state = state_ctx.state_mut::<InternalUsersState>();
         state.close_action();
-        if action == "user_deleted" || action == "username_updated" {
+        if action == "user_deleted" || action == "username_updated" || action == "profile_updated" {
             // Mark as needing fetch - the actual fetch will happen on next panel render
             // when internal_users_panel() is called with api_base_url
             state.set_fetching();

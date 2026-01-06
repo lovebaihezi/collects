@@ -64,23 +64,48 @@ pub fn handle_dropped_files(ctx: &egui::Context) -> Option<ImageData> {
         return None;
     }
 
-    log::debug!("Processing {} dropped file(s)", dropped_files.len());
+    log::trace!(
+        target: "collects_ui::drop",
+        "dropped_files={}",
+        dropped_files.len()
+    );
 
     // Process only the first dropped file (replace behavior like paste)
     for file in &dropped_files {
-        log::debug!(
-            "Dropped file: name={}, path={:?}, has_bytes={}",
+        let has_path = file.path.is_some();
+        let has_bytes = file.bytes.is_some();
+
+        log::trace!(
+            target: "collects_ui::drop",
+            "dropped_file name={} has_path={} has_bytes={}",
             file.name,
-            file.path,
-            file.bytes.is_some()
+            has_path,
+            has_bytes
         );
+
         if let Some(image) = load_image_from_dropped_file(file) {
+            log::trace!(
+                target: "collects_ui::drop",
+                "loaded_image {}x{} bytes={}",
+                image.width,
+                image.height,
+                image.bytes.len()
+            );
             return Some(image);
         }
+
+        log::warn!(
+            target: "collects_ui::drop",
+            "dropped_file_not_loadable name={} has_path={} has_bytes={}",
+            file.name,
+            has_path,
+            has_bytes
+        );
     }
 
     log::warn!(
-        "No valid image found in {} dropped file(s)",
+        target: "collects_ui::drop",
+        "no_valid_image_in_drop dropped_files={}",
         dropped_files.len()
     );
     None
@@ -107,7 +132,13 @@ fn load_image_from_dropped_file(file: &egui::DroppedFile) -> Option<ImageData> {
         return load_image_from_bytes(bytes);
     }
 
-    log::debug!("Dropped file has no path or bytes: {:?}", file.name);
+    // This is the common failure mode when the backend reports a drop but doesn't
+    // provide a filesystem path or file contents.
+    log::warn!(
+        target: "collects_ui::drop",
+        "dropped_file_missing_path_and_bytes name={}",
+        file.name
+    );
     None
 }
 

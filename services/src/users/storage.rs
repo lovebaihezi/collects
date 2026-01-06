@@ -25,6 +25,7 @@
 //! ```
 
 use crate::database::PgStorage;
+use chrono::{DateTime, Utc};
 use std::future::Future;
 
 /// Represents a stored user with their OTP secret.
@@ -34,14 +35,46 @@ pub struct StoredUser {
     pub username: String,
     /// The base32-encoded OTP secret.
     pub secret: String,
+    /// The user's nickname (optional).
+    pub nickname: Option<String>,
+    /// The user's avatar URL (optional).
+    pub avatar_url: Option<String>,
+    /// When the user was created.
+    pub created_at: DateTime<Utc>,
+    /// When the user was last updated.
+    pub updated_at: DateTime<Utc>,
 }
 
 impl StoredUser {
     /// Creates a new `StoredUser` instance.
     pub fn new(username: impl Into<String>, secret: impl Into<String>) -> Self {
+        let now = Utc::now();
         Self {
             username: username.into(),
             secret: secret.into(),
+            nickname: None,
+            avatar_url: None,
+            created_at: now,
+            updated_at: now,
+        }
+    }
+
+    /// Creates a new `StoredUser` instance with all fields.
+    pub fn with_profile(
+        username: impl Into<String>,
+        secret: impl Into<String>,
+        nickname: Option<String>,
+        avatar_url: Option<String>,
+        created_at: DateTime<Utc>,
+        updated_at: DateTime<Utc>,
+    ) -> Self {
+        Self {
+            username: username.into(),
+            secret: secret.into(),
+            nickname,
+            avatar_url,
+            created_at,
+            updated_at,
         }
     }
 }
@@ -199,6 +232,25 @@ pub trait UserStorage: Clone + Send + Sync + 'static {
         username: &str,
         new_secret: &str,
     ) -> impl Future<Output = Result<StoredUser, Self::Error>> + Send;
+
+    /// Updates the profile (nickname and avatar URL) of an existing user.
+    ///
+    /// # Arguments
+    ///
+    /// * `username` - The username of the user to update.
+    /// * `nickname` - The new nickname (None to keep existing, Some(None) to remove).
+    /// * `avatar_url` - The new avatar URL (None to keep existing, Some(None) to remove).
+    ///
+    /// # Returns
+    ///
+    /// Returns the updated `StoredUser` on success, or an error if:
+    /// - The user doesn't exist
+    fn update_profile(
+        &self,
+        username: &str,
+        nickname: Option<Option<String>>,
+        avatar_url: Option<Option<String>>,
+    ) -> impl Future<Output = Result<StoredUser, Self::Error>> + Send;
 }
 
 /// In-memory mock implementation of `UserStorage` for testing.
@@ -353,9 +405,16 @@ impl UserStorage for MockUserStorage {
             ));
         }
 
-        // Remove old entry and insert new one
+        // Remove old entry and insert new one, preserving profile data
         users.remove(old_username);
-        let updated_user = StoredUser::new(new_username, &old_user.secret);
+        let updated_user = StoredUser::with_profile(
+            new_username,
+            &old_user.secret,
+            old_user.nickname,
+            old_user.avatar_url,
+            old_user.created_at,
+            Utc::now(),
+        );
         users.insert(new_username.to_string(), updated_user.clone());
 
         Ok(updated_user)
@@ -375,12 +434,57 @@ impl UserStorage for MockUserStorage {
         let mut users = self.users.write().expect("lock poisoned");
 
         // Check if user exists
-        if !users.contains_key(username) {
-            return Err(UserStorageError::UserNotFound(username.to_string()));
-        }
+        let old_user = users
+            .get(username)
+            .cloned()
+            .ok_or_else(|| UserStorageError::UserNotFound(username.to_string()))?;
 
-        // Update the secret
-        let updated_user = StoredUser::new(username, new_secret);
+        // Update the secret, preserving profile data
+        let updated_user = StoredUser::with_profile(
+            username,
+            new_secret,
+            old_user.nickname,
+            old_user.avatar_url,
+            old_user.created_at,
+            Utc::now(),
+        );
+        users.insert(username.to_string(), updated_user.clone());
+
+        Ok(updated_user)
+    }
+
+    async fn update_profile(
+        &self,
+        username: &str,
+        nickname: Option<Option<String>>,
+        avatar_url: Option<Option<String>>,
+    ) -> Result<StoredUser, Self::Error> {
+        let mut users = self.users.write().expect("lock poisoned");
+
+        // Check if user exists
+        let old_user = users
+            .get(username)
+            .cloned()
+            .ok_or_else(|| UserStorageError::UserNotFound(username.to_string()))?;
+
+        // Update the profile fields
+        let new_nickname = match nickname {
+            Some(value) => value,      // Explicitly set (or clear)
+            None => old_user.nickname, // Keep existing
+        };
+        let new_avatar_url = match avatar_url {
+            Some(value) => value,        // Explicitly set (or clear)
+            None => old_user.avatar_url, // Keep existing
+        };
+
+        let updated_user = StoredUser::with_profile(
+            username,
+            &old_user.secret,
+            new_nickname,
+            new_avatar_url,
+            old_user.created_at,
+            Utc::now(),
+        );
         users.insert(username.to_string(), updated_user.clone());
 
         Ok(updated_user)
@@ -422,6 +526,17 @@ pub struct PgUserStorage {
     storage: PgStorage,
 }
 
+/// Row type for user queries with all fields.
+#[derive(sqlx::FromRow)]
+struct UserRow {
+    username: String,
+    otp_secret: String,
+    nickname: Option<String>,
+    avatar_url: Option<String>,
+    created_at: DateTime<Utc>,
+    updated_at: DateTime<Utc>,
+}
+
 impl PgUserStorage {
     /// Creates a new `PgUserStorage` instance wrapping the given `PgStorage`.
     pub fn new(storage: PgStorage) -> Self {
@@ -450,23 +565,30 @@ impl UserStorage for PgUserStorage {
             ));
         }
 
-        // Insert the user into the database
-        let result = sqlx::query_scalar!(
+        // Insert the user into the database and return all fields
+        let result: Option<UserRow> = sqlx::query_as(
             r#"
             INSERT INTO users (username, otp_secret)
             VALUES ($1, $2)
             ON CONFLICT (username) DO NOTHING
-            RETURNING username
+            RETURNING username, otp_secret, nickname, avatar_url, created_at, updated_at
             "#,
-            username,
-            secret,
         )
+        .bind(username)
+        .bind(secret)
         .fetch_optional(&self.storage.pool)
         .await
         .map_err(|e| UserStorageError::StorageError(e.to_string()))?;
 
         match result {
-            Some(_) => Ok(StoredUser::new(username, secret)),
+            Some(row) => Ok(StoredUser::with_profile(
+                row.username,
+                row.otp_secret,
+                row.nickname,
+                row.avatar_url,
+                row.created_at,
+                row.updated_at,
+            )),
             None => Err(UserStorageError::UserAlreadyExists(username.to_string())),
         }
     }
@@ -514,28 +636,56 @@ impl UserStorage for PgUserStorage {
     }
 
     async fn list_users(&self) -> Result<Vec<StoredUser>, Self::Error> {
-        let rows: Vec<(String, String)> =
-            sqlx::query_as(r#"SELECT username, otp_secret FROM users WHERE status = 'active'"#)
-                .fetch_all(&self.storage.pool)
-                .await
-                .map_err(|e| UserStorageError::StorageError(e.to_string()))?;
+        let rows: Vec<UserRow> = sqlx::query_as(
+            r#"
+            SELECT username, otp_secret, nickname, avatar_url, created_at, updated_at
+            FROM users
+            WHERE status = 'active'
+            ORDER BY created_at DESC
+            "#,
+        )
+        .fetch_all(&self.storage.pool)
+        .await
+        .map_err(|e| UserStorageError::StorageError(e.to_string()))?;
 
         Ok(rows
             .into_iter()
-            .map(|(username, otp_secret)| StoredUser::new(username, otp_secret))
+            .map(|row| {
+                StoredUser::with_profile(
+                    row.username,
+                    row.otp_secret,
+                    row.nickname,
+                    row.avatar_url,
+                    row.created_at,
+                    row.updated_at,
+                )
+            })
             .collect())
     }
 
     async fn get_user(&self, username: &str) -> Result<Option<StoredUser>, Self::Error> {
-        let result: Option<(String, String)> = sqlx::query_as(
-            r#"SELECT username, otp_secret FROM users WHERE username = $1 AND status = 'active'"#,
+        let result: Option<UserRow> = sqlx::query_as(
+            r#"
+            SELECT username, otp_secret, nickname, avatar_url, created_at, updated_at
+            FROM users
+            WHERE username = $1 AND status = 'active'
+            "#,
         )
         .bind(username)
         .fetch_optional(&self.storage.pool)
         .await
         .map_err(|e| UserStorageError::StorageError(e.to_string()))?;
 
-        Ok(result.map(|(username, otp_secret)| StoredUser::new(username, otp_secret)))
+        Ok(result.map(|row| {
+            StoredUser::with_profile(
+                row.username,
+                row.otp_secret,
+                row.nickname,
+                row.avatar_url,
+                row.created_at,
+                row.updated_at,
+            )
+        }))
     }
 
     async fn update_username(
@@ -550,12 +700,12 @@ impl UserStorage for PgUserStorage {
         }
 
         // Update the username and return the updated user
-        let result: Option<(String, String)> = sqlx::query_as(
+        let result: Option<UserRow> = sqlx::query_as(
             r#"
             UPDATE users
             SET username = $2
             WHERE username = $1 AND status = 'active'
-            RETURNING username, otp_secret
+            RETURNING username, otp_secret, nickname, avatar_url, created_at, updated_at
             "#,
         )
         .bind(old_username)
@@ -572,7 +722,16 @@ impl UserStorage for PgUserStorage {
         })?;
 
         result
-            .map(|(username, otp_secret)| StoredUser::new(username, otp_secret))
+            .map(|row| {
+                StoredUser::with_profile(
+                    row.username,
+                    row.otp_secret,
+                    row.nickname,
+                    row.avatar_url,
+                    row.created_at,
+                    row.updated_at,
+                )
+            })
             .ok_or_else(|| UserStorageError::UserNotFound(old_username.to_string()))
     }
 
@@ -588,12 +747,12 @@ impl UserStorage for PgUserStorage {
         }
 
         // Update the OTP secret and return the updated user
-        let result: Option<(String, String)> = sqlx::query_as(
+        let result: Option<UserRow> = sqlx::query_as(
             r#"
             UPDATE users
             SET otp_secret = $2
             WHERE username = $1 AND status = 'active'
-            RETURNING username, otp_secret
+            RETURNING username, otp_secret, nickname, avatar_url, created_at, updated_at
             "#,
         )
         .bind(username)
@@ -603,7 +762,87 @@ impl UserStorage for PgUserStorage {
         .map_err(|e| UserStorageError::StorageError(e.to_string()))?;
 
         result
-            .map(|(username, otp_secret)| StoredUser::new(username, otp_secret))
+            .map(|row| {
+                StoredUser::with_profile(
+                    row.username,
+                    row.otp_secret,
+                    row.nickname,
+                    row.avatar_url,
+                    row.created_at,
+                    row.updated_at,
+                )
+            })
+            .ok_or_else(|| UserStorageError::UserNotFound(username.to_string()))
+    }
+
+    async fn update_profile(
+        &self,
+        username: &str,
+        nickname: Option<Option<String>>,
+        avatar_url: Option<Option<String>>,
+    ) -> Result<StoredUser, Self::Error> {
+        // Build the query dynamically based on which fields are being updated
+        let result: Option<UserRow> = match (nickname, avatar_url) {
+            (Some(nick), Some(avatar)) => sqlx::query_as(
+                r#"
+                    UPDATE users
+                    SET nickname = $2, avatar_url = $3
+                    WHERE username = $1 AND status = 'active'
+                    RETURNING username, otp_secret, nickname, avatar_url, created_at, updated_at
+                    "#,
+            )
+            .bind(username)
+            .bind(nick)
+            .bind(avatar)
+            .fetch_optional(&self.storage.pool)
+            .await
+            .map_err(|e| UserStorageError::StorageError(e.to_string()))?,
+            (Some(nick), None) => sqlx::query_as(
+                r#"
+                    UPDATE users
+                    SET nickname = $2
+                    WHERE username = $1 AND status = 'active'
+                    RETURNING username, otp_secret, nickname, avatar_url, created_at, updated_at
+                    "#,
+            )
+            .bind(username)
+            .bind(nick)
+            .fetch_optional(&self.storage.pool)
+            .await
+            .map_err(|e| UserStorageError::StorageError(e.to_string()))?,
+            (None, Some(avatar)) => sqlx::query_as(
+                r#"
+                    UPDATE users
+                    SET avatar_url = $2
+                    WHERE username = $1 AND status = 'active'
+                    RETURNING username, otp_secret, nickname, avatar_url, created_at, updated_at
+                    "#,
+            )
+            .bind(username)
+            .bind(avatar)
+            .fetch_optional(&self.storage.pool)
+            .await
+            .map_err(|e| UserStorageError::StorageError(e.to_string()))?,
+            (None, None) => {
+                // No updates, just fetch the user
+                return self
+                    .get_user(username)
+                    .await?
+                    .ok_or_else(|| UserStorageError::UserNotFound(username.to_string()));
+            }
+        };
+
+        result
+            .map(|row| {
+                StoredUser::with_profile(
+                    row.username,
+                    row.otp_secret,
+                    row.nickname,
+                    row.avatar_url,
+                    row.created_at,
+                    row.updated_at,
+                )
+            })
             .ok_or_else(|| UserStorageError::UserNotFound(username.to_string()))
     }
 }
@@ -888,5 +1127,138 @@ mod tests {
         let usernames: Vec<&str> = users.iter().map(|u| u.username.as_str()).collect();
         assert!(usernames.contains(&"alice"));
         assert!(usernames.contains(&"bob"));
+    }
+
+    #[tokio::test]
+    async fn test_mock_update_profile_nickname_and_avatar() {
+        let storage = MockUserStorage::new();
+
+        // Create a user first
+        storage
+            .create_user("alice", "SECRET123")
+            .await
+            .expect("should create user");
+
+        // Update profile with nickname and avatar
+        let updated = storage
+            .update_profile(
+                "alice",
+                Some(Some("Alice Nickname".to_string())),
+                Some(Some("https://example.com/avatar.png".to_string())),
+            )
+            .await
+            .expect("should update profile");
+
+        assert_eq!(updated.username, "alice");
+        assert_eq!(updated.nickname, Some("Alice Nickname".to_string()));
+        assert_eq!(
+            updated.avatar_url,
+            Some("https://example.com/avatar.png".to_string())
+        );
+    }
+
+    #[tokio::test]
+    async fn test_mock_update_profile_nickname_only() {
+        let storage = MockUserStorage::new();
+
+        // Create a user first
+        storage
+            .create_user("alice", "SECRET123")
+            .await
+            .expect("should create user");
+
+        // Update only nickname
+        let updated = storage
+            .update_profile("alice", Some(Some("New Nickname".to_string())), None)
+            .await
+            .expect("should update profile");
+
+        assert_eq!(updated.nickname, Some("New Nickname".to_string()));
+        assert_eq!(updated.avatar_url, None);
+    }
+
+    #[tokio::test]
+    async fn test_mock_update_profile_clear_fields() {
+        let storage = MockUserStorage::new();
+
+        // Create a user first
+        storage
+            .create_user("alice", "SECRET123")
+            .await
+            .expect("should create user");
+
+        // Set initial values
+        storage
+            .update_profile(
+                "alice",
+                Some(Some("Initial".to_string())),
+                Some(Some("https://example.com/initial.png".to_string())),
+            )
+            .await
+            .expect("should update profile");
+
+        // Clear fields by setting to None
+        let updated = storage
+            .update_profile("alice", Some(None), Some(None))
+            .await
+            .expect("should update profile");
+
+        assert_eq!(updated.nickname, None);
+        assert_eq!(updated.avatar_url, None);
+    }
+
+    #[tokio::test]
+    async fn test_mock_update_profile_user_not_found() {
+        let storage = MockUserStorage::new();
+
+        let result = storage
+            .update_profile("nonexistent", Some(Some("Nick".to_string())), Some(None))
+            .await;
+
+        assert!(result.is_err());
+        assert!(matches!(result, Err(UserStorageError::UserNotFound(_))));
+    }
+
+    #[tokio::test]
+    async fn test_mock_update_profile_no_changes() {
+        let storage = MockUserStorage::new();
+
+        // Create a user first
+        storage
+            .create_user("alice", "SECRET123")
+            .await
+            .expect("should create user");
+
+        // Call update_profile with no changes (both None)
+        let updated = storage
+            .update_profile("alice", None, None)
+            .await
+            .expect("should update profile");
+
+        assert_eq!(updated.username, "alice");
+        // User should be returned unchanged
+    }
+
+    #[tokio::test]
+    async fn test_stored_user_with_profile() {
+        let now = Utc::now();
+        let user = StoredUser::with_profile(
+            "alice",
+            "SECRET123",
+            Some("Nickname".to_string()),
+            Some("https://example.com/avatar.png".to_string()),
+            now,
+            now,
+        );
+
+        assert_eq!(user.username, "alice");
+        assert_eq!(user.secret, "SECRET123");
+        assert_eq!(user.nickname, Some("Nickname".to_string()));
+        assert_eq!(
+            user.avatar_url,
+            Some("https://example.com/avatar.png".to_string())
+        );
+        assert_eq!(user.created_at, now);
+        assert_eq!(user.updated_at, now);
     }
 }

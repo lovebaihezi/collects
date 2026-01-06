@@ -270,6 +270,60 @@ jobs:
 
 The application uses a reactive state management system with `StateCtx` for state and `Compute` for derived/async values.
 
+### Ownership: business vs UI
+
+All application/domain `State`, `Compute`, and `Command` definitions **MUST** live in the `business/` crate (aka `collects_business`).
+
+UI code under `ui/` (including `ui/src/widgets/**`) must be UI-only:
+- **Read** via `ctx.cached::<T>()`.
+- **Do NOT directly mutate business state** from UI code (i.e. do not call `state_ctx.state_mut::<BusinessState>()` to change domain/workflow state).
+- **Write** to business/domain only by dispatching commands via `ctx.dispatch::<SomeCommand>()`.
+- UI-local transient state (e.g. draft text for chatty inputs) may live in UI, but must not be stored in business state unless it needs cross-view persistence.
+- Must not define new domain `State`/`Compute`/`Command` types.
+
+If a widget needs new state/compute/command:
+1. Add it under `business/src/**`
+2. Re-export from `business/src/lib.rs`
+3. Update UI widgets to import from `collects_business`
+
+### The reference pattern (what “good” looks like)
+
+This repo is migrating toward a single, consistent pattern for async features. When adding or refactoring a feature, follow this template.
+
+#### 1) Separate concerns: workflow State vs async Compute vs UI-local drafts
+
+Business State (in `collects_business`) should contain durable workflow and selection, such as:
+- which panel/modal is open
+- which record is selected (use `Ustr` for identifiers)
+- non-chatty UI workflow flags that must persist
+
+Business Compute (in `collects_business`) should contain async lifecycle/results:
+- `Idle | Loading | Loaded(...) | Error(String)` (or a more specific typed enum)
+- action outcomes should be typed (enums), not magic strings
+
+UI-local drafts (in `ui/`) should hold chatty input buffers:
+- draft strings for text edits (username, nickname, avatar URL, etc.)
+- seeded from business data when modal opens / selection changes
+- committed on submit via dispatching a command
+
+Do not store half-typed draft strings in business state unless you need cross-view persistence.
+
+#### 2) Async work always happens in a Command, results always land in a Compute
+
+- Commands are manual-only and are dispatched explicitly by UI events.
+- Commands may perform (callback-based) network IO.
+- Commands must update Computes using `Updater::set()`:
+  - set `Loading` immediately
+  - set `Loaded` / `Error` on completion
+
+Do not run network IO inside a Compute’s `compute()` method.
+
+#### 3) Do not use egui memory as an async message bus
+
+Do not use `egui::Context` memory (e.g. `ctx.memory_mut` / `mem.data.insert_temp/get_temp/remove`) to transport async results across frames.
+
+Using egui memory for widget-internal ephemeral UI concerns is fine; using it to carry domain/workflow async results is not.
+
 ### Updating Computes
 
 Computes **MUST** only be updated through the Command pattern using `Updater::set()`. Never mutate computes directly.
@@ -279,32 +333,100 @@ Computes **MUST** only be updated through the Command pattern using `Updater::se
 - Allows async operations to safely update state
 - Maintains separation between state reading and writing
 
-**Do:**
-```rust
-// Create a Command to update the compute
-#[derive(Default, Debug)]
-pub struct ToggleMyFeatureCommand;
+#### Reference example: list/refresh flow (Command → Compute)
 
-impl Command for ToggleMyFeatureCommand {
+Use this shape for “refresh / load list” flows:
+
+```rust
+#[derive(Debug, Clone)]
+pub enum MyListResult {
+    Idle,
+    Loading,
+    Loaded(Vec<MyItem>),
+    Error(String),
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct MyListCompute {
+    pub result: MyListResult,
+}
+
+impl Compute for MyListCompute {
+    fn as_any(&self) -> &dyn Any { self }
+    fn deps(&self) -> ComputeDeps { (&[], &[]) }
+    fn compute(&self, _deps: Dep, _updater: Updater) { /* no-op */ }
+    fn assign_box(&mut self, new_self: Box<dyn Any>) { assign_impl(self, new_self); }
+}
+
+#[derive(Default, Debug)]
+pub struct RefreshMyListCommand;
+
+impl Command for RefreshMyListCommand {
     fn run(&self, deps: Dep, updater: Updater) {
-        let current = deps.get_compute_ref::<MyCompute>();
-        updater.set(MyCompute {
-            // ... update fields
-            my_flag: !current.my_flag,
+        updater.set(MyListCompute { result: MyListResult::Loading });
+
+        // Kick off async request (callback-based or async runtime)
+        my_api::list(move |result| {
+            match result {
+                Ok(items) => updater.set(MyListCompute { result: MyListResult::Loaded(items) }),
+                Err(err) => updater.set(MyListCompute { result: MyListResult::Error(err.to_string()) }),
+            }
         });
     }
 }
-
-// Dispatch the command from UI code
-ctx.dispatch::<ToggleMyFeatureCommand>();
 ```
 
-**Don't:**
+UI usage:
+
 ```rust
-// ❌ Never mutate computes directly
-let compute = ctx.get_compute_mut::<MyCompute>();
-compute.my_flag = !compute.my_flag;
+// Read
+let is_loading = ctx.cached::<MyListCompute>().map(|c| matches!(c.result, MyListResult::Loading)).unwrap_or(false);
+
+// Write
+if ui.button("Refresh").clicked() {
+    ctx.dispatch::<RefreshMyListCommand>();
+}
 ```
+
+#### Reference example: modal with hybrid drafts (seed once, commit via command)
+
+Use this shape for chatty inputs (edit username/profile/etc.):
+
+- UI keeps `draft_*` strings locally.
+- UI seeds drafts when the modal opens or the selected record changes.
+- UI dispatches a command on submit with `Option<String>` conversions.
+
+Pseudocode:
+
+```rust
+// UI-local:
+struct Drafts {
+    seeded_for: Option<(Ustr /* username */, &'static str /* action kind */)>,
+    draft_nickname: String,
+    draft_avatar_url: String,
+}
+
+// When showing modal:
+let action_key = (username, "edit_profile");
+if drafts.seeded_for != Some(action_key) {
+    drafts.draft_nickname = current_nickname_from_business.unwrap_or_default();
+    drafts.draft_avatar_url = current_avatar_from_business.unwrap_or_default();
+    drafts.seeded_for = Some(action_key);
+}
+
+// Bind text edits to drafts (chatty, local):
+ui.text_edit_singleline(&mut drafts.draft_nickname);
+ui.text_edit_singleline(&mut drafts.draft_avatar_url);
+
+// On Save: dispatch async command (business handles IO + compute updates)
+if ui.button("Save").clicked() {
+    ctx.dispatch::<UpdateProfileCommand>(); // payload comes from business input state, or a typed command input
+}
+```
+
+If the command needs parameters, prefer:
+- a typed Input `State` (set once on submit), then dispatch, or
+- a typed Command that carries owned payloads (if your command system supports it cleanly).
 
 ### Reading State in UI
 

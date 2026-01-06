@@ -9,7 +9,8 @@ use collects_business::{
 #[cfg(any(feature = "env_internal", feature = "env_test_internal"))]
 use collects_business::{
     CFTokenCompute, CFTokenInput, CreateUserCommand, CreateUserCompute, CreateUserInput,
-    InternalApiStatus, SetCFTokenCommand,
+    InternalApiStatus, InternalUsersListUsersCompute, InternalUsersListUsersInput,
+    RefreshInternalUsersCommand, SetCFTokenCommand,
 };
 use collects_states::{StateCtx, Time};
 use serde::{Deserialize, Serialize};
@@ -72,6 +73,14 @@ impl Default for State {
 
             // Internal users state
             ctx.add_state(InternalUsersState::new());
+
+            // Internal users: refresh/list users compute + input + command
+            //
+            // This replaces the previous pattern where UI used egui `ctx.memory_mut`
+            // as an async message bus for list-users refresh results.
+            ctx.add_state(InternalUsersListUsersInput::default());
+            ctx.record_compute(InternalUsersListUsersCompute::default());
+            ctx.record_command(RefreshInternalUsersCommand);
         }
 
         Self { ctx }
@@ -122,6 +131,14 @@ impl State {
 
             // Internal users state
             ctx.add_state(InternalUsersState::new());
+
+            // Internal users: refresh/list users compute + input + command
+            //
+            // This replaces the previous pattern where UI used egui `ctx.memory_mut`
+            // as an async message bus for list-users refresh results.
+            ctx.add_state(InternalUsersListUsersInput::default());
+            ctx.record_compute(InternalUsersListUsersCompute::default());
+            ctx.record_command(RefreshInternalUsersCommand);
         }
 
         Self { ctx }

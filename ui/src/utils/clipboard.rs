@@ -3,6 +3,12 @@
 //! This module provides functionality to handle Ctrl+V (Cmd+V on macOS) paste events
 //! and read image data from the clipboard on native platforms.
 //!
+//! # File URI Support
+//!
+//! On Linux (especially with file managers like Dolphin), copying an image file
+//! often places a `file://` URI in the clipboard rather than the actual image data.
+//! This module detects such URIs and loads the image from the filesystem.
+//!
 //! # Platform-Specific Clipboard Behavior
 //!
 //! The clipboard implementation varies significantly across platforms. This module
@@ -133,14 +139,174 @@ impl ClipboardProvider for SystemClipboard {
         let mut clipboard =
             Clipboard::new().map_err(|e| ClipboardError::AccessError(e.to_string()))?;
 
+        // Diagnostic: check what content types are available in clipboard
+        match clipboard.get_text() {
+            Ok(text) => {
+                let preview = if text.len() > 100 {
+                    format!("{}...", &text[..100])
+                } else {
+                    text.clone()
+                };
+                log::trace!(
+                    target: "collects_ui::paste",
+                    "clipboard_has_text len={} preview={:?}",
+                    text.len(),
+                    preview
+                );
+            }
+            Err(e) => {
+                log::trace!(
+                    target: "collects_ui::paste",
+                    "clipboard_no_text: {e}"
+                );
+            }
+        }
+
         match clipboard.get_image() {
-            Ok(image_data) => Ok(Some(ClipboardImage {
-                width: image_data.width,
-                height: image_data.height,
-                bytes: image_data.bytes.into_owned(),
-            })),
-            Err(arboard::Error::ContentNotAvailable) => Ok(None),
-            Err(e) => Err(ClipboardError::AccessError(e.to_string())),
+            Ok(image_data) => {
+                log::trace!(
+                    target: "collects_ui::paste",
+                    "clipboard_get_image_ok {}x{} bytes={}",
+                    image_data.width,
+                    image_data.height,
+                    image_data.bytes.len()
+                );
+                Ok(Some(ClipboardImage {
+                    width: image_data.width,
+                    height: image_data.height,
+                    bytes: image_data.bytes.into_owned(),
+                }))
+            }
+            Err(arboard::Error::ContentNotAvailable) => {
+                log::trace!(
+                    target: "collects_ui::paste",
+                    "clipboard_get_image_err: ContentNotAvailable"
+                );
+                // Try to load image from file:// URI in clipboard text
+                if let Ok(text) = clipboard.get_text()
+                    && let Some(image) = try_load_image_from_file_uri(&text)
+                {
+                    return Ok(Some(image));
+                }
+                Ok(None)
+            }
+            Err(e) => {
+                log::warn!(
+                    target: "collects_ui::paste",
+                    "clipboard_get_image_err: {e}"
+                );
+                // Try to load image from file:// URI in clipboard text as fallback
+                if let Ok(text) = clipboard.get_text()
+                    && let Some(image) = try_load_image_from_file_uri(&text)
+                {
+                    return Ok(Some(image));
+                }
+                Err(ClipboardError::AccessError(e.to_string()))
+            }
+        }
+    }
+}
+
+/// Attempts to load an image from a file:// URI found in clipboard text.
+///
+/// On Linux file managers (like Dolphin, Nautilus), copying a file puts
+/// a `file://` URI in the clipboard rather than the file contents.
+/// This function detects such URIs and loads the image from disk.
+///
+/// # Arguments
+/// * `text` - The clipboard text that may contain a file:// URI
+///
+/// # Returns
+/// * `Some(ClipboardImage)` if a valid image file was found and loaded
+/// * `None` if the text is not a file URI or the file couldn't be loaded as an image
+#[cfg(not(target_arch = "wasm32"))]
+fn try_load_image_from_file_uri(text: &str) -> Option<ClipboardImage> {
+    // Clipboard may contain multiple lines (e.g., multiple files selected)
+    // Try each line that looks like a file URI
+    for line in text.lines() {
+        let line = line.trim();
+        if let Some(path) = extract_file_path_from_uri(line) {
+            log::trace!(
+                target: "collects_ui::paste",
+                "clipboard_file_uri_detected path={:?}",
+                path
+            );
+
+            if let Some(image) = load_image_from_path(&path) {
+                return Some(image);
+            }
+        }
+    }
+    None
+}
+
+/// Extracts a filesystem path from a file:// URI.
+///
+/// Handles URL decoding for paths with special characters (spaces, unicode, etc.)
+#[cfg(not(target_arch = "wasm32"))]
+fn extract_file_path_from_uri(uri: &str) -> Option<std::path::PathBuf> {
+    let uri = uri.trim();
+
+    // Check for file:// prefix (case-insensitive)
+    if !uri.to_lowercase().starts_with("file://") {
+        return None;
+    }
+
+    // Extract the path part after file://
+    let path_str = &uri[7..]; // Skip "file://"
+
+    // URL-decode the path (handles %20 for spaces, %C3%A9 for é, etc.)
+    let decoded = urlencoding::decode(path_str).ok()?;
+
+    let path = std::path::PathBuf::from(decoded.as_ref());
+
+    // Verify the path exists and is a file
+    if path.is_file() {
+        Some(path)
+    } else {
+        log::trace!(
+            target: "collects_ui::paste",
+            "clipboard_file_uri_not_found path={:?}",
+            path
+        );
+        None
+    }
+}
+
+/// Loads an image from a filesystem path and converts it to ClipboardImage.
+///
+/// Supports common image formats: PNG, JPEG, GIF, BMP, WebP, etc.
+#[cfg(not(target_arch = "wasm32"))]
+fn load_image_from_path(path: &std::path::Path) -> Option<ClipboardImage> {
+    use image::GenericImageView;
+
+    match image::open(path) {
+        Ok(img) => {
+            let rgba = img.to_rgba8();
+            let (width, height) = img.dimensions();
+
+            log::trace!(
+                target: "collects_ui::paste",
+                "clipboard_file_image_loaded path={:?} {}x{}",
+                path,
+                width,
+                height
+            );
+
+            Some(ClipboardImage {
+                width: width as usize,
+                height: height as usize,
+                bytes: rgba.into_raw(),
+            })
+        }
+        Err(e) => {
+            log::warn!(
+                target: "collects_ui::paste",
+                "clipboard_file_image_load_error path={:?} error={}",
+                path,
+                e
+            );
+            None
         }
     }
 }
@@ -179,27 +345,58 @@ pub fn handle_paste_shortcut_with_clipboard<C: ClipboardProvider>(
     ctx: &Context,
     clipboard: &C,
 ) -> Option<ClipboardImage> {
-    // Check for paste keyboard shortcut: Ctrl+V (Windows/Linux) or Cmd+V (macOS)
-    // Using modifiers.command for cross-platform support
-    let paste_pressed = ctx.input(|i| {
-        i.events.iter().any(|event| {
-            matches!(
-                event,
-                egui::Event::Key {
-                    key: egui::Key::V,
-                    pressed: true,
-                    modifiers,
-                    ..
-                } if modifiers.command
-            )
-        })
+    // Use custom consume_key that works around egui issue #4065:
+    // On some platforms (notably Wayland), Ctrl+V doesn't fire a `pressed: true` event,
+    // but the key release event does come through. So for Ctrl+V specifically,
+    // we react to the key release instead of press.
+    let paste_pressed = ctx.input_mut(|i| {
+        consume_key(i, egui::Modifiers::CTRL, egui::Key::V)
+            || consume_key(i, egui::Modifiers::COMMAND, egui::Key::V)
     });
 
     if paste_pressed {
+        log::trace!(target: "collects_ui::paste", "paste_shortcut_detected");
         read_clipboard_image(clipboard)
     } else {
         None
     }
+}
+
+/// Custom key consumption that works around https://github.com/emilk/egui/issues/4065
+///
+/// On some platforms (notably Wayland), `Ctrl+V` doesn't fire a `pressed: true` event,
+/// but the `pressed: false` (key release) event does come through.
+/// For `Ctrl+V` specifically, this function reacts to the key release instead of press.
+#[cfg(not(target_arch = "wasm32"))]
+fn consume_key(
+    input_state: &mut egui::InputState,
+    modifiers: egui::Modifiers,
+    key: egui::Key,
+) -> bool {
+    let mut found = false;
+
+    input_state.events.retain(|event| {
+        let is_match = matches!(
+            event,
+            egui::Event::Key {
+                key: ev_key,
+                modifiers: ev_mods,
+                pressed,
+                ..
+            } if
+                *ev_key == key
+                && ev_mods.matches_exact(modifiers)
+                // For Ctrl+V, react to key release (pressed: false) to work around #4065
+                // For other shortcuts, react to key press (pressed: true)
+                && *pressed != (matches!(key, egui::Key::V) && modifiers == egui::Modifiers::CTRL)
+        );
+
+        found |= is_match;
+
+        !is_match
+    });
+
+    found
 }
 
 /// Reads image from clipboard and returns it.
@@ -219,6 +416,14 @@ fn read_clipboard_image<C: ClipboardProvider>(clipboard: &C) -> Option<Clipboard
             let height = image.height;
             let bytes_len = image.bytes.len();
 
+            log::trace!(
+                target: "collects_ui::paste",
+                "clipboard_image_loaded {}x{} bytes={}",
+                width,
+                height,
+                bytes_len
+            );
+
             // Detect format based on bytes per pixel using checked arithmetic
             // to avoid overflow for very large images
             let format_info = width
@@ -236,25 +441,29 @@ fn read_clipboard_image<C: ClipboardProvider>(clipboard: &C) -> Option<Clipboard
                 })
                 .unwrap_or("unknown");
 
-            log::info!(
-                "Clipboard image pasted: width={width}, height={height}, \
-                 bytes={bytes_len}, format={format_info}"
+            log::trace!(
+                target: "collects_ui::paste",
+                "clipboard_image_pasted width={width} height={height} bytes={bytes_len} format={format_info}"
             );
 
             Some(image)
         }
         Ok(None) => {
-            log::debug!(
-                "No image in clipboard - paste shortcut pressed but clipboard contains other content"
+            log::trace!(
+                target: "collects_ui::paste",
+                "clipboard_no_image: clipboard accessible but contains no image data"
             );
             None
         }
         Err(ClipboardError::AccessError(e)) => {
-            log::warn!("Failed to access clipboard: {e}");
+            log::warn!(target: "collects_ui::paste", "clipboard_access_error {e}");
             None
         }
         Err(ClipboardError::NoImageContent) => {
-            log::debug!("Clipboard does not contain image content");
+            log::trace!(
+                target: "collects_ui::paste",
+                "clipboard_no_image_content: clipboard does not contain image content"
+            );
             None
         }
     }
@@ -385,5 +594,35 @@ mod tests {
         // This won't trigger actual paste (no input events),
         // but verifies the generic function compiles and runs
         handle_paste_shortcut_with_clipboard(&ctx, &mock);
+    }
+
+    #[test]
+    fn test_extract_file_path_from_uri_valid() {
+        let path = super::extract_file_path_from_uri("file:///home/user/image.png");
+        // Path extraction works but file won't exist in test environment
+        assert!(path.is_none()); // File doesn't exist
+    }
+
+    #[test]
+    fn test_extract_file_path_from_uri_with_spaces() {
+        // URL-encoded space (%20) should be decoded
+        let uri = "file:///home/user/my%20image.png";
+        // We can't fully test without a real file, but we can verify the function doesn't panic
+        let _ = super::extract_file_path_from_uri(uri);
+    }
+
+    #[test]
+    fn test_extract_file_path_from_uri_not_file() {
+        assert!(super::extract_file_path_from_uri("https://example.com/image.png").is_none());
+        assert!(super::extract_file_path_from_uri("/home/user/image.png").is_none());
+        assert!(super::extract_file_path_from_uri("").is_none());
+    }
+
+    #[test]
+    fn test_try_load_image_from_file_uri_multiline() {
+        // Test that multiline clipboard content is handled (multiple files selected)
+        let text = "file:///nonexistent1.png\r\nfile:///nonexistent2.png\r\n";
+        // Should not panic, just return None since files don't exist
+        assert!(super::try_load_image_from_file_uri(text).is_none());
     }
 }

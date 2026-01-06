@@ -3,8 +3,9 @@ use collects_business::BusinessConfig;
 use collects_business::Route;
 use collects_business::ToggleApiStatusCommand;
 use collects_business::{
-    AuthCompute, LoginCommand, LoginInput, LogoutCommand, PendingTokenValidation,
-    ValidateTokenCommand,
+    AuthCompute, ClearImageDiagCommand, ImageDiagState, LoginCommand, LoginInput, LogoutCommand,
+    PendingTokenValidation, RecordImageErrorCommand, RecordImageEventCommand,
+    ToggleImageDiagCommand, ValidateTokenCommand,
 };
 #[cfg(any(feature = "env_internal", feature = "env_test_internal"))]
 use collects_business::{
@@ -56,6 +57,13 @@ impl Default for State {
 
         // Add image preview state for clipboard/drop image handling
         ctx.add_state(ImagePreviewState::new());
+
+        // Add image diagnostics state and commands
+        ctx.record_compute(ImageDiagState::default());
+        ctx.record_command(ToggleImageDiagCommand);
+        ctx.record_command(RecordImageEventCommand::default());
+        ctx.record_command(RecordImageErrorCommand::default());
+        ctx.record_command(ClearImageDiagCommand);
 
         // Add internal states and computes for internal builds
         #[cfg(any(feature = "env_internal", feature = "env_test_internal"))]
@@ -114,6 +122,13 @@ impl State {
 
         // Add image preview state for clipboard/drop image handling
         ctx.add_state(ImagePreviewState::new());
+
+        // Add image diagnostics state and commands
+        ctx.record_compute(ImageDiagState::default());
+        ctx.record_command(ToggleImageDiagCommand);
+        ctx.record_command(RecordImageEventCommand::default());
+        ctx.record_command(RecordImageErrorCommand::default());
+        ctx.record_command(ClearImageDiagCommand);
 
         // Add internal states and computes for internal builds
         #[cfg(any(feature = "env_internal", feature = "env_test_internal"))]

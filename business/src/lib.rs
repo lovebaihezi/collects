@@ -2,6 +2,7 @@ mod api_status;
 pub mod cf_token_compute;
 pub mod config;
 pub mod create_user_compute;
+pub mod image_diag;
 pub mod internal;
 pub mod internal_api_status;
 pub mod internal_users;
@@ -16,6 +17,10 @@ pub use cf_token_compute::{CFTokenCompute, CFTokenInput, CFTokenResult, SetCFTok
 pub use config::BusinessConfig;
 pub use create_user_compute::{
     CreateUserCommand, CreateUserCompute, CreateUserInput, CreateUserResult,
+};
+pub use image_diag::{
+    ClearImageDiagCommand, ImageDiagEvent, ImageDiagState, ImageEventStatus, ImageEventType,
+    RecordImageErrorCommand, RecordImageEventCommand, ToggleImageDiagCommand,
 };
 pub use internal::{
     CreateUserRequest, CreateUserResponse, DeleteUserResponse, GetUserResponse, InternalUserItem,

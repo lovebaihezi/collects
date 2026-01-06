@@ -8,7 +8,10 @@ use crate::{
     widgets,
 };
 use chrono::{Timelike, Utc};
-use collects_business::{ApiStatus, AuthCompute, Route, ToggleApiStatusCommand};
+use collects_business::{
+    ApiStatus, AuthCompute, ImageDiagState, ImageEventType, RecordImageErrorCommand,
+    RecordImageEventCommand, Route, ToggleApiStatusCommand, ToggleImageDiagCommand,
+};
 #[cfg(not(any(feature = "env_internal", feature = "env_test_internal")))]
 use collects_business::{PendingTokenValidation, ValidateTokenCommand};
 use collects_states::Time;
@@ -86,17 +89,31 @@ impl<P: PasteHandler, D: DropHandler> eframe::App for CollectsApp<P, D> {
                 clipboard_image.height,
                 clipboard_image.bytes.len()
             );
+            let bytes_len = clipboard_image.bytes.len();
+            let width = clipboard_image.width;
+            let height = clipboard_image.height;
             let image_state = self.state.ctx.state_mut::<widgets::ImagePreviewState>();
-            let success = image_state.set_image_rgba(
-                ctx,
-                clipboard_image.width,
-                clipboard_image.height,
-                clipboard_image.bytes,
-            );
+            let success = image_state.set_image_rgba(ctx, width, height, clipboard_image.bytes);
             if success {
                 log::info!("Pasted image set successfully");
+                // Record successful paste event
+                self.state
+                    .ctx
+                    .record_command(RecordImageEventCommand {
+                        event_type: ImageEventType::Paste,
+                        width,
+                        height,
+                        bytes: bytes_len,
+                    });
+                self.state.ctx.dispatch::<RecordImageEventCommand>();
             } else {
                 log::warn!("Failed to set pasted image");
+                // Record failed paste event
+                self.state.ctx.record_command(RecordImageErrorCommand {
+                    event_type: ImageEventType::Paste,
+                    error: "Invalid image data".to_string(),
+                });
+                self.state.ctx.dispatch::<RecordImageErrorCommand>();
             }
         }
 
@@ -109,17 +126,29 @@ impl<P: PasteHandler, D: DropHandler> eframe::App for CollectsApp<P, D> {
                 dropped_image.height,
                 dropped_image.bytes.len()
             );
+            let bytes_len = dropped_image.bytes.len();
+            let width = dropped_image.width;
+            let height = dropped_image.height;
             let image_state = self.state.ctx.state_mut::<widgets::ImagePreviewState>();
-            let success = image_state.set_image_rgba(
-                ctx,
-                dropped_image.width,
-                dropped_image.height,
-                dropped_image.bytes,
-            );
+            let success = image_state.set_image_rgba(ctx, width, height, dropped_image.bytes);
             if success {
                 log::info!("Dropped image set successfully");
+                // Record successful drop event
+                self.state.ctx.record_command(RecordImageEventCommand {
+                    event_type: ImageEventType::Drop,
+                    width,
+                    height,
+                    bytes: bytes_len,
+                });
+                self.state.ctx.dispatch::<RecordImageEventCommand>();
             } else {
                 log::warn!("Failed to set dropped image");
+                // Record failed drop event
+                self.state.ctx.record_command(RecordImageErrorCommand {
+                    event_type: ImageEventType::Drop,
+                    error: "Invalid image data".to_string(),
+                });
+                self.state.ctx.dispatch::<RecordImageErrorCommand>();
             }
         }
 
@@ -127,6 +156,11 @@ impl<P: PasteHandler, D: DropHandler> eframe::App for CollectsApp<P, D> {
         // Use consume_key to prevent browser default behavior (e.g., Chrome help) in WASM
         if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::F1)) {
             self.state.ctx.dispatch::<ToggleApiStatusCommand>();
+        }
+
+        // Toggle Image Diagnostics window when F2 is pressed
+        if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::F2)) {
+            self.state.ctx.dispatch::<ToggleImageDiagCommand>();
         }
 
         // Update Time state when second changes (chrono::Utc::now() is WASM-compatible)
@@ -173,6 +207,24 @@ impl<P: PasteHandler, D: DropHandler> eframe::App for CollectsApp<P, D> {
                     // API status dots (includes internal API for internal builds)
                     // The Window name "API Status" is used for accessibility/kittest queries
                     widgets::api_status(&self.state.ctx, ui);
+                });
+        }
+
+        // Show Image Diagnostics window only when F2 is pressed (toggled)
+        let show_image_diag = self
+            .state
+            .ctx
+            .cached::<ImageDiagState>()
+            .map(|diag| diag.show_window())
+            .unwrap_or(false);
+        if show_image_diag {
+            egui::Window::new("Image Diagnostics")
+                .anchor(egui::Align2::LEFT_BOTTOM, egui::vec2(8.0, -8.0))
+                .collapsible(true)
+                .resizable(true)
+                .default_width(350.0)
+                .show(ctx, |ui| {
+                    widgets::image_diag_window(&mut self.state.ctx, ui);
                 });
         }
 

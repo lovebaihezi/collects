@@ -42,6 +42,14 @@ impl CollectsApp<SystemPasteHandler, SystemDropHandler> {
     }
 }
 
+impl Default for CollectsApp<SystemPasteHandler, SystemDropHandler> {
+    /// Creates a new CollectsApp with default state.
+    /// This is the recommended way to create the app for e2e tests.
+    fn default() -> Self {
+        Self::new(State::default())
+    }
+}
+
 impl<P: PasteHandler, D: DropHandler> CollectsApp<P, D> {
     /// Create a new app with custom paste and drop handlers (for testing).
     pub fn with_handlers(state: State, paste_handler: P, drop_handler: D) -> Self {

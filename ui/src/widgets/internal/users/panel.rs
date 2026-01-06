@@ -17,7 +17,10 @@ use super::modals::{
 use super::table::columns::{HEADER_HEIGHT, ROW_HEIGHT, table_columns};
 use super::table::header::render_table_header;
 use super::table::row::{prepare_user_row_data, render_qr_expansion, render_user_row};
-use collects_business::{InternalUsersState, UserAction};
+use collects_business::{
+    InternalUsersActionCompute, InternalUsersActionKind, InternalUsersActionState,
+    InternalUsersState, UserAction,
+};
 
 /// Displays the internal users panel with a table and create button.
 pub fn internal_users_panel(state_ctx: &mut StateCtx, api_base_url: &str, ui: &mut Ui) -> Response {
@@ -207,71 +210,53 @@ fn render_modals(state_ctx: &mut StateCtx, api_base_url: &str, ui: &mut Ui) {
 }
 
 /// Poll for async responses and update state.
-/// Call this in the update loop.
-pub fn poll_internal_users_responses(state_ctx: &mut StateCtx, ctx: &egui::Context) {
-    // NOTE (refresh slice):
-    // List-users refresh no longer uses egui memory temps. It is now represented by
-    // `InternalUsersListUsersCompute` and updated by `RefreshInternalUsersCommand`.
-    //
-    // This poller remains temporarily for the legacy action flows (modals) that still
-    // use egui memory temps. Once those are migrated to Commands + Computes, this
-    // function should be deleted entirely.
+///
+/// Legacy egui-memory polling has been removed. Action lifecycle/results now come from
+/// `InternalUsersActionCompute` (business compute), updated by action Commands.
+///
+/// This function is kept temporarily as a thin compatibility shim for call sites.
+pub fn poll_internal_users_responses(state_ctx: &mut StateCtx, _ctx: &egui::Context) {
+    // If no action compute exists yet, nothing to do.
+    let Some(action_compute) = state_ctx.cached::<InternalUsersActionCompute>() else {
+        return;
+    };
 
-    // Check for action error
-    if let Some(error) =
-        ctx.memory(|mem| mem.data.get_temp::<String>(egui::Id::new("action_error")))
-    {
-        state_ctx
-            .state_mut::<InternalUsersState>()
-            .set_action_error(error);
-        ctx.memory_mut(|mem| {
-            mem.data.remove::<String>(egui::Id::new("action_error"));
-        });
-    }
+    match action_compute.state() {
+        InternalUsersActionState::Idle | InternalUsersActionState::InFlight { .. } => {}
 
-    // Check for action success (triggers refresh)
-    if let Some(action) =
-        ctx.memory(|mem| mem.data.get_temp::<String>(egui::Id::new("action_success")))
-    {
-        ctx.memory_mut(|mem| {
-            mem.data.remove::<String>(egui::Id::new("action_success"));
-        });
-        // Close action modal and mark for refresh
-        let state = state_ctx.state_mut::<InternalUsersState>();
-        state.close_action();
-        if action == "user_deleted" || action == "username_updated" || action == "profile_updated" {
-            // Mark as needing fetch - the actual fetch will happen on next panel render
-            // when internal_users_panel() is called with api_base_url
-            state.set_fetching();
+        InternalUsersActionState::Error { message, .. } => {
+            // Mirror the previous UI behavior: surface an error on the state so existing
+            // panels/modals that render `state.action_error` keep working during migration.
+            state_ctx
+                .state_mut::<InternalUsersState>()
+                .set_action_error(message.clone());
         }
-    }
 
-    // Check for QR code response
-    if let Some(otpauth_url) = ctx.memory(|mem| {
-        mem.data
-            .get_temp::<String>(egui::Id::new("user_qr_code_response"))
-    }) {
-        state_ctx
-            .state_mut::<InternalUsersState>()
-            .set_qr_code_data(otpauth_url);
-        ctx.memory_mut(|mem| {
-            mem.data
-                .remove::<String>(egui::Id::new("user_qr_code_response"));
-        });
-    }
+        InternalUsersActionState::Success { kind, data, .. } => {
+            // Mirror previous behavior: close action UI and refresh list on mutating ops.
+            let state = state_ctx.state_mut::<InternalUsersState>();
+            state.close_action();
 
-    // Check for revoke OTP response
-    if let Some(otpauth_url) = ctx.memory(|mem| {
-        mem.data
-            .get_temp::<String>(egui::Id::new("revoke_otp_response"))
-    }) {
-        state_ctx
-            .state_mut::<InternalUsersState>()
-            .set_qr_code_data(otpauth_url);
-        ctx.memory_mut(|mem| {
-            mem.data
-                .remove::<String>(egui::Id::new("revoke_otp_response"));
-        });
+            // Some actions yield new QR data.
+            if matches!(
+                kind,
+                InternalUsersActionKind::GetUserQr | InternalUsersActionKind::RevokeOtp
+            ) && let Some(otpauth_url) = data.clone()
+            {
+                state.set_qr_code_data(otpauth_url);
+            }
+
+            // Trigger refresh for actions that mutate user state.
+            if matches!(
+                kind,
+                InternalUsersActionKind::DeleteUser
+                    | InternalUsersActionKind::UpdateUsername
+                    | InternalUsersActionKind::UpdateProfile
+                    | InternalUsersActionKind::RevokeOtp
+            ) {
+                state_ctx.dispatch::<RefreshInternalUsersCommand>();
+            }
+        }
     }
 }
 

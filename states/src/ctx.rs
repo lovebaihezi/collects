@@ -5,7 +5,7 @@ use std::{
     ptr::NonNull,
 };
 
-use log::{Level, info, log_enabled, trace};
+use log::{Level, log_enabled, trace};
 
 use crate::{Command, Dep, Reader, Updater};
 
@@ -78,7 +78,7 @@ impl StateCtx {
     /// The state is initialized and marked as `BeforeInit`.
     pub fn add_state<T: State>(&mut self, state: T) {
         let id = TypeId::of::<T>();
-        info!("Record State: id={:?}, state={:?}", id, state);
+        trace!("Record State: id={:?}, state={:?}", id, state);
         self.states
             .insert(id, (RefCell::new(Box::new(state)), Stage::BeforeInit));
     }
@@ -88,7 +88,7 @@ impl StateCtx {
     /// The compute is recorded in the runtime and initialized.
     pub fn record_compute<T: Compute>(&mut self, compute: T) {
         let id = TypeId::of::<T>();
-        info!("Record Compute: id={:?}, compute={:?}", id, compute);
+        trace!("Record Compute: id={:?}, compute={:?}", id, compute);
         self.runtime.record(&compute);
         self.computes
             .insert(id, (RefCell::new(Box::new(compute)), Stage::BeforeInit));
@@ -101,7 +101,7 @@ impl StateCtx {
     /// at the call-site (i.e. you dispatch by type).
     pub fn record_command<T: Command>(&mut self, command: T) {
         let id = TypeId::of::<T>();
-        info!("Record Command: id={:?}, command={:?}", id, command);
+        trace!("Record Command: id={:?}, command={:?}", id, command);
         self.commands.insert(id, RefCell::new(Box::new(command)));
     }
 

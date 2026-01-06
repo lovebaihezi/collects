@@ -4,6 +4,7 @@ import {
   extractErrorLines,
   countPreviousFailures,
   buildCommentBody,
+  formatApiErrorMessage,
 } from "./ci-feedback.ts";
 
 describe("stripAnsiCodes", () => {
@@ -282,5 +283,59 @@ describe("buildCommentBody", () => {
       "⚠️ **Note:** The following jobs have failed 3+ times",
     );
     expect(result).toContain("`lint`");
+  });
+});
+
+describe("formatApiErrorMessage", () => {
+  test("formats 403 error with permission guidance", () => {
+    const error = {
+      status: 403,
+      message: "Resource not accessible by personal access token",
+    };
+    const result = formatApiErrorMessage(error, "Failed to post comment");
+
+    expect(result).toContain("Failed to post comment");
+    expect(result).toContain("Permission denied (403)");
+    expect(result).toContain("COPILOT_INVOKER_TOKEN");
+  });
+
+  test("formats 404 error with timing explanation", () => {
+    const error = { status: 404, message: "Not Found" };
+    const result = formatApiErrorMessage(error, "Failed to get logs");
+
+    expect(result).toContain("Failed to get logs");
+    expect(result).toContain("Resource not found (404)");
+    expect(result).toContain("timing issue");
+  });
+
+  test("formats 401 error with authentication message", () => {
+    const error = { status: 401, message: "Bad credentials" };
+    const result = formatApiErrorMessage(error, "API request");
+
+    expect(result).toContain("API request");
+    expect(result).toContain("Authentication failed (401)");
+    expect(result).toContain("invalid or expired");
+  });
+
+  test("formats other GitHub API errors with status code", () => {
+    const error = { status: 500, message: "Internal Server Error" };
+    const result = formatApiErrorMessage(error, "Operation");
+
+    expect(result).toContain("Operation");
+    expect(result).toContain("GitHub API error (500)");
+    expect(result).toContain("Internal Server Error");
+  });
+
+  test("formats regular Error objects", () => {
+    const error = new Error("Something went wrong");
+    const result = formatApiErrorMessage(error, "Operation");
+
+    expect(result).toBe("Operation: Something went wrong");
+  });
+
+  test("formats string errors", () => {
+    const result = formatApiErrorMessage("Unknown error", "Operation");
+
+    expect(result).toBe("Operation: Unknown error");
   });
 });

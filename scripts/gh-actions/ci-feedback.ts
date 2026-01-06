@@ -416,12 +416,90 @@ export async function runCIFeedback(options: CIFeedbackOptions): Promise<void> {
 }
 
 /**
+ * Error result type for CI feedback operations
+ */
+export interface CIFeedbackResult {
+  success: boolean;
+  message: string;
+  /** If true, this is an expected/recoverable error that shouldn't fail the workflow */
+  recoverable?: boolean;
+}
+
+/**
+ * Check if an error is a GitHub API error with a specific status
+ */
+function isGitHubApiError(
+  error: unknown,
+  status?: number,
+): error is { status: number; message: string } {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "status" in error &&
+    typeof (error as { status: unknown }).status === "number"
+  ) {
+    if (status === undefined) return true;
+    return (error as { status: number }).status === status;
+  }
+  return false;
+}
+
+/**
+ * Format a helpful error message for common GitHub API errors
+ */
+export function formatApiErrorMessage(
+  error: unknown,
+  operation: string,
+): string {
+  // Extract the message from the error
+  let baseMessage: string;
+  if (error instanceof Error) {
+    baseMessage = error.message;
+  } else if (
+    typeof error === "object" &&
+    error !== null &&
+    "message" in error &&
+    typeof (error as { message: unknown }).message === "string"
+  ) {
+    baseMessage = (error as { message: string }).message;
+  } else {
+    baseMessage = String(error);
+  }
+
+  if (isGitHubApiError(error, 403)) {
+    return (
+      `${operation}: Permission denied (403). The token may not have sufficient permissions. ` +
+      `Ensure the COPILOT_INVOKER_TOKEN secret has 'Pull requests: Read and write' and 'Actions: Read' permissions.`
+    );
+  }
+
+  if (isGitHubApiError(error, 404)) {
+    return (
+      `${operation}: Resource not found (404). This may be a timing issue - ` +
+      `job logs might not be available yet while the job is still completing.`
+    );
+  }
+
+  if (isGitHubApiError(error, 401)) {
+    return `${operation}: Authentication failed (401). The token may be invalid or expired.`;
+  }
+
+  if (isGitHubApiError(error)) {
+    return `${operation}: GitHub API error (${(error as { status: number }).status}): ${baseMessage}`;
+  }
+
+  return `${operation}: ${baseMessage}`;
+}
+
+/**
  * Post-job feedback function - runs within the CI workflow itself
  * This approach has direct access to PR context, avoiding PR detection issues
+ *
+ * Returns a result object instead of throwing, allowing callers to handle errors gracefully
  */
 export async function runPostJobFeedback(
   options: PostJobFeedbackOptions,
-): Promise<void> {
+): Promise<CIFeedbackResult> {
   const {
     token,
     owner,
@@ -438,20 +516,31 @@ export async function runPostJobFeedback(
   console.log(`Processing feedback for job "${jobName}" on PR #${prNumber}`);
 
   // Get job logs for the specific failed job
-  const { data: jobsData } = await octokit.rest.actions.listJobsForWorkflowRun({
-    owner,
-    repo,
-    run_id: runId,
-  });
+  let jobsData;
+  try {
+    const response = await octokit.rest.actions.listJobsForWorkflowRun({
+      owner,
+      repo,
+      run_id: runId,
+    });
+    jobsData = response.data;
+  } catch (error) {
+    const message = formatApiErrorMessage(
+      error,
+      "Failed to list workflow jobs",
+    );
+    return { success: false, message, recoverable: true };
+  }
 
   // Find the specific job by name
   const job = jobsData.jobs.find((j) => j.name === jobName);
   if (!job) {
     const availableJobs = jobsData.jobs.map((j) => j.name).join(", ");
-    console.log(
-      `Job "${jobName}" not found in workflow run. Available jobs: ${availableJobs}`,
-    );
-    return;
+    return {
+      success: false,
+      message: `Job "${jobName}" not found in workflow run. Available jobs: ${availableJobs}`,
+      recoverable: true,
+    };
   }
 
   // Get job logs
@@ -465,8 +554,12 @@ export async function runPostJobFeedback(
 
     logs = extractErrorLines(responseDataToString(response.data));
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    console.log(`Failed to get logs for job ${jobName}: ${message}`);
+    const message = formatApiErrorMessage(
+      error,
+      `Failed to get logs for job ${jobName}`,
+    );
+    console.log(message);
+    // Continue with "Unable to retrieve logs" - this is expected sometimes
   }
 
   const summary: JobSummary = {
@@ -476,21 +569,28 @@ export async function runPostJobFeedback(
   };
 
   // Check existing comments to count failures
-  const { data: comments } = await octokit.rest.issues.listComments({
-    owner,
-    repo,
-    issue_number: prNumber,
-  });
+  let comments;
+  try {
+    const response = await octokit.rest.issues.listComments({
+      owner,
+      repo,
+      issue_number: prNumber,
+    });
+    comments = response.data;
+  } catch (error) {
+    const message = formatApiErrorMessage(error, "Failed to list PR comments");
+    return { success: false, message, recoverable: true };
+  }
 
   const jobFailureCounts = countPreviousFailures(comments);
   const failureCount = jobFailureCounts[jobName] || 0;
 
   // Skip if this job has already failed 3+ times
   if (failureCount >= 3) {
-    console.log(
-      `Job "${jobName}" has already failed ${failureCount} times. Skipping feedback.`,
-    );
-    return;
+    return {
+      success: true,
+      message: `Job "${jobName}" has already failed ${failureCount} times. Skipping feedback.`,
+    };
   }
 
   // Build and post comment for this single job
@@ -503,16 +603,25 @@ export async function runPostJobFeedback(
     jobFailureCounts,
   );
 
-  await octokit.rest.issues.createComment({
-    owner,
-    repo,
-    issue_number: prNumber,
-    body: commentBody,
-  });
+  try {
+    await octokit.rest.issues.createComment({
+      owner,
+      repo,
+      issue_number: prNumber,
+      body: commentBody,
+    });
+  } catch (error) {
+    const message = formatApiErrorMessage(
+      error,
+      "Failed to post CI feedback comment",
+    );
+    return { success: false, message, recoverable: true };
+  }
 
-  console.log(
-    `Posted CI feedback comment for job "${jobName}" on PR #${prNumber}`,
-  );
+  return {
+    success: true,
+    message: `Posted CI feedback comment for job "${jobName}" on PR #${prNumber}`,
+  };
 }
 
 /**
@@ -658,8 +767,27 @@ export function runPostJobFeedbackCLI(): void {
     runId,
     headSha,
     workflowRunUrl,
-  }).catch((error) => {
-    console.error("Post-job CI Feedback failed:", error);
-    process.exit(1);
-  });
+  })
+    .then((result) => {
+      if (result.success) {
+        console.log(result.message);
+      } else if (result.recoverable) {
+        // Recoverable errors should not fail the workflow step
+        console.warn(`⚠️ CI Feedback warning: ${result.message}`);
+        console.log(
+          "This is a recoverable error - the workflow step will not fail.",
+        );
+      } else {
+        console.error(`❌ CI Feedback error: ${result.message}`);
+        process.exit(1);
+      }
+    })
+    .catch((error) => {
+      // Unexpected errors - log but don't fail the workflow
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`⚠️ Unexpected CI Feedback error: ${message}`);
+      console.log(
+        "CI Feedback encountered an unexpected error but will not fail the workflow step.",
+      );
+    });
 }

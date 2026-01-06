@@ -89,6 +89,11 @@ impl InternalUsersState {
         Self::default()
     }
 
+    /// Check if currently fetching users.
+    pub fn is_fetching(&self) -> bool {
+        self.is_fetching
+    }
+
     /// Toggle OTP visibility for a user.
     pub fn toggle_otp_visibility(&mut self, username: Ustr) {
         let revealed = self.revealed_otps.entry(username).or_insert(false);

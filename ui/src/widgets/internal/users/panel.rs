@@ -60,13 +60,13 @@ fn render_controls_row(state_ctx: &mut StateCtx, api_base_url: &str, ui: &mut Ui
     let should_open_create = ui
         .horizontal(|ui| {
             let state = state_ctx.state_mut::<InternalUsersState>();
-            if ui.button("🔄 Refresh").clicked() && !state.is_fetching {
+            if ui.button("🔄 Refresh").clicked() && !state.is_fetching() {
                 state.set_fetching();
                 fetch_users(api_base_url, ui.ctx().clone());
             }
 
             let should_open_create = ui.button("➕ Create User").clicked();
-            if state.is_fetching {
+            if state.is_fetching() {
                 ui.spinner();
                 ui.label("Loading...");
             }
@@ -105,7 +105,7 @@ fn render_users_table(state_ctx: &mut StateCtx, ui: &mut Ui) -> (Option<Ustr>, O
     let state = state_ctx.state_mut::<InternalUsersState>();
 
     // If fetching and no users yet, show loading spinner in the table area
-    if state.is_fetching && state.users.is_empty() {
+    if state.is_fetching() && state.users.is_empty() {
         ui.vertical_centered(|ui| {
             ui.add_space(40.0);
             ui.spinner();

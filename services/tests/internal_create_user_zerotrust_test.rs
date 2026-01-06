@@ -182,6 +182,39 @@ impl UserStorage for RecordingUserStorage {
         map.insert(username.to_string(), updated_user.clone());
         Ok(updated_user)
     }
+
+    async fn update_profile(
+        &self,
+        username: &str,
+        nickname: Option<Option<String>>,
+        avatar_url: Option<Option<String>>,
+    ) -> Result<StoredUser, Self::Error> {
+        let mut map = self.users.write().expect("lock poisoned");
+        let old_user = map
+            .get(username)
+            .cloned()
+            .ok_or_else(|| UserStorageError::UserNotFound(username.to_string()))?;
+
+        let new_nickname = match nickname {
+            Some(value) => value,
+            None => old_user.nickname.clone(),
+        };
+        let new_avatar_url = match avatar_url {
+            Some(value) => value,
+            None => old_user.avatar_url.clone(),
+        };
+
+        let updated_user = StoredUser::with_profile(
+            username,
+            &old_user.secret,
+            new_nickname,
+            new_avatar_url,
+            old_user.created_at,
+            chrono::Utc::now(),
+        );
+        map.insert(username.to_string(), updated_user.clone());
+        Ok(updated_user)
+    }
 }
 
 /// A deterministic JWKS resolver backed by an RSA public key we generate for the test.

@@ -2,17 +2,19 @@
 
 use chrono::{DateTime, Utc};
 use collects_business::InternalUserItem;
+use collects_states::StateCtx;
 use egui::{Color32, RichText, Stroke, Ui};
 use egui_extras::TableRow;
 use ustr::Ustr;
 
 use super::cells::{
-    render_action_buttons, render_id_cell, render_otp_code_cell, render_otp_toggle_button,
-    render_time_remaining_cell, render_username_cell,
+    render_action_buttons, render_avatar_cell, render_id_cell, render_nickname_cell,
+    render_otp_code_cell, render_otp_toggle_button, render_time_remaining_cell,
+    render_timestamp_cell, render_username_cell,
 };
-use crate::widgets::internal::users::api::fetch_user_qr_code;
 use crate::widgets::internal::users::qr::generate_qr_image;
-use crate::widgets::internal::users::state::{InternalUsersState, UserAction};
+use collects_business::internal_users::api as internal_users_api;
+use collects_business::{InternalUsersState, UserAction};
 
 /// Data needed to render a user row.
 pub struct UserRowData {
@@ -20,7 +22,6 @@ pub struct UserRowData {
     pub user: InternalUserItem,
     pub is_revealed: bool,
     pub time_remaining: u8,
-    pub is_qr_expanded: bool,
 }
 
 /// Result of rendering a user row.
@@ -33,10 +34,14 @@ pub struct UserRowResult {
 ///
 /// This function renders a complete row including:
 /// - ID with border indicator
+/// - Avatar (icon or placeholder)
 /// - Username
+/// - Nickname
 /// - OTP code (revealed or hidden)
 /// - Time remaining with color coding
 /// - OTP toggle button
+/// - Created timestamp
+/// - Updated timestamp
 /// - Action buttons
 ///
 /// If QR code is expanded, also renders the QR inline below the row data.
@@ -50,13 +55,24 @@ pub fn render_user_row(row: &mut TableRow<'_, '_>, data: &UserRowData) -> UserRo
     // ID cell with border indicator
     row.col(|ui| {
         render_id_cell(ui, data.index);
-        // Draw bottom border for the cell
+        draw_cell_bottom_border(ui);
+    });
+
+    // Avatar cell
+    row.col(|ui| {
+        render_avatar_cell(ui, data.user.avatar_url.as_deref());
         draw_cell_bottom_border(ui);
     });
 
     // Username cell
     row.col(|ui| {
         render_username_cell(ui, &data.user.username);
+        draw_cell_bottom_border(ui);
+    });
+
+    // Nickname cell
+    row.col(|ui| {
+        render_nickname_cell(ui, data.user.nickname.as_deref());
         draw_cell_bottom_border(ui);
     });
 
@@ -77,6 +93,18 @@ pub fn render_user_row(row: &mut TableRow<'_, '_>, data: &UserRowData) -> UserRo
         if render_otp_toggle_button(ui, data.is_revealed) {
             result.toggle_otp = true;
         }
+        draw_cell_bottom_border(ui);
+    });
+
+    // Created timestamp cell
+    row.col(|ui| {
+        render_timestamp_cell(ui, &data.user.created_at);
+        draw_cell_bottom_border(ui);
+    });
+
+    // Updated timestamp cell
+    row.col(|ui| {
+        render_timestamp_cell(ui, &data.user.updated_at);
         draw_cell_bottom_border(ui);
     });
 
@@ -107,6 +135,7 @@ fn draw_cell_bottom_border(ui: &mut Ui) {
 /// This shows the QR code inline instead of in a modal window.
 #[inline]
 pub fn render_qr_expansion(
+    state_ctx: &StateCtx,
     state: &mut InternalUsersState,
     api_base_url: &str,
     username: &Ustr,
@@ -180,7 +209,52 @@ pub fn render_qr_expansion(
                 } else {
                     // Fetch user data to get QR code
                     state.set_action_in_progress();
-                    fetch_user_qr_code(api_base_url, username.as_str(), ctx);
+
+                    // Pull CF token from business compute and call business-layer API helper.
+                    // We keep the existing egui-memory based response plumbing: the callback writes the
+                    // result into egui temp memory, and `poll_internal_users_responses()` consumes it.
+                    let api_base_url = api_base_url.to_string();
+                    let username = username.to_string();
+
+                    let Some(cf_token) = state_ctx.cached::<collects_business::CFTokenCompute>()
+                    else {
+                        ctx.memory_mut(|mem| {
+                            mem.data.insert_temp(
+                                egui::Id::new("action_error"),
+                                "Missing CF token compute".to_string(),
+                            );
+                        });
+                        return;
+                    };
+
+                    internal_users_api::get_user(
+                        &api_base_url,
+                        cf_token,
+                        &username,
+                        move |result: collects_business::internal_users::api::ApiResult<
+                            collects_business::GetUserResponse,
+                        >| {
+                            ctx.request_repaint();
+                            match result {
+                                Ok(user_response) => {
+                                    ctx.memory_mut(|mem| {
+                                        mem.data.insert_temp(
+                                            egui::Id::new("user_qr_code_response"),
+                                            user_response.otpauth_url,
+                                        );
+                                    });
+                                }
+                                Err(err) => {
+                                    ctx.memory_mut(|mem| {
+                                        mem.data.insert_temp(
+                                            egui::Id::new("action_error"),
+                                            err.to_string(),
+                                        );
+                                    });
+                                }
+                            }
+                        },
+                    );
                 }
             });
         });
@@ -196,15 +270,11 @@ pub fn prepare_user_row_data(
 ) -> UserRowData {
     let is_revealed = state.is_otp_revealed(&user.username);
     let time_remaining = state.calculate_time_remaining(user.time_remaining, now);
-    let username_ustr = Ustr::from(&user.username);
-    let is_qr_expanded =
-        matches!(&state.current_action, UserAction::ShowQrCode(u) if *u == username_ustr);
 
     UserRowData {
         index,
         user: user.clone(),
         is_revealed,
         time_remaining,
-        is_qr_expanded,
     }
 }

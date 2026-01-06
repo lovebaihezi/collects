@@ -54,6 +54,14 @@ pub struct UserListItem {
     pub current_otp: String,
     /// Seconds remaining until the OTP code expires (1-30).
     pub time_remaining: u8,
+    /// The user's nickname (optional).
+    pub nickname: Option<String>,
+    /// The user's avatar URL (optional).
+    pub avatar_url: Option<String>,
+    /// When the user was created (ISO 8601 format).
+    pub created_at: String,
+    /// When the user was last updated (ISO 8601 format).
+    pub updated_at: String,
 }
 
 /// Response for the list users endpoint.
@@ -110,6 +118,26 @@ pub struct DeleteUserResponse {
     pub username: String,
     /// Whether the deletion was successful.
     pub deleted: bool,
+}
+
+/// Request to update user's profile (nickname and avatar URL).
+#[derive(Debug, Deserialize)]
+pub struct UpdateProfileRequest {
+    /// The new nickname (optional, pass null to remove).
+    pub nickname: Option<String>,
+    /// The new avatar URL (optional, pass null to remove).
+    pub avatar_url: Option<String>,
+}
+
+/// Response for updating user's profile.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UpdateProfileResponse {
+    /// The username.
+    pub username: String,
+    /// The updated nickname.
+    pub nickname: Option<String>,
+    /// The updated avatar URL.
+    pub avatar_url: Option<String>,
 }
 
 /// Error response for API endpoints.
@@ -199,6 +227,7 @@ where
         .route("/users/{username}", put(update_username::<S, U>))
         .route("/users/{username}", delete(delete_user::<S, U>))
         .route("/users/{username}/revoke", post(revoke_otp::<S, U>))
+        .route("/users/{username}/profile", put(update_profile::<S, U>))
 }
 
 /// Creates the router for authentication endpoints.
@@ -350,6 +379,10 @@ where
                             username: user.username,
                             current_otp: otp,
                             time_remaining,
+                            nickname: user.nickname,
+                            avatar_url: user.avatar_url,
+                            created_at: user.created_at.to_rfc3339(),
+                            updated_at: user.updated_at.to_rfc3339(),
                         }),
                         Err(e) => {
                             tracing::warn!(
@@ -904,6 +937,88 @@ where
             let (status, json): (StatusCode, Json<ErrorResponse>) =
                 UserStorageError::StorageError(e.to_string()).into();
             (status, json).into_response()
+        }
+    }
+}
+
+/// Handler for updating a user's profile (nickname and avatar URL).
+///
+/// # Request
+///
+/// PUT /internal/users/:username/profile
+///
+/// ```json
+/// {
+///     "nickname": "John",
+///     "avatar_url": "https://example.com/avatar.png"
+/// }
+/// ```
+///
+/// # Response
+///
+/// ```json
+/// {
+///     "username": "john_doe",
+///     "nickname": "John",
+///     "avatar_url": "https://example.com/avatar.png"
+/// }
+/// ```
+#[tracing::instrument(skip_all, fields(username = %username))]
+async fn update_profile<S, U>(
+    State(state): State<AppState<S, U>>,
+    Path(username): Path<String>,
+    Json(payload): Json<UpdateProfileRequest>,
+) -> impl IntoResponse
+where
+    S: SqlStorage,
+    U: UserStorage,
+{
+    tracing::info!("Updating profile for user");
+
+    // Convert the request format to storage format
+    // The request uses Option<String> where Some("value") sets the field and None clears it
+    // For the storage, we need Option<Option<String>> where:
+    // - None means "don't update"
+    // - Some(None) means "clear the field"
+    // - Some(Some("value")) means "set to value"
+    //
+    // In this API, we always update both fields if provided in the request
+    let nickname_update = Some(payload.nickname);
+    let avatar_url_update = Some(payload.avatar_url);
+
+    match state
+        .user_storage
+        .update_profile(&username, nickname_update, avatar_url_update)
+        .await
+    {
+        Ok(updated_user) => {
+            tracing::info!("Successfully updated profile for user");
+            (
+                StatusCode::OK,
+                Json(UpdateProfileResponse {
+                    username: updated_user.username,
+                    nickname: updated_user.nickname,
+                    avatar_url: updated_user.avatar_url,
+                }),
+            )
+                .into_response()
+        }
+        Err(e) => {
+            tracing::error!("Failed to update profile: {}", e);
+            let error_str = e.to_string();
+            let (status, error_type) = if error_str.contains("not found") {
+                (StatusCode::NOT_FOUND, "user_not_found")
+            } else {
+                (StatusCode::INTERNAL_SERVER_ERROR, "storage_error")
+            };
+            (
+                status,
+                Json(ErrorResponse {
+                    error: error_type.to_string(),
+                    message: error_str,
+                }),
+            )
+                .into_response()
         }
     }
 }

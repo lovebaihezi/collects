@@ -5,6 +5,8 @@
 
 use std::any::{Any, TypeId};
 
+use collects_states::state_assign_impl;
+
 use crate::BusinessConfig;
 use chrono::{DateTime, Utc};
 use collects_states::{Compute, ComputeDeps, Dep, State, Time, Updater, assign_impl};
@@ -152,13 +154,21 @@ impl Compute for InternalApiStatus {
         self
     }
 
-    fn assign_box(&mut self, new_self: Box<dyn Any>) {
+    fn assign_box(&mut self, new_self: Box<dyn Any + Send>) {
         assign_impl(self, new_self);
     }
 }
 
 impl State for InternalApiStatus {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
+    }
+
+    fn assign_box(&mut self, new_self: Box<dyn Any + Send>) {
+        state_assign_impl(self, new_self);
     }
 }

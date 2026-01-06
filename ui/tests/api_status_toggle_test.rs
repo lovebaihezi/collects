@@ -26,7 +26,6 @@ fn is_api_status_visible(harness: &egui_kittest::Harness<'_, collects_ui::Collec
 
 /// Tests that API status panel is hidden by default.
 #[tokio::test]
-#[ignore = "temporarily ignored during refactor; currently panics due to missing compute registration in app init"]
 async fn test_api_status_hidden_by_default() {
     let mut ctx = TestCtx::new_app().await;
     let harness = ctx.harness_mut();
@@ -43,7 +42,6 @@ async fn test_api_status_hidden_by_default() {
 
 /// Tests that F1 key press toggles the visibility from off to on.
 #[tokio::test]
-#[ignore = "temporarily ignored during refactor; currently panics due to missing compute registration in app init"]
 async fn test_f1_key_shows_api_status() {
     let mut ctx = TestCtx::new_app().await;
     let harness = ctx.harness_mut();
@@ -78,7 +76,6 @@ async fn test_f1_key_shows_api_status() {
 
 /// Tests that F1 key press toggles the visibility from on to off.
 #[tokio::test]
-#[ignore = "temporarily ignored during refactor; currently panics due to missing compute registration in app init"]
 async fn test_f1_key_hides_api_status() {
     let mut ctx = TestCtx::new_app().await;
     let harness = ctx.harness_mut();
@@ -124,7 +121,6 @@ async fn test_f1_key_hides_api_status() {
 
 /// Tests multiple F1 key presses toggle correctly.
 #[tokio::test]
-#[ignore = "temporarily ignored during refactor; currently panics due to missing compute registration in app init"]
 async fn test_multiple_f1_toggles() {
     let mut ctx = TestCtx::new_app().await;
     let harness = ctx.harness_mut();

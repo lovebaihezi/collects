@@ -1,6 +1,8 @@
+use std::any::Any;
+
 use chrono::{DateTime, Utc};
 
-use crate::State;
+use crate::{State, state_assign_impl};
 
 #[derive(Debug)]
 pub struct Time {
@@ -13,11 +15,17 @@ impl Default for Time {
     }
 }
 
-use std::any::Any;
-
 impl State for Time {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
+    }
+
+    fn assign_box(&mut self, new_self: Box<dyn Any + Send>) {
+        state_assign_impl(self, new_self);
     }
 }
 

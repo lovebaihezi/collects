@@ -270,14 +270,64 @@ jobs:
 
 The application uses a reactive state management system with `StateCtx` for state and `Compute` for derived/async values.
 
+### State Update Pattern
+
+There are two distinct patterns for updating state, depending on where the update happens:
+
+#### 1) UI code → State: use `update()` for mutations (preferred)
+
+For synchronous state mutations in UI code, **prefer `update()`** over `state_mut()` because `update()` automatically marks dependent computes as dirty:
+
+```rust
+// UI mutates state with auto dirty propagation
+state_ctx.update::<InternalUsersState>(|s| s.close_action());
+state_ctx.update::<InternalUsersState>(|s| s.start_action(action));
+state_ctx.update::<InternalUsersState>(|s| s.toggle_otp_visibility(username));
+```
+
+**When to use `update()`:**
+- Opening/closing modals or panels
+- Toggling UI visibility flags
+- Any synchronous state change that doesn't require network IO
+- Any state mutation where dependent computes should be re-run
+
+**When to use `state_mut()`:**
+- Read-only access to state (e.g., reading `.users`, `.current_action`)
+- Binding mutable references to UI widgets (e.g., `text_edit_singleline(&mut state.new_username)`)
+- When you explicitly don't want to trigger dirty propagation
+
+#### 2) Commands → Compute/State: use `Updater::set()` / `Updater::set_state()`
+
+For async operations in commands that update Computes or States after network IO:
+
+```rust
+impl Command for MyAsyncCommand {
+    fn run(&self, deps: Dep, updater: Updater) {
+        // Update Compute via updater
+        updater.set(MyCompute { result: MyResult::Loading });
+        
+        // Kick off async request
+        my_api::fetch(move |result| {
+            updater.set(MyCompute { result: MyResult::Loaded(result) });
+        });
+    }
+}
+```
+
+**When to use `Updater`:**
+- Async command callbacks that need to update state after network IO completes
+- Cross-thread state updates (Updater is Send-safe)
+
+**Note:** States containing non-Send types (e.g., `egui::TextureHandle`) cannot be updated via `Updater::set_state()`. For such states, use `state_mut` in UI code.
+
 ### Ownership: business vs UI
 
 All application/domain `State`, `Compute`, and `Command` definitions **MUST** live in the `business/` crate (aka `collects_business`).
 
 UI code under `ui/` (including `ui/src/widgets/**`) must be UI-only:
-- **Read** via `ctx.cached::<T>()`.
-- **Do NOT directly mutate business state** from UI code (i.e. do not call `state_ctx.state_mut::<BusinessState>()` to change domain/workflow state).
-- **Write** to business/domain only by dispatching commands via `ctx.dispatch::<SomeCommand>()`.
+- **Read** via `ctx.cached::<T>()` for Computes, `ctx.state_mut::<T>()` for reading State.
+- **Write to State** via `state_ctx.update::<T>(|s| ...)` for synchronous operations (auto dirty propagation).
+- **Write to Compute** only by dispatching commands via `ctx.dispatch::<SomeCommand>()`.
 - UI-local transient state (e.g. draft text for chatty inputs) may live in UI, but must not be stored in business state unless it needs cross-view persistence.
 - Must not define new domain `State`/`Compute`/`Command` types.
 
@@ -308,15 +358,17 @@ UI-local drafts (in `ui/`) should hold chatty input buffers:
 
 Do not store half-typed draft strings in business state unless you need cross-view persistence.
 
-#### 2) Async work always happens in a Command, results always land in a Compute
+#### 2) Async work always happens in a Command, results land in Compute via Updater
 
 - Commands are manual-only and are dispatched explicitly by UI events.
 - Commands may perform (callback-based) network IO.
 - Commands must update Computes using `Updater::set()`:
   - set `Loading` immediately
   - set `Loaded` / `Error` on completion
+- Commands can update State using `Updater::set_state()` for async callbacks (if State is Send-safe).
+- For synchronous State changes, UI should use `update()` directly instead of dispatching a command.
 
-Do not run network IO inside a Compute’s `compute()` method.
+Do not run network IO inside a Compute's `compute()` method.
 
 #### 3) Do not use egui memory as an async message bus
 
@@ -324,14 +376,19 @@ Do not use `egui::Context` memory (e.g. `ctx.memory_mut` / `mem.data.insert_temp
 
 Using egui memory for widget-internal ephemeral UI concerns is fine; using it to carry domain/workflow async results is not.
 
-### Updating Computes
+### Updating Computes and States
 
-Computes **MUST** only be updated through the Command pattern using `Updater::set()`. Never mutate computes directly.
+**Computes** must only be updated through the Command pattern using `Updater::set()`. Never mutate computes directly.
 
-**Why:**
-- Ensures state changes are trackable and predictable
-- Allows async operations to safely update state
-- Maintains separation between state reading and writing
+**States** can be updated in two ways:
+1. **UI code**: Use `state_ctx.update::<T>(|s| ...)` for synchronous mutations (auto dirty propagation)
+2. **Command callbacks**: Use `Updater::set_state::<T>()` for async updates (if T is Send-safe)
+
+**Why this pattern:**
+- Computes are derived/cached values that should only change via explicit commands
+- States can be mutated directly in UI for simple synchronous operations (no command boilerplate needed)
+- Async command callbacks can safely update both Computes and States via the Updater channel
+- The Updater channel ensures thread-safe updates from async callbacks
 
 #### Reference example: list/refresh flow (Command → Compute)
 
@@ -355,7 +412,7 @@ impl Compute for MyListCompute {
     fn as_any(&self) -> &dyn Any { self }
     fn deps(&self) -> ComputeDeps { (&[], &[]) }
     fn compute(&self, _deps: Dep, _updater: Updater) { /* no-op */ }
-    fn assign_box(&mut self, new_self: Box<dyn Any>) { assign_impl(self, new_self); }
+    fn assign_box(&mut self, new_self: Box<dyn Any + Send>) { assign_impl(self, new_self); }
 }
 
 #[derive(Default, Debug)]

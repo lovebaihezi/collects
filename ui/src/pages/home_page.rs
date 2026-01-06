@@ -20,10 +20,7 @@ pub fn home_page(state: &mut State, ui: &mut Ui) -> Response {
         .unwrap_or_default();
 
     // Check if we have an image to display full screen
-    let has_image = {
-        let image_state = state.ctx.state_mut::<widgets::ImagePreviewState>();
-        image_state.has_image()
-    };
+    let has_image = state.ctx.state::<widgets::ImagePreviewState>().has_image();
 
     if has_image {
         // Full screen image display mode - no header

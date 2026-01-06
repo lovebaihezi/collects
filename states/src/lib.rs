@@ -17,7 +17,7 @@ pub use dep::Dep;
 pub use enum_states::BasicStates;
 pub use graph::{DepRoute, Graph, TopologyError};
 pub use runtime::StateRuntime;
-pub use state::{Reader, State, Updater};
+pub use state::{Reader, State, Updater, state_assign_impl};
 pub use state_sync_status::Stage;
 
 /// Manual-only side effects / commands.
@@ -52,8 +52,16 @@ mod state_runtime_test {
     }
 
     impl State for DummyState {
+        fn as_any(&self) -> &dyn Any {
+            self
+        }
+
         fn as_any_mut(&mut self) -> &mut dyn Any {
             self
+        }
+
+        fn assign_box(&mut self, new_self: Box<dyn Any + Send>) {
+            state_assign_impl(self, new_self);
         }
     }
 
@@ -63,8 +71,16 @@ mod state_runtime_test {
     }
 
     impl State for DummyComputeA {
+        fn as_any(&self) -> &dyn Any {
+            self
+        }
+
         fn as_any_mut(&mut self) -> &mut dyn Any {
             self
+        }
+
+        fn assign_box(&mut self, new_self: Box<dyn Any + Send>) {
+            state_assign_impl(self, new_self);
         }
     }
 
@@ -85,7 +101,7 @@ mod state_runtime_test {
             });
         }
 
-        fn assign_box(&mut self, new_self: Box<dyn Any>) {
+        fn assign_box(&mut self, new_self: Box<dyn Any + Send>) {
             assign_impl(self, new_self);
         }
     }
@@ -112,8 +128,16 @@ mod state_runtime_test {
     }
 
     impl State for DummyComputeB {
+        fn as_any(&self) -> &dyn Any {
+            self
+        }
+
         fn as_any_mut(&mut self) -> &mut dyn Any {
             self
+        }
+
+        fn assign_box(&mut self, new_self: Box<dyn Any + Send>) {
+            state_assign_impl(self, new_self);
         }
     }
 
@@ -136,7 +160,7 @@ mod state_runtime_test {
             }
         }
 
-        fn assign_box(&mut self, new_self: Box<dyn Any>) {
+        fn assign_box(&mut self, new_self: Box<dyn Any + Send>) {
             assign_impl(self, new_self);
         }
     }
@@ -219,8 +243,16 @@ mod state_runtime_test {
     }
 
     impl State for DummyComputeC {
+        fn as_any(&self) -> &dyn Any {
+            self
+        }
+
         fn as_any_mut(&mut self) -> &mut dyn Any {
             self
+        }
+
+        fn assign_box(&mut self, new_self: Box<dyn Any + Send>) {
+            state_assign_impl(self, new_self);
         }
     }
 
@@ -243,7 +275,7 @@ mod state_runtime_test {
             });
         }
 
-        fn assign_box(&mut self, new_self: Box<dyn Any>) {
+        fn assign_box(&mut self, new_self: Box<dyn Any + Send>) {
             assign_impl(self, new_self);
         }
     }
@@ -285,8 +317,16 @@ mod state_runtime_test {
     }
 
     impl State for SideEffectCountState {
+        fn as_any(&self) -> &dyn Any {
+            self
+        }
+
         fn as_any_mut(&mut self) -> &mut dyn Any {
             self
+        }
+
+        fn assign_box(&mut self, new_self: Box<dyn Any + Send>) {
+            state_assign_impl(self, new_self);
         }
     }
 
@@ -330,8 +370,16 @@ mod state_runtime_test {
     }
 
     impl State for DummyComputeFromCommand {
+        fn as_any(&self) -> &dyn Any {
+            self
+        }
+
         fn as_any_mut(&mut self) -> &mut dyn Any {
             self
+        }
+
+        fn assign_box(&mut self, new_self: Box<dyn Any + Send>) {
+            state_assign_impl(self, new_self);
         }
     }
 
@@ -350,7 +398,7 @@ mod state_runtime_test {
             // Intentionally no-op: this compute is updated by a Command via Updater.
         }
 
-        fn assign_box(&mut self, new_self: Box<dyn Any>) {
+        fn assign_box(&mut self, new_self: Box<dyn Any + Send>) {
             assign_impl(self, new_self);
         }
     }
@@ -390,8 +438,16 @@ mod state_runtime_test {
     }
 
     impl State for UnregisteredCompute {
+        fn as_any(&self) -> &dyn Any {
+            self
+        }
+
         fn as_any_mut(&mut self) -> &mut dyn Any {
             self
+        }
+
+        fn assign_box(&mut self, new_self: Box<dyn Any + Send>) {
+            state_assign_impl(self, new_self);
         }
     }
 
@@ -410,7 +466,7 @@ mod state_runtime_test {
             // Intentionally no-op: this compute is only used to validate strict syncing.
         }
 
-        fn assign_box(&mut self, new_self: Box<dyn Any>) {
+        fn assign_box(&mut self, new_self: Box<dyn Any + Send>) {
             assign_impl(self, new_self);
         }
     }
@@ -449,8 +505,16 @@ mod state_runtime_test {
     }
 
     impl State for ExecutionCountingCompute {
+        fn as_any(&self) -> &dyn Any {
+            self
+        }
+
         fn as_any_mut(&mut self) -> &mut dyn Any {
             self
+        }
+
+        fn assign_box(&mut self, new_self: Box<dyn Any + Send>) {
+            state_assign_impl(self, new_self);
         }
     }
 
@@ -476,7 +540,7 @@ mod state_runtime_test {
             });
         }
 
-        fn assign_box(&mut self, new_self: Box<dyn Any>) {
+        fn assign_box(&mut self, new_self: Box<dyn Any + Send>) {
             assign_impl(self, new_self);
         }
     }

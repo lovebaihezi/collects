@@ -1,4 +1,4 @@
-use collects_states::State;
+use collects_states::{State, state_assign_impl};
 use std::any::Any;
 use ustr::Ustr;
 
@@ -56,8 +56,16 @@ impl Default for BusinessConfig {
 }
 
 impl State for BusinessConfig {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
+    }
+
+    fn assign_box(&mut self, new_self: Box<dyn Any + Send>) {
+        state_assign_impl(self, new_self);
     }
 }
 

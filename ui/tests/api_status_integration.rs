@@ -3,7 +3,6 @@ use crate::common::TestCtx;
 mod common;
 
 #[tokio::test]
-#[ignore = "temporarily ignored during refactor; currently panics due to missing compute registration in app init"]
 async fn test_api_status_with_200() {
     let mut ctx = TestCtx::new_app().await;
 
@@ -21,7 +20,6 @@ async fn test_api_status_with_200() {
 }
 
 #[tokio::test]
-#[ignore = "temporarily ignored during refactor; currently panics due to missing compute registration in app init"]
 async fn test_api_status_with_404() {
     let mut ctx = TestCtx::new_app_with_status(404).await;
 
@@ -38,7 +36,6 @@ async fn test_api_status_with_404() {
 }
 
 #[tokio::test]
-#[ignore = "temporarily ignored during refactor; currently panics due to missing compute registration in app init"]
 async fn test_api_status_with_500() {
     let mut ctx = TestCtx::new_app_with_status(500).await;
 

@@ -156,7 +156,7 @@ async fn setup_with_verify_otp_server_error<'a>(
 #[tokio::test]
 async fn test_login_input_initial_state() {
     let mut ctx = setup_login_test(|ui, state| {
-        let input = state.ctx.state_mut::<LoginInput>();
+        let input = state.ctx.state::<LoginInput>();
         ui.label(format!("Username: {}", input.username));
         ui.label(format!("OTP: {}", input.otp));
     })
@@ -167,7 +167,7 @@ async fn test_login_input_initial_state() {
 
     // Initial state should have empty values
     let state = harness.state();
-    let input = state.ctx.state_mut::<LoginInput>();
+    let input = state.ctx.state::<LoginInput>();
     assert!(
         input.username.is_empty(),
         "LoginInput should start with empty username"

@@ -35,16 +35,12 @@ pub fn internal_users_panel(state_ctx: &mut StateCtx, api_base_url: &str, ui: &m
 
         // Apply toggle action after table iteration
         if let Some(username) = username_to_toggle {
-            state_ctx
-                .state_mut::<InternalUsersState>()
-                .toggle_otp_visibility(username);
+            state_ctx.update::<InternalUsersState>(|s| s.toggle_otp_visibility(username));
         }
 
         // Start action if requested
         if let Some(action) = action_to_start {
-            state_ctx
-                .state_mut::<InternalUsersState>()
-                .start_action(action);
+            state_ctx.update::<InternalUsersState>(|s| s.start_action(action));
         }
 
         // Render QR code expansion inline (after table) if ShowQrCode action is active
@@ -89,9 +85,7 @@ fn render_controls_row(state_ctx: &mut StateCtx, api_base_url: &str, ui: &mut Ui
     // Handle create modal open
     if should_open_create {
         reset_create_user_compute(state_ctx);
-        state_ctx
-            .state_mut::<InternalUsersState>()
-            .open_create_modal();
+        state_ctx.update::<InternalUsersState>(|s| s.open_create_modal());
     }
 }
 
@@ -115,7 +109,7 @@ fn render_users_table(state_ctx: &mut StateCtx, ui: &mut Ui) -> (Option<Ustr>, O
     let mut action_to_start: Option<UserAction> = None;
 
     // Get current time for calculating real-time OTP time remaining
-    let now = *state_ctx.state_mut::<Time>().as_ref();
+    let now = *state_ctx.state::<Time>().as_ref();
 
     // Source users from the list-users compute (refresh slice).
     let users: Vec<InternalUserItem> = match state_ctx.cached::<InternalUsersListUsersCompute>() {
@@ -127,7 +121,7 @@ fn render_users_table(state_ctx: &mut StateCtx, ui: &mut Ui) -> (Option<Ustr>, O
     };
 
     // Users table using native egui_extras TableBuilder
-    let state = state_ctx.state_mut::<InternalUsersState>();
+    let state = state_ctx.state::<InternalUsersState>();
 
     // Prepare user row data outside the table body closure
     let user_data: Vec<_> = users
@@ -171,9 +165,13 @@ fn render_users_table(state_ctx: &mut StateCtx, ui: &mut Ui) -> (Option<Ustr>, O
 /// Renders the inline QR code expansion if ShowQrCode action is active.
 #[inline]
 fn render_inline_qr_expansion(state_ctx: &mut StateCtx, api_base_url: &str, ui: &mut Ui) {
-    let state = state_ctx.state_mut::<InternalUsersState>();
+    let current_action = state_ctx
+        .state::<InternalUsersState>()
+        .current_action
+        .clone();
 
-    if let UserAction::ShowQrCode(username) = &state.current_action.clone() {
+    if let UserAction::ShowQrCode(username) = &current_action {
+        let state = state_ctx.state_mut::<InternalUsersState>();
         render_qr_expansion(state_ctx, state, api_base_url, username, ui);
     }
 }
@@ -182,14 +180,17 @@ fn render_inline_qr_expansion(state_ctx: &mut StateCtx, api_base_url: &str, ui: 
 #[inline]
 fn render_modals(state_ctx: &mut StateCtx, api_base_url: &str, ui: &mut Ui) {
     // Create user modal
-    let state = state_ctx.state_mut::<InternalUsersState>();
-    if state.create_modal_open {
+    let create_modal_open = state_ctx.state::<InternalUsersState>().create_modal_open;
+    if create_modal_open {
         show_create_user_modal(state_ctx, ui);
     }
 
     // Action modals (except QR code which is now inline)
-    let state = state_ctx.state_mut::<InternalUsersState>();
-    match &state.current_action.clone() {
+    let current_action = state_ctx
+        .state::<InternalUsersState>()
+        .current_action
+        .clone();
+    match &current_action {
         UserAction::EditUsername(username) => {
             show_edit_username_modal(state_ctx, api_base_url, *username, ui);
         }
@@ -208,9 +209,10 @@ fn render_modals(state_ctx: &mut StateCtx, api_base_url: &str, ui: &mut Ui) {
 
 /// Reset the CreateUserCompute to idle state.
 pub(crate) fn reset_create_user_compute(state_ctx: &mut StateCtx) {
-    // Clear the input
-    let input = state_ctx.state_mut::<CreateUserInput>();
-    input.username = None;
+    // Clear the input using update() for proper dirty propagation
+    state_ctx.update::<CreateUserInput>(|input| {
+        input.username = None;
+    });
     // Mark compute as clean so it doesn't auto-run
     state_ctx.mark_clean(&TypeId::of::<CreateUserCompute>());
 }

@@ -115,6 +115,9 @@ export function generateDiagnosisPlans(logs: string): DiagnosisPlan[] {
   }
 
   // Docker/Container errors
+  // Note: These string checks are for error log classification only, not URL validation.
+  // CodeQL may flag "gcr.io" check as incomplete URL sanitization, but this is a false
+  // positive - we're categorizing error messages, not validating or sanitizing URLs.
   if (
     lowerLogs.includes("docker") ||
     lowerLogs.includes("container") ||

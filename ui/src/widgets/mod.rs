@@ -41,6 +41,7 @@
 //!   flow test when we have a stable token acquisition story (manual or PKCE).
 mod api_status;
 mod footer;
+mod image_diag;
 mod image_preview;
 mod internal;
 mod login;
@@ -49,5 +50,6 @@ pub use internal::{InternalUsersState, UserAction, internal_users_panel};
 
 pub use api_status::api_status;
 pub use footer::powered_by_egui_and_eframe;
+pub use image_diag::{ImageDiagAction, image_diag_window};
 pub use image_preview::{ImagePreviewState, image_preview, image_preview_fullscreen};
 pub use login::{login_widget, show_signed_in_header};

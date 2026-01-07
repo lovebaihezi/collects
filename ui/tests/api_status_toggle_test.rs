@@ -4,6 +4,10 @@
 //! 1. API status panel is hidden by default
 //! 2. F1 key press correctly toggles visibility via ToggleApiStatusCommand
 //! 3. The show_status flag persists through API compute updates
+//!
+//! Note: F1 key functionality is disabled in WASM builds (target_arch = "wasm32")
+//! to prevent triggering browser default behavior (e.g., Chrome help page).
+//! These tests run on native builds where F1 is available.
 
 use crate::common::TestCtx;
 use kittest::Queryable;

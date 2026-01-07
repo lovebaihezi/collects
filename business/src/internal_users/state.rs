@@ -19,6 +19,9 @@ use ustr::Ustr;
 
 use crate::InternalUserItem;
 
+/// OTP codes change every 30 seconds (TOTP standard).
+const OTP_CYCLE_SECONDS: i64 = 30;
+
 /// Action type for user management.
 /// This drives which modal/action UI is currently active.
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -297,8 +300,6 @@ impl InternalUsersState {
     ///
     /// The real-time seconds remaining (1-30), automatically wrapping through OTP cycles.
     pub fn calculate_time_remaining(&self, original_time_remaining: u8, now: DateTime<Utc>) -> u8 {
-        const OTP_CYCLE_SECONDS: i64 = 30;
-
         let Some(last_fetch) = self.last_fetch else {
             // If no fetch time recorded, return original value
             return original_time_remaining;
@@ -374,8 +375,6 @@ impl InternalUsersState {
     /// The number of complete OTP cycles that have elapsed. 0 means we're still
     /// in the same cycle, 1 means one full cycle has passed, etc.
     pub fn otp_cycles_elapsed(&self, original_time_remaining: u8, now: DateTime<Utc>) -> u32 {
-        const OTP_CYCLE_SECONDS: i64 = 30;
-
         let Some(last_fetch) = self.last_fetch else {
             return 0;
         };

@@ -331,7 +331,8 @@ impl<P: PasteHandler, D: DropHandler> eframe::App for CollectsApp<P, D> {
         }
 
         // Toggle API status display when F1 is pressed
-        // Use consume_key to prevent browser default behavior (e.g., Chrome help) in WASM
+        // In WASM builds, F1 is reserved by browsers (e.g., Chrome help), so we disable this shortcut
+        #[cfg(not(target_arch = "wasm32"))]
         if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::F1)) {
             self.state.ctx.dispatch::<ToggleApiStatusCommand>();
         }
@@ -398,8 +399,7 @@ impl<P: PasteHandler, D: DropHandler> eframe::App for CollectsApp<P, D> {
                 )
                 .collapsible(true)
                 .resizable(true)
-                .default_width(400.0)
-                .default_height(500.0)
+                .auto_sized()
                 .show(ctx, |ui| {
                     diag_action = widgets::image_diag_window(&self.state.ctx, ui);
                 });

@@ -162,7 +162,6 @@ pub fn image_diag_window(state_ctx: &StateCtx, ui: &mut Ui) -> ImageDiagAction {
         );
     } else {
         ScrollArea::vertical()
-            .max_height(300.0)
             .id_salt("event_log")
             .show(ui, |ui| {
                 for entry in log_entries {

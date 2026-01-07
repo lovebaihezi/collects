@@ -48,9 +48,8 @@ impl FilePickerHandler for SystemFilePickerHandler {
 #[cfg(not(target_arch = "wasm32"))]
 pub fn handle_file_pick_shortcut(ctx: &egui::Context) -> Option<ImageData> {
     // Check for Ctrl+O (or Cmd+O on macOS)
-    let open_shortcut_pressed = ctx.input(|i| {
-        i.key_pressed(egui::Key::O) && i.modifiers.command_only()
-    });
+    let open_shortcut_pressed =
+        ctx.input(|i| i.key_pressed(egui::Key::O) && i.modifiers.command_only());
 
     if !open_shortcut_pressed {
         return None;
@@ -72,7 +71,12 @@ pub fn pick_image_file() -> Option<ImageData> {
     use rfd::FileDialog;
 
     let file_path = FileDialog::new()
-        .add_filter("Image", &["png", "jpg", "jpeg", "gif", "bmp", "webp", "ico", "tiff", "tif"])
+        .add_filter(
+            "Image",
+            &[
+                "png", "jpg", "jpeg", "gif", "bmp", "webp", "ico", "tiff", "tif",
+            ],
+        )
         .set_title("Select an image")
         .pick_file()?;
 

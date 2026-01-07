@@ -56,7 +56,12 @@ impl CollectsApp<SystemPasteHandler, SystemDropHandler, SystemFilePickerHandler>
 
 impl<P: PasteHandler, D: DropHandler, F: FilePickerHandler> CollectsApp<P, D, F> {
     /// Create a new app with custom paste, drop and file picker handlers (for testing).
-    pub fn with_handlers(state: State, paste_handler: P, drop_handler: D, file_picker_handler: F) -> Self {
+    pub fn with_handlers(
+        state: State,
+        paste_handler: P,
+        drop_handler: D,
+        file_picker_handler: F,
+    ) -> Self {
         Self {
             state,
             paste_handler,

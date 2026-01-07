@@ -155,7 +155,7 @@ impl Command for RefreshInternalUsersCommand {
         // Read inputs/config.
         let input = snap.get_state::<InternalUsersListUsersInput>();
         let config = snap.get_state::<BusinessConfig>();
-        let cf_token = snap.get_state::<CFTokenCompute>();
+        let cf_token = snap.get_compute::<CFTokenCompute>();
 
         // Determine base URL:
         // - Prefer explicit input when set (UI/tests can override).

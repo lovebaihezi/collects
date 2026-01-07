@@ -186,7 +186,7 @@ impl Command for UpdateUsernameCommand {
     fn run(&self, snap: CommandSnapshot, updater: Updater) {
         let input = snap.get_state::<InternalUsersActionInput>();
         let config = snap.get_state::<BusinessConfig>();
-        let cf_token = snap.get_state::<CFTokenCompute>();
+        let cf_token = snap.get_compute::<CFTokenCompute>();
 
         let api_base_url = resolve_api_base_url(&input, &config);
         if api_base_url.trim().is_empty() {
@@ -273,7 +273,7 @@ impl Command for UpdateProfileCommand {
     fn run(&self, snap: CommandSnapshot, updater: Updater) {
         let input = snap.get_state::<InternalUsersActionInput>();
         let config = snap.get_state::<BusinessConfig>();
-        let cf_token = snap.get_state::<CFTokenCompute>();
+        let cf_token = snap.get_compute::<CFTokenCompute>();
 
         let api_base_url = resolve_api_base_url(&input, &config);
         if api_base_url.trim().is_empty() {
@@ -348,7 +348,7 @@ impl Command for DeleteUserCommand {
     fn run(&self, snap: CommandSnapshot, updater: Updater) {
         let input = snap.get_state::<InternalUsersActionInput>();
         let config = snap.get_state::<BusinessConfig>();
-        let cf_token = snap.get_state::<CFTokenCompute>();
+        let cf_token = snap.get_compute::<CFTokenCompute>();
 
         let api_base_url = resolve_api_base_url(&input, &config);
         if api_base_url.trim().is_empty() {
@@ -429,7 +429,7 @@ impl Command for RevokeOtpCommand {
     fn run(&self, snap: CommandSnapshot, updater: Updater) {
         let input = snap.get_state::<InternalUsersActionInput>();
         let config = snap.get_state::<BusinessConfig>();
-        let cf_token = snap.get_state::<CFTokenCompute>();
+        let cf_token = snap.get_compute::<CFTokenCompute>();
 
         let api_base_url = resolve_api_base_url(&input, &config);
         if api_base_url.trim().is_empty() {
@@ -515,7 +515,7 @@ impl Command for GetUserQrCommand {
     fn run(&self, snap: CommandSnapshot, updater: Updater) {
         let input = snap.get_state::<InternalUsersActionInput>();
         let config = snap.get_state::<BusinessConfig>();
-        let cf_token = snap.get_state::<CFTokenCompute>();
+        let cf_token = snap.get_compute::<CFTokenCompute>();
 
         let api_base_url = resolve_api_base_url(&input, &config);
         if api_base_url.trim().is_empty() {

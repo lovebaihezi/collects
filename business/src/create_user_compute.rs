@@ -171,7 +171,7 @@ impl Command for CreateUserCommand {
     fn run(&self, snap: CommandSnapshot, updater: Updater) {
         let input = snap.get_state::<CreateUserInput>();
         let config = snap.get_state::<BusinessConfig>();
-        let cf_token = snap.get_state::<CFTokenCompute>();
+        let cf_token = snap.get_compute::<CFTokenCompute>();
 
         let username = match &input.username {
             Some(name) if !name.trim().is_empty() => name.trim().to_string(),

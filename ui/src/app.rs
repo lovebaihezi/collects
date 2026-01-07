@@ -331,7 +331,7 @@ impl<P: PasteHandler, D: DropHandler> eframe::App for CollectsApp<P, D> {
         }
 
         // Toggle API status display when F1 is pressed
-        // In WASM builds, F1 is reserved by browsers (e.g., Chrome help), so we disable this shortcut
+        // In WASM builds, F1 is reserved by browsers (e.g., Chrome help), so this shortcut is disabled
         #[cfg(not(target_arch = "wasm32"))]
         if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::F1)) {
             self.state.ctx.dispatch::<ToggleApiStatusCommand>();

@@ -64,7 +64,6 @@ pub fn login(api_url: &str, username: &str, otp: &str) -> Result<()> {
         .send()
         .context("Failed to connect to server")?;
 
-    let _status = response.status();
     let body: VerifyOtpResponse = response.json().context("Failed to parse server response")?;
 
     if !body.valid {

@@ -151,7 +151,7 @@ async function grantRoleToServiceAccount(
  */
 async function grantRolesToServiceAccount(ctx: SetupContext): Promise<void> {
   const roles = [
-    "roles/artifactregistry.writer",
+    "roles/artifactregistry.repoAdmin", // Includes write + delete permissions for cleanup jobs
     "roles/secretmanager.secretAccessor",
     "roles/run.admin",
     "roles/iam.serviceAccountUser",

@@ -3,7 +3,9 @@
 //! This module provides trait-based abstractions for handling paste operations,
 //! enabling mock implementations for testing without relying on system clipboard.
 
-use super::clipboard::{self, ClipboardImage};
+use super::clipboard::ClipboardImage;
+#[cfg(not(target_arch = "wasm32"))]
+use super::clipboard::{self};
 
 /// Trait for handling paste operations, enabling mock implementations for testing.
 ///

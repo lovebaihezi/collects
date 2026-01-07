@@ -9,7 +9,12 @@ use crate::{
     widgets,
 };
 use chrono::{Timelike, Utc};
-use collects_business::{ApiStatus, AuthCompute, Route, ToggleApiStatusCommand};
+#[cfg(any(feature = "env_internal", feature = "env_test_internal"))]
+use collects_business::RefreshInternalUsersCommand;
+use collects_business::{
+    ApiStatus, AuthCompute, ClipboardAccessResult, DropHoverEvent, DropResult, ImageDiagState,
+    KeyEventType, PasteResult, Route, ToggleApiStatusCommand,
+};
 #[cfg(not(any(feature = "env_internal", feature = "env_test_internal")))]
 use collects_business::{PendingTokenValidation, ValidateTokenCommand};
 use collects_states::Time;
@@ -85,15 +90,73 @@ impl<P: PasteHandler, D: DropHandler, F: FilePickerHandler> eframe::App for Coll
             }
         }
 
+        // Check for paste shortcut key events (for diagnostics)
+        // We need to detect key events before the paste handler consumes them
+        let ctrl_v_pressed = ctx.input(|i| {
+            i.events.iter().any(|e| {
+                matches!(
+                    e,
+                    egui::Event::Key {
+                        key: egui::Key::V,
+                        modifiers,
+                        pressed: false, // Release event for Wayland workaround
+                        ..
+                    } if modifiers.ctrl
+                )
+            })
+        });
+        let cmd_v_pressed = ctx.input(|i| {
+            i.events.iter().any(|e| {
+                matches!(
+                    e,
+                    egui::Event::Key {
+                        key: egui::Key::V,
+                        modifiers,
+                        pressed: false,
+                        ..
+                    } if modifiers.command
+                )
+            })
+        });
+
+        // Record key events in diagnostics (before paste handler consumes them)
+        if ctrl_v_pressed {
+            self.state.ctx.update::<ImageDiagState>(|diag| {
+                diag.record_key_event(KeyEventType::CtrlV);
+            });
+        }
+        if cmd_v_pressed && !ctrl_v_pressed {
+            self.state.ctx.update::<ImageDiagState>(|diag| {
+                diag.record_key_event(KeyEventType::CmdV);
+            });
+        }
+
         // Handle paste shortcut (Ctrl+V / Cmd+V) for clipboard image
         // If an image was pasted, replace the current displayed image
-        if let Some(clipboard_image) = self.paste_handler.handle_paste(ctx) {
+        let paste_key_pressed = ctrl_v_pressed || cmd_v_pressed;
+        let clipboard_result = self.paste_handler.handle_paste(ctx);
+
+        if let Some(clipboard_image) = clipboard_result {
             log::info!(
                 "Processing pasted image: {}x{}, {} bytes",
                 clipboard_image.width,
                 clipboard_image.height,
                 clipboard_image.bytes.len()
             );
+            let width = clipboard_image.width;
+            let height = clipboard_image.height;
+            let bytes_len = clipboard_image.bytes.len();
+
+            // Record clipboard access success in diagnostics
+            self.state.ctx.update::<ImageDiagState>(|diag| {
+                diag.record_clipboard_access(ClipboardAccessResult::ImageFound {
+                    width,
+                    height,
+                    bytes_len,
+                    format: "RGBA".to_string(),
+                });
+            });
+
             let image_state = self.state.ctx.state_mut::<widgets::ImagePreviewState>();
             let success = image_state.set_image_rgba(
                 ctx,
@@ -103,9 +166,103 @@ impl<P: PasteHandler, D: DropHandler, F: FilePickerHandler> eframe::App for Coll
             );
             if success {
                 log::info!("Pasted image set successfully");
+                // Record successful paste in diagnostics
+                self.state.ctx.update::<ImageDiagState>(|diag| {
+                    diag.record_paste(PasteResult::Success {
+                        width,
+                        height,
+                        bytes_len,
+                    });
+                });
             } else {
                 log::warn!("Failed to set pasted image");
+                // Record failed paste in diagnostics
+                self.state.ctx.update::<ImageDiagState>(|diag| {
+                    diag.record_paste(PasteResult::SetImageFailed { width, height });
+                });
             }
+        } else if paste_key_pressed {
+            // Key was pressed but no image returned - record failure for diagnostics
+            log::debug!("Paste key detected but no image in clipboard");
+            self.state.ctx.update::<ImageDiagState>(|diag| {
+                diag.record_clipboard_access(ClipboardAccessResult::NoImageContent);
+                diag.record_paste(PasteResult::NoImageContent);
+            });
+        }
+
+        // Track file hover events for diagnostics
+        let hovered_files = ctx.input(|i| i.raw.hovered_files.clone());
+        let dropped_files = ctx.input(|i| i.raw.dropped_files.clone());
+        let was_hovering = self.state.ctx.state::<ImageDiagState>().is_hovering();
+
+        // Log raw drag events for debugging
+        if !hovered_files.is_empty() {
+            log::trace!(
+                target: "collects_ui::drop",
+                "hover_frame: {} files hovering",
+                hovered_files.len()
+            );
+            for (i, f) in hovered_files.iter().enumerate() {
+                log::trace!(
+                    target: "collects_ui::drop",
+                    "  hover[{}]: path={:?} mime={:?}",
+                    i, f.path, f.mime
+                );
+            }
+        }
+
+        if !dropped_files.is_empty() {
+            log::debug!(
+                target: "collects_ui::drop",
+                "drop_frame: {} files dropped",
+                dropped_files.len()
+            );
+            for (i, f) in dropped_files.iter().enumerate() {
+                log::debug!(
+                    target: "collects_ui::drop",
+                    "  dropped[{}]: name={:?} path={:?} mime={:?} has_bytes={}",
+                    i, f.name, f.path, f.mime, f.bytes.is_some()
+                );
+            }
+        }
+
+        if !hovered_files.is_empty() && !was_hovering {
+            // Started hovering
+            let file_names: Vec<String> = hovered_files
+                .iter()
+                .filter_map(|f| {
+                    // HoveredFile only has path and mime, no name field
+                    f.path
+                        .as_ref()
+                        .and_then(|p| p.file_name())
+                        .map(|n| n.to_string_lossy().to_string())
+                })
+                .collect();
+            let mime_types: Vec<String> = hovered_files
+                .iter()
+                .filter(|f| !f.mime.is_empty())
+                .map(|f| f.mime.clone())
+                .collect();
+
+            log::info!(
+                target: "collects_ui::drop",
+                "hover_start: {} files, names={:?}, mimes={:?}",
+                hovered_files.len(), file_names, mime_types
+            );
+
+            self.state.ctx.update::<ImageDiagState>(|diag| {
+                diag.record_drop_hover_start(DropHoverEvent {
+                    file_count: hovered_files.len(),
+                    file_names,
+                    mime_types,
+                });
+            });
+        } else if hovered_files.is_empty() && was_hovering {
+            // Stopped hovering (either dropped or cancelled)
+            log::info!(target: "collects_ui::drop", "hover_end");
+            self.state.ctx.update::<ImageDiagState>(|diag| {
+                diag.record_drop_hover_end();
+            });
         }
 
         // Handle drag-and-drop files for image preview
@@ -117,6 +274,10 @@ impl<P: PasteHandler, D: DropHandler, F: FilePickerHandler> eframe::App for Coll
                 dropped_image.height,
                 dropped_image.bytes.len()
             );
+            let width = dropped_image.width;
+            let height = dropped_image.height;
+            let bytes_len = dropped_image.bytes.len();
+
             let image_state = self.state.ctx.state_mut::<widgets::ImagePreviewState>();
             let success = image_state.set_image_rgba(
                 ctx,
@@ -126,9 +287,55 @@ impl<P: PasteHandler, D: DropHandler, F: FilePickerHandler> eframe::App for Coll
             );
             if success {
                 log::info!("Dropped image set successfully");
+                // Record successful drop in diagnostics
+                self.state.ctx.update::<ImageDiagState>(|diag| {
+                    diag.record_drop(DropResult::Success {
+                        file_name: None, // File name not available from ImageData
+                        width,
+                        height,
+                        bytes_len,
+                    });
+                });
             } else {
                 log::warn!("Failed to set dropped image");
+                // Record failed drop in diagnostics
+                self.state.ctx.update::<ImageDiagState>(|diag| {
+                    diag.record_drop(DropResult::SetImageFailed {
+                        file_name: None,
+                        width,
+                        height,
+                    });
+                });
             }
+        } else if !dropped_files.is_empty() {
+            // Files were dropped but couldn't be loaded as images
+            log::warn!(
+                target: "collects_ui::drop",
+                "drop_no_image: {} files dropped but none loaded as image",
+                dropped_files.len()
+            );
+            // Get first file name for diagnostics
+            let first_name = dropped_files.first().and_then(|f| {
+                f.path
+                    .as_ref()
+                    .and_then(|p| p.file_name())
+                    .map(|n| n.to_string_lossy().to_string())
+                    .or_else(|| {
+                        if !f.name.is_empty() {
+                            Some(f.name.clone())
+                        } else {
+                            None
+                        }
+                    })
+            });
+            self.state.ctx.update::<ImageDiagState>(|diag| {
+                diag.record_drop(DropResult::NoValidFiles {
+                    file_count: dropped_files.len(),
+                });
+                if let Some(name) = first_name {
+                    diag.record_info(format!("Dropped file: {}", name));
+                }
+            });
         }
 
         // Handle file picker shortcut (Ctrl+O / Cmd+O) to open file dialog
@@ -158,6 +365,13 @@ impl<P: PasteHandler, D: DropHandler, F: FilePickerHandler> eframe::App for Coll
         // Use consume_key to prevent browser default behavior (e.g., Chrome help) in WASM
         if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::F1)) {
             self.state.ctx.dispatch::<ToggleApiStatusCommand>();
+        }
+
+        // Toggle image diagnostics window when F2 is pressed
+        if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::F2)) {
+            self.state.ctx.update::<ImageDiagState>(|diag| {
+                diag.toggle_window();
+            });
         }
 
         // Update Time state when second changes (chrono::Utc::now() is WASM-compatible)
@@ -196,11 +410,37 @@ impl<P: PasteHandler, D: DropHandler, F: FilePickerHandler> eframe::App for Coll
                 .collapsible(false)
                 .resizable(false)
                 .title_bar(false)
+                .auto_sized()
                 .show(ctx, |ui| {
                     // API status dots (includes internal API for internal builds)
                     // The Window name "API Status" is used for accessibility/kittest queries
                     widgets::api_status(&self.state.ctx, ui);
                 });
+        }
+
+        // Show image diagnostics window when F2 is pressed (toggled)
+        let show_image_diag = self.state.ctx.state::<ImageDiagState>().show_window();
+        if show_image_diag {
+            let mut diag_action = widgets::ImageDiagAction::None;
+            egui::Window::new("Image Diagnostics")
+                .anchor(
+                    egui::Align2::LEFT_TOP,
+                    egui::vec2(8.0, API_STATUS_WINDOW_OFFSET_Y),
+                )
+                .collapsible(true)
+                .resizable(true)
+                .default_width(400.0)
+                .default_height(500.0)
+                .show(ctx, |ui| {
+                    diag_action = widgets::image_diag_window(&self.state.ctx, ui);
+                });
+
+            // Handle actions from the diagnostic window
+            if diag_action == widgets::ImageDiagAction::ClearHistory {
+                self.state.ctx.update::<ImageDiagState>(|diag| {
+                    diag.clear_history();
+                });
+            }
         }
 
         egui::CentralPanel::default().show(ctx, |ui| {
@@ -258,8 +498,14 @@ impl<P: PasteHandler, D: DropHandler, F: FilePickerHandler> CollectsApp<P, D, F>
 
         if current_route != new_route {
             self.state.ctx.update::<Route>(|route| {
-                *route = new_route;
+                *route = new_route.clone();
             });
+
+            // Auto-fetch users when navigating to Internal route
+            #[cfg(any(feature = "env_internal", feature = "env_test_internal"))]
+            if matches!(new_route, Route::Internal) {
+                self.state.ctx.dispatch::<RefreshInternalUsersCommand>();
+            }
         }
     }
 

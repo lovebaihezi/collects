@@ -1,11 +1,13 @@
 name: Scheduled Job Failure Monitor
 
-# This workflow monitors scheduled jobs and creates issues when they fail
+# This workflow monitors scheduled jobs and creates issues when they fail.
+# NOTE: This is kept as a backup for workflows that don't have the post-job step.
+# Preferred approach: Add the scheduled-job-issue action as a post-job step
+# directly in each scheduled workflow (like ci-feedback for PRs).
 on:
   workflow_run:
     workflows:
       - "Artifact Cleanup"
-      # Add other scheduled workflows here as needed
     types:
       - completed
 
@@ -24,15 +26,15 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
 
       - name: Create Issue for Scheduled Job Failure
         uses: ./.github/actions/scheduled-job-issue
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          workflow-name: ${{ github.event.workflow_run.name }}
-          workflow-run-id: ${{ github.event.workflow_run.id }}
-          workflow-run-url: ${{ github.event.workflow_run.html_url }}
-          head-sha: ${{ github.event.workflow_run.head_sha }}
+          # For monitor workflow, we report all failed jobs (no specific job filter)
+          job-name: ""
 
       - name: Summary
         run: |

@@ -357,6 +357,7 @@ jobs:
       needs.ci-check.outputs.original_event == 'schedule'
     permissions:
       contents: read
+      issues: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -395,3 +396,10 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Create Issue on Scheduled Job Failure
+        if: failure() && github.event_name == 'schedule'
+        uses: ./.github/actions/scheduled-job-issue
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          job-name: "Deploy: Worker to Nightly"

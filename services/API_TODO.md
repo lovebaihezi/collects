@@ -10,6 +10,85 @@ Today, native viewing support can be **image-only**, but the API should be futur
 
 ---
 
+## MVP Auth primitives (OTP-verified JWT sessions)
+
+We already have OTP verification and issue JWTs. For MVP completeness, we still need to ensure the *auth primitives* are consistently applied across all protected APIs (uploads, contents, groups, tags, sharing).
+
+### Token model (JWT)
+- JWT is issued after OTP verification.
+- JWT must include at least:
+  - `sub` = user id (UUID)
+  - `exp` = expiry
+  - optional: `iat`, `iss`, `aud`
+- JWT is signed with `JWT_SECRET` (already in `Config`).
+
+User checks:
+- You can decode a token and confirm `sub` and `exp` are present.
+- Tokens are rejected when expired or signature is invalid.
+
+### Request authentication primitive
+Implement a single Axum extractor/middleware used by all authenticated routes, e.g.:
+- `RequireAuth` / `CurrentUser`
+
+Responsibilities:
+- Read JWT from:
+  - `Authorization: Bearer <token>` (recommended), or cookie (if you prefer)
+- Verify signature + `exp`
+- Load user from DB and enforce:
+  - `users.status == 'active'`
+- Attach user context to request handlers.
+
+User checks:
+- All `/v1/*` protected routes return `401` without a token.
+- Suspended/archived users get `403` (or `401`) consistently.
+
+### OTP rate limiting primitive (MVP safety)
+We have `otp_attempts` table; enforce in OTP verify flow:
+- Record every attempt (success/failure)
+- Reject when too many attempts:
+  - per `username` over time window
+  - per `ip_address` over time window
+- Use safe error messaging (avoid leaking whether a username exists).
+
+User checks:
+- Repeated wrong OTP attempts are throttled/blocked.
+- A successful OTP resets or reduces lockout impact (policy-dependent).
+
+### Auth event auditing (recommended for MVP)
+Write `audit_logs` entries for:
+- `auth.otp_verify_success`
+- `auth.otp_verify_failure`
+- `auth.logout`
+
+User checks:
+- Audit rows exist for auth events and include `ip_address` when available.
+
+### Auth scope for routes (MVP)
+Define route categories explicitly:
+- Public:
+  - `/is-health`
+  - `/v1/public/share/*` (if/when sharing is enabled)
+- Authenticated (RequireAuth):
+  - `/v1/uploads/*`
+  - `/v1/contents/*`
+  - `/v1/groups/*`
+  - `/v1/tags/*`
+  - `/v1/share-links/*` (owner management)
+- Internal-admin (MUST be secure by construction):
+  - `/v1/internal/*` MUST be:
+    - compiled only for internal builds (conditional compilation)
+    - protected by Cloudflare Zero Trust
+    - protected by our JWT auth (so we know which internal user performed an action)
+    - require BOTH Zero Trust + JWT (JWT alone is not accepted; Zero Trust alone is not enough to identify the user in our system)
+
+User checks:
+- Endpoints are categorized correctly and enforced in routing.
+- In non-internal builds, `/internal/*` routes do not exist (404 / not compiled).
+- In internal builds, `/internal/*` rejects requests that have only JWT but no Zero Trust token.
+- In internal builds, `/internal/*` rejects requests that have only Zero Trust token but no valid JWT.
+
+---
+
 ## Multi-backend storage selection (Migration Plan — arbitrary OpenDAL backends)
 
 We want to support uploads/access across **arbitrary OpenDAL-supported backends**, and allow choosing the backend at upload time (and later for access). That requires persisting *which backend profile* a `contents.storage_key` belongs to.
@@ -241,6 +320,7 @@ User checks:
   - `GET /is-health`
   - `/auth` routes exist (implemented under `users/*`)
   - `/internal` routes exist, with optional Cloudflare Zero Trust protection (see `ZERO_TRUST.md`)
+    - TODO(Security): internal routes must not be “optional protection”; they must be gated and enforced (see “Internal-admin (MUST be secure by construction)” above)
 
 ### Database schema (already migrated)
 - `users`, `sessions`, `otp_attempts`
@@ -258,6 +338,11 @@ User checks:
 - Mock storage exists for tests.
 
 ### Notes / gaps in current codebase
+- Internal API security gaps (must fix before relying on internal endpoints):
+  - Conditional compilation is missing: internal routes are currently compiled/mounted in all builds (requirement: internal-only builds).
+  - Protection is incomplete: Zero Trust middleware is currently optional depending on env vars. This can accidentally leave `/internal/*` unprotected.
+  - JWT is not enforced on internal endpoints, but we require internal APIs to use JWT to identify the acting user.
+  - Policy requirement: internal APIs must require BOTH Zero Trust token + our JWT (reject JWT-only and reject Zero-Trust-only).
 - There is no “contents API” implementation yet (`collects` module is placeholder).
 - There is no “presign/signed-url” flow implemented.
 - If we want “direct upload” to storage without hitting the service, we must implement **presigned URL** support (OpenDAL alone usually won’t produce S3/GCS presigned URLs in a uniform way; see TODO below).

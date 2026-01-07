@@ -7,6 +7,7 @@ mod dep;
 mod enum_states;
 mod graph;
 mod runtime;
+mod snapshot;
 mod state;
 mod state_sync_status;
 
@@ -17,6 +18,7 @@ pub use dep::Dep;
 pub use enum_states::BasicStates;
 pub use graph::{DepRoute, Graph, TopologyError};
 pub use runtime::StateRuntime;
+pub use snapshot::{CommandSnapshot, ComputeSnapshot, StateSnapshot};
 pub use state::{Reader, State, Updater, state_assign_impl};
 pub use state_sync_status::Stage;
 

@@ -2,6 +2,7 @@ mod api_status;
 pub mod cf_token_compute;
 pub mod config;
 pub mod create_user_compute;
+pub mod image_diag;
 pub mod internal;
 pub mod internal_api_status;
 pub mod internal_users;
@@ -24,6 +25,10 @@ pub use internal::{
 };
 pub use internal_api_status::{InternalAPIAvailability, InternalApiStatus};
 
+pub use image_diag::{
+    ClipboardAccessResult, DiagLogEntry, DiagLogType, DropEntry, DropHoverEvent, DropResult,
+    ImageDiagState, KeyEventType, PasteEntry, PasteResult,
+};
 pub use internal_users::state::{InternalUsersState, UserAction};
 pub use internal_users::{
     DeleteUserCommand, GetUserQrCommand, InternalUsersActionCompute, InternalUsersActionInput,

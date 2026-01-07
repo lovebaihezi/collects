@@ -17,6 +17,8 @@ interface ScheduledJobIssueOptions {
   workflowName: string;
   workflowRunUrl: string;
   headSha: string;
+  /** Optional: filter to a specific job by name (for post-job step usage) */
+  jobName?: string;
 }
 
 interface DiagnosisPlan {
@@ -345,12 +347,14 @@ async function findExistingIssue(
 
 /**
  * Collect job summaries for failed jobs in a workflow run
+ * @param jobName - Optional: if provided, only collect logs for this specific job
  */
 async function collectJobSummaries(
   octokit: Octokit,
   owner: string,
   repo: string,
   runId: number,
+  jobName?: string,
 ): Promise<JobSummary[]> {
   const { data: jobsData } = await octokit.rest.actions.listJobsForWorkflowRun({
     owner,
@@ -358,9 +362,16 @@ async function collectJobSummaries(
     run_id: runId,
   });
 
-  const failedJobs = jobsData.jobs.filter(
-    (job) => job.conclusion === "failure",
-  );
+  let failedJobs = jobsData.jobs.filter((job) => job.conclusion === "failure");
+
+  // If jobName is specified, filter to only that job
+  if (jobName) {
+    failedJobs = failedJobs.filter((job) => job.name === jobName);
+    if (failedJobs.length === 0) {
+      console.log(`Job "${jobName}" not found or did not fail`);
+      return [];
+    }
+  }
 
   if (failedJobs.length === 0) {
     console.log("No failed jobs found");
@@ -406,13 +417,21 @@ async function collectJobSummaries(
 export async function createScheduledJobIssue(
   options: ScheduledJobIssueOptions,
 ): Promise<void> {
-  const { token, owner, repo, runId, workflowName, workflowRunUrl, headSha } =
-    options;
+  const {
+    token,
+    owner,
+    repo,
+    runId,
+    workflowName,
+    workflowRunUrl,
+    headSha,
+    jobName,
+  } = options;
 
   const octokit = new Octokit({ auth: token });
 
   console.log(
-    `Processing failure for workflow "${workflowName}" (run #${runId})`,
+    `Processing failure for workflow "${workflowName}" (run #${runId})${jobName ? `, job "${jobName}"` : ""}`,
   );
 
   // Check for existing open issue to avoid duplicates
@@ -429,7 +448,13 @@ export async function createScheduledJobIssue(
     );
 
     // Add a comment to the existing issue instead
-    const jobSummaries = await collectJobSummaries(octokit, owner, repo, runId);
+    const jobSummaries = await collectJobSummaries(
+      octokit,
+      owner,
+      repo,
+      runId,
+      jobName,
+    );
 
     if (jobSummaries.length === 0) {
       console.log("No failed jobs to report");
@@ -463,7 +488,13 @@ export async function createScheduledJobIssue(
   }
 
   // Collect job summaries
-  const jobSummaries = await collectJobSummaries(octokit, owner, repo, runId);
+  const jobSummaries = await collectJobSummaries(
+    octokit,
+    owner,
+    repo,
+    runId,
+    jobName,
+  );
 
   if (jobSummaries.length === 0) {
     console.log("No failed jobs to report");
@@ -504,6 +535,7 @@ export function runScheduledJobIssueCLI(): void {
   const workflowName = process.env.WORKFLOW_NAME;
   const workflowRunUrl = process.env.WORKFLOW_RUN_URL;
   const headSha = process.env.HEAD_SHA;
+  const jobName = process.env.JOB_NAME; // Optional: filter to specific job
 
   if (!token) {
     console.error("GITHUB_TOKEN is required");
@@ -554,6 +586,7 @@ export function runScheduledJobIssueCLI(): void {
     workflowName,
     workflowRunUrl,
     headSha,
+    jobName: jobName || undefined,
   }).catch((error) => {
     console.error("Failed to create scheduled job issue:", error);
     process.exit(1);

@@ -8,14 +8,14 @@ use crate::{
     widgets,
 };
 use chrono::{Timelike, Utc};
+#[cfg(any(feature = "env_internal", feature = "env_test_internal"))]
+use collects_business::RefreshInternalUsersCommand;
 use collects_business::{
     ApiStatus, AuthCompute, ClipboardAccessResult, DropHoverEvent, DropResult, ImageDiagState,
     KeyEventType, PasteResult, Route, ToggleApiStatusCommand,
 };
 #[cfg(not(any(feature = "env_internal", feature = "env_test_internal")))]
 use collects_business::{PendingTokenValidation, ValidateTokenCommand};
-#[cfg(any(feature = "env_internal", feature = "env_test_internal"))]
-use collects_business::RefreshInternalUsersCommand;
 use collects_states::Time;
 
 /// Horizontal offset for the API status window from the right edge (in pixels)

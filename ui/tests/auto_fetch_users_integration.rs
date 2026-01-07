@@ -46,7 +46,10 @@ async fn test_auto_fetch_users_on_startup() {
     // Verify the users list compute is in Loaded state (not Idle)
     let state = harness.state();
     let compute = state.state.ctx.cached::<InternalUsersListUsersCompute>();
-    assert!(compute.is_some(), "InternalUsersListUsersCompute should exist");
+    assert!(
+        compute.is_some(),
+        "InternalUsersListUsersCompute should exist"
+    );
 
     let result = &compute.unwrap().result;
     assert!(
@@ -125,7 +128,10 @@ async fn test_auto_fetch_shows_loading_state() {
     // (depending on timing, the async response might have already arrived)
     let state = harness.state();
     let compute = state.state.ctx.cached::<InternalUsersListUsersCompute>();
-    assert!(compute.is_some(), "InternalUsersListUsersCompute should exist");
+    assert!(
+        compute.is_some(),
+        "InternalUsersListUsersCompute should exist"
+    );
 
     let result = &compute.unwrap().result;
     // The state should NOT be Idle - it should have transitioned to Loading or Loaded

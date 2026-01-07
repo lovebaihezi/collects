@@ -3,7 +3,8 @@ use std::any::{Any, TypeId};
 use crate::BusinessConfig;
 use chrono::{DateTime, Utc};
 use collects_states::{
-    Command, Compute, ComputeDeps, Dep, State, Time, Updater, assign_impl, state_assign_impl,
+    Command, CommandSnapshot, Compute, ComputeDeps, Dep, SnapshotClone, State, Time, Updater,
+    assign_impl, state_assign_impl,
 };
 use log::{debug, info, warn};
 use ustr::Ustr;
@@ -14,7 +15,7 @@ const SERVICE_VERSION_HEADER: &str = "x-service-version";
 /// Maximum number of retry attempts on failure before waiting for the full interval
 const MAX_RETRY_COUNT: u8 = 3;
 
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone)]
 pub struct ApiStatus {
     last_update_time: Option<DateTime<Utc>>,
     /// If exists error, means api unavailable
@@ -27,6 +28,12 @@ pub struct ApiStatus {
     show_status: bool,
     /// Whether an API fetch is currently in-flight (prevents duplicate requests)
     is_fetching: bool,
+}
+
+impl SnapshotClone for ApiStatus {
+    fn clone_boxed(&self) -> Option<Box<dyn Any + Send>> {
+        Some(Box::new(self.clone()))
+    }
 }
 
 pub enum APIAvailability<'a> {
@@ -208,8 +215,8 @@ impl State for ApiStatus {
 pub struct ToggleApiStatusCommand;
 
 impl Command for ToggleApiStatusCommand {
-    fn run(&self, deps: Dep, updater: Updater) {
-        let current = deps.get_compute_ref::<ApiStatus>();
+    fn run(&self, snap: CommandSnapshot, updater: Updater) {
+        let current: &ApiStatus = snap.compute();
         let new_show_status = !current.show_status;
 
         updater.set(ApiStatus {

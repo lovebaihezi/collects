@@ -18,7 +18,7 @@
 //! This avoids the complexity of Commands with parameters for simple state mutations.
 
 use chrono::{DateTime, Utc};
-use collects_states::{State, state_assign_impl};
+use collects_states::{SnapshotClone, State, state_assign_impl};
 use std::any::Any;
 
 /// Maximum number of log entries to keep in history
@@ -502,6 +502,12 @@ impl ImageDiagState {
         {
             "production"
         }
+    }
+}
+
+impl SnapshotClone for ImageDiagState {
+    fn clone_boxed(&self) -> Option<Box<dyn Any + Send>> {
+        Some(Box::new(self.clone()))
     }
 }
 

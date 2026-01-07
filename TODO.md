@@ -184,7 +184,7 @@ Any state intended to be updated from async completion must:
 ## Initial checklist (do this next)
 
 - [x] Add snapshot types to `collects/states`
-- [ ] Update `Command` trait signature to accept snapshots
+- [x] Update `Command` trait signature to accept snapshots
 - [ ] Update `StateCtx::dispatch` or replace with queue-friendly API (do not execute immediately)
 - [ ] Remove or restrict `Dep::state_mut`
 - [ ] Implement UI command queue and flush once per frame

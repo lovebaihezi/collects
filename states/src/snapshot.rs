@@ -26,6 +26,31 @@ use std::{
     fmt::Debug,
 };
 
+/// Trait for types that can be cloned into a snapshot.
+///
+/// States and Computes that need to be accessed by Commands must implement this trait.
+/// The default implementation returns `None`, meaning the type cannot be snapshotted.
+/// Implement `clone_boxed` to enable snapshotting for a specific type.
+///
+/// # Example
+///
+/// ```ignore
+/// impl SnapshotClone for MyState {
+///     fn clone_boxed(&self) -> Option<Box<dyn Any + Send>> {
+///         Some(Box::new(self.clone()))
+///     }
+/// }
+/// ```
+pub trait SnapshotClone {
+    /// Clone this value into a boxed Any for snapshot storage.
+    ///
+    /// Returns `None` if this type cannot be snapshotted (e.g., contains non-Send types).
+    /// Returns `Some(Box<dyn Any + Send>)` if snapshotting is supported.
+    fn clone_boxed(&self) -> Option<Box<dyn Any + Send>> {
+        None
+    }
+}
+
 /// Snapshot of all registered states at a point in time.
 ///
 /// Provides read-only access to owned clones of state values.

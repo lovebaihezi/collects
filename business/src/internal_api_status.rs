@@ -9,7 +9,7 @@ use collects_states::state_assign_impl;
 
 use crate::BusinessConfig;
 use chrono::{DateTime, Utc};
-use collects_states::{Compute, ComputeDeps, Dep, State, Time, Updater, assign_impl};
+use collects_states::{Compute, ComputeDeps, Dep, SnapshotClone, State, Time, Updater, assign_impl};
 use log::{debug, info, warn};
 use ustr::Ustr;
 
@@ -17,7 +17,7 @@ use ustr::Ustr;
 const MAX_RETRY_COUNT: u8 = 3;
 
 /// Status of the internal API.
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone)]
 pub struct InternalApiStatus {
     last_update_time: Option<DateTime<Utc>>,
     /// If exists error, means internal API unavailable
@@ -26,6 +26,12 @@ pub struct InternalApiStatus {
     retry_count: u8,
     /// Whether an API fetch is currently in-flight (prevents duplicate requests)
     is_fetching: bool,
+}
+
+impl SnapshotClone for InternalApiStatus {
+    fn clone_boxed(&self) -> Option<Box<dyn Any + Send>> {
+        Some(Box::new(self.clone()))
+    }
 }
 
 /// Availability status for internal API.

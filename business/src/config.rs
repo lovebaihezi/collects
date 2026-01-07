@@ -1,4 +1,4 @@
-use collects_states::{State, state_assign_impl};
+use collects_states::{SnapshotClone, State, state_assign_impl};
 use std::any::Any;
 use ustr::Ustr;
 
@@ -9,6 +9,12 @@ pub struct BusinessConfig {
     ///
     /// When present, internal API calls should send it via the `cf-authorization` header.
     pub cf_authorization: Option<String>,
+}
+
+impl SnapshotClone for BusinessConfig {
+    fn clone_boxed(&self) -> Option<Box<dyn Any + Send>> {
+        Some(Box::new(self.clone()))
+    }
 }
 
 impl BusinessConfig {

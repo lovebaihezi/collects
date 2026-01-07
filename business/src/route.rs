@@ -2,7 +2,7 @@
 //!
 //! This module defines the route enum that determines which page to display.
 
-use collects_states::{State, state_assign_impl};
+use collects_states::{SnapshotClone, State, state_assign_impl};
 use serde::{Deserialize, Serialize};
 use std::any::Any;
 
@@ -17,6 +17,12 @@ pub enum Route {
     /// Internal page - shown when user is authenticated (internal builds only)
     #[cfg(any(feature = "env_internal", feature = "env_test_internal"))]
     Internal,
+}
+
+impl SnapshotClone for Route {
+    fn clone_boxed(&self) -> Option<Box<dyn Any + Send>> {
+        Some(Box::new(self.clone()))
+    }
 }
 
 impl State for Route {

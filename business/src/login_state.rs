@@ -17,7 +17,8 @@ use std::any::Any;
 
 use crate::BusinessConfig;
 use collects_states::{
-    Command, Compute, ComputeDeps, Dep, State, Updater, assign_impl, state_assign_impl,
+    Command, CommandSnapshot, Compute, ComputeDeps, Dep, SnapshotClone, State, Updater, assign_impl,
+    state_assign_impl,
 };
 use log::{error, info};
 use serde::{Deserialize, Serialize};
@@ -69,6 +70,12 @@ pub struct LoginInput {
     pub username: String,
     /// OTP code entered by the user.
     pub otp: String,
+}
+
+impl SnapshotClone for LoginInput {
+    fn clone_boxed(&self) -> Option<Box<dyn Any + Send>> {
+        Some(Box::new(self.clone()))
+    }
 }
 
 impl State for LoginInput {
@@ -131,9 +138,15 @@ impl AuthStatus {
 ///
 /// This is intentionally a `Compute` with a no-op `compute()` so it can be read through
 /// the normal caching path and updated via `Updater::set(...)` from a command.
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone)]
 pub struct AuthCompute {
     pub status: AuthStatus,
+}
+
+impl SnapshotClone for AuthCompute {
+    fn clone_boxed(&self) -> Option<Box<dyn Any + Send>> {
+        Some(Box::new(self.clone()))
+    }
 }
 
 impl AuthCompute {
@@ -228,9 +241,9 @@ fn extract_error_message(response_bytes: &[u8], default: &str) -> String {
 pub struct LoginCommand;
 
 impl Command for LoginCommand {
-    fn run(&self, deps: Dep, updater: Updater) {
-        let input = deps.get_state_ref::<LoginInput>();
-        let config = deps.get_state_ref::<BusinessConfig>();
+    fn run(&self, snap: CommandSnapshot, updater: Updater) {
+        let input: &LoginInput = snap.state();
+        let config: &BusinessConfig = snap.state();
 
         let username = input.username.trim().to_string();
         let otp = input.otp.trim().to_string();
@@ -369,7 +382,7 @@ impl Command for LoginCommand {
 pub struct LogoutCommand;
 
 impl Command for LogoutCommand {
-    fn run(&self, _deps: Dep, updater: Updater) {
+    fn run(&self, _snap: CommandSnapshot, updater: Updater) {
         info!("LogoutCommand: user logged out");
         updater.set(AuthCompute {
             status: AuthStatus::NotAuthenticated,
@@ -384,6 +397,12 @@ impl Command for LogoutCommand {
 pub struct PendingTokenValidation {
     /// The token to validate.
     pub token: Option<String>,
+}
+
+impl SnapshotClone for PendingTokenValidation {
+    fn clone_boxed(&self) -> Option<Box<dyn Any + Send>> {
+        Some(Box::new(self.clone()))
+    }
 }
 
 impl State for PendingTokenValidation {
@@ -419,9 +438,9 @@ impl State for PendingTokenValidation {
 pub struct ValidateTokenCommand;
 
 impl Command for ValidateTokenCommand {
-    fn run(&self, deps: Dep, updater: Updater) {
-        let pending = deps.get_state_ref::<PendingTokenValidation>();
-        let config = deps.get_state_ref::<BusinessConfig>();
+    fn run(&self, snap: CommandSnapshot, updater: Updater) {
+        let pending: &PendingTokenValidation = snap.state();
+        let config: &BusinessConfig = snap.state();
 
         let token = match &pending.token {
             Some(t) if !t.is_empty() => t.clone(),

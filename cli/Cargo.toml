@@ -1,0 +1,38 @@
+[package]
+name = "collects-cli"
+version = "0.1.0"
+authors = ["BoWen Chai <chaibowen.i@gmail.com>"]
+edition = "2024"
+license = "MIT"
+description = "Command-line interface for Collects"
+
+[[bin]]
+name = "collects"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = { workspace = true }
+clap = { version = "4", features = ["derive", "env"] }
+reqwest = { workspace = true, default-features = true, features = ["blocking"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+toml = "0.8"
+directories = "6"
+arboard = { version = "3.6", features = ["wayland-data-control", "image-data"] }
+image = "0.25"
+base64 = "0.22"
+urlencoding = "2.1"
+
+[dev-dependencies]
+tempfile = "3"
+
+[features]
+default = []
+env_test = ["collects-utils/env_test"]
+env_test_internal = ["collects-utils/env_test_internal"]
+env_internal = ["collects-utils/env_internal"]
+env_nightly = ["collects-utils/env_nightly"]
+env_pr = ["collects-utils/env_pr"]
+
+[dependencies.collects-utils]
+path = "../utils"

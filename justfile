@@ -1,6 +1,7 @@
 mod ui
 mod services
 mod scripts
+mod cli
 
 set shell := ["bash", "-c"]
 

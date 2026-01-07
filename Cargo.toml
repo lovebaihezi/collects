@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["states", "utils", "business", "ui", "services"]
+members = ["states", "utils", "business", "ui", "services", "cli"]
 
 [workspace.dependencies]
 egui = "0.33"

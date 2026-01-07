@@ -161,13 +161,11 @@ pub fn image_diag_window(state_ctx: &StateCtx, ui: &mut Ui) -> ImageDiagAction {
                 .weak(),
         );
     } else {
-        ScrollArea::vertical()
-            .id_salt("event_log")
-            .show(ui, |ui| {
-                for entry in log_entries {
-                    render_log_entry(ui, entry);
-                }
-            });
+        ScrollArea::vertical().id_salt("event_log").show(ui, |ui| {
+            for entry in log_entries {
+                render_log_entry(ui, entry);
+            }
+        });
     }
 
     ui.separator();

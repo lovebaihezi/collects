@@ -22,3 +22,18 @@ export interface JobSummary {
 export function formatCommitSha(sha: string): string {
   return sha.substring(0, COMMIT_SHA_DISPLAY_LENGTH);
 }
+
+/**
+ * Parse tags from gcloud artifacts docker images list output.
+ * The gcloud command may return tags as either an array or a comma-separated string,
+ * depending on the gcloud SDK version and output format.
+ */
+export function parseTags(tags: string | string[] | undefined): string[] {
+  if (Array.isArray(tags)) {
+    return tags;
+  }
+  if (tags) {
+    return tags.split(",").map((t) => t.trim());
+  }
+  return [];
+}

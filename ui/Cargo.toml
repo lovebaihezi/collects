@@ -54,6 +54,7 @@ urlencoding = "2.1"
 wasm-bindgen-futures = "0.4.50"
 web-sys = "0.3.70"
 getrandom = { version = "0.2", features = ["js"] }
+image = { version = "0.25", default-features = false }
 
 [dev-dependencies]
 kittest = "0.3"

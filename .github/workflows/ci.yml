@@ -244,6 +244,51 @@ jobs:
           github-token: ${{ secrets.COPILOT_INVOKER_TOKEN }}
           job-name: "Test: Scripts"
 
+  test-services:
+    name: "Test: Services Unit Tests"
+    runs-on: ubuntu-latest
+    needs: [format, lint, typos]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Cache Bun
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.bun/install/cache
+            scripts/services/node_modules
+          key: ${{ runner.os }}-bun-services-${{ hashFiles('scripts/services/bun.lockb', 'scripts/services/bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-services-
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly
+
+      - name: Setup Just
+        uses: extractions/setup-just@v2
+
+      - name: Cache Rust dependencies
+        uses: swatinem/rust-cache@v2
+
+      - name: Run Services Tests
+        env:
+          SQLX_OFFLINE: "true"
+        run: cargo test -p collects-services
+
+      - name: Post CI Feedback on Failure
+        if: failure() && github.event_name == 'pull_request'
+        uses: ./.github/actions/ci-feedback
+        with:
+          github-token: ${{ secrets.COPILOT_INVOKER_TOKEN }}
+          job-name: "Test: Services Unit Tests"
+
   test:
     name: "Test: UI Unit Tests"
     runs-on: ubuntu-latest

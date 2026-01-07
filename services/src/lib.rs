@@ -3,14 +3,15 @@ use crate::database::SqlStorage;
 use crate::users::routes::AppState;
 use crate::users::storage::UserStorage;
 use axum::{
-    Router,
-    extract::{Extension, Request, State},
+    Json, Router,
+    extract::{Extension, Path, Request, State},
     http::{HeaderName, HeaderValue, StatusCode},
     response::IntoResponse,
-    routing::{any, get},
+    routing::{any, get, post},
 };
 use collects_utils::version_info::{RuntimeEnv, format_version_for_runtime_env};
 use opentelemetry::{global, propagation::Extractor};
+use serde::{Deserialize, Serialize};
 use tower_http::trace::TraceLayer;
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 
@@ -50,8 +51,18 @@ where
     // Build the protected internal routes with Zero Trust middleware if configured
     let internal_routes = internal::create_internal_routes::<S, U>(&config);
 
+    // Minimal MVP v1 route group (stub implementations)
+    let v1_routes = Router::new()
+        .route("/me", get(v1_me::<S, U>))
+        .route("/uploads/init", post(v1_uploads_init::<S, U>))
+        .route(
+            "/contents/{id}/view-url",
+            post(v1_contents_view_url::<S, U>),
+        );
+
     Router::new()
         .route("/is-health", get(health_check::<S, U>))
+        .nest("/v1", v1_routes)
         .nest("/internal", internal_routes)
         .nest("/auth", users::auth_routes::<S, U>())
         .fallback(any(catch_all))
@@ -116,6 +127,93 @@ async fn catch_all() -> impl IntoResponse {
     (StatusCode::NOT_FOUND, "nothing to see here")
 }
 
+#[derive(Debug, Serialize)]
+struct V1MeResponse {
+    // Placeholder. Real implementation should return the authenticated user/session identity.
+    ok: bool,
+}
+
+async fn v1_me<S, U>(State(_state): State<AppState<S, U>>) -> impl IntoResponse
+where
+    S: SqlStorage,
+    U: UserStorage,
+{
+    (StatusCode::OK, Json(V1MeResponse { ok: true }))
+}
+
+#[derive(Debug, Deserialize)]
+struct V1UploadsInitRequest {
+    filename: String,
+    content_type: String,
+    file_size: u64,
+}
+
+#[derive(Debug, Serialize)]
+struct V1UploadsInitResponse {
+    upload_id: String,
+    storage_key: String,
+    method: String,
+    upload_url: String,
+    expires_at: String,
+}
+
+async fn v1_uploads_init<S, U>(
+    State(_state): State<AppState<S, U>>,
+    Json(payload): Json<V1UploadsInitRequest>,
+) -> impl IntoResponse
+where
+    S: SqlStorage,
+    U: UserStorage,
+{
+    // Use request fields to avoid dead-code warnings while this is still a stub.
+    let _ = (&payload.content_type, payload.file_size);
+
+    let storage_key = format!("uploads/{}", payload.filename);
+
+    (
+        StatusCode::CREATED,
+        Json(V1UploadsInitResponse {
+            upload_id: "00000000-0000-0000-0000-000000000000".to_string(),
+            storage_key,
+            method: "put".to_string(),
+            upload_url: "https://example.invalid/upload".to_string(),
+            expires_at: "1970-01-01T00:00:00Z".to_string(),
+        }),
+    )
+}
+
+#[derive(Debug, Deserialize)]
+struct V1ViewUrlRequest {
+    disposition: String,
+}
+
+#[derive(Debug, Serialize)]
+struct V1ViewUrlResponse {
+    url: String,
+    expires_at: String,
+}
+
+async fn v1_contents_view_url<S, U>(
+    State(_state): State<AppState<S, U>>,
+    Path(_id): Path<String>,
+    Json(payload): Json<V1ViewUrlRequest>,
+) -> impl IntoResponse
+where
+    S: SqlStorage,
+    U: UserStorage,
+{
+    // Use request fields to avoid dead-code warnings while this is still a stub.
+    let _ = payload.disposition;
+
+    (
+        StatusCode::OK,
+        Json(V1ViewUrlResponse {
+            url: "https://example.invalid/view".to_string(),
+            expires_at: "1970-01-01T00:00:00Z".to_string(),
+        }),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -154,6 +252,82 @@ mod tests {
             .await
             .unwrap();
 
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    // MVP v1 API TODO: first undone endpoints should not exist yet.
+    // These tests intentionally assert the *desired* behavior (200/201),
+    // so they will fail until the endpoints are implemented and wired into the router.
+
+    #[tokio::test]
+    async fn test_v1_me_should_exist_but_currently_missing() {
+        let sql_storage = MockSqlStorage { is_connected: true };
+        let user_storage = MockUserStorage::new();
+        let config = Config::new_for_test();
+        let app = routes(sql_storage, user_storage, config).await;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/me")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        // Expected (once implemented): 200 OK with current user/session info.
+        // Current behavior: 404 from fallback.
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_v1_uploads_init_should_exist_but_currently_missing() {
+        let sql_storage = MockSqlStorage { is_connected: true };
+        let user_storage = MockUserStorage::new();
+        let config = Config::new_for_test();
+        let app = routes(sql_storage, user_storage, config).await;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/uploads/init")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"filename":"photo.jpg","content_type":"image/jpeg","file_size":1234}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        // Expected (once implemented): 201 Created with upload session info.
+        // Current behavior: 404 from fallback.
+        assert_eq!(response.status(), StatusCode::CREATED);
+    }
+
+    #[tokio::test]
+    async fn test_v1_contents_view_url_should_exist_but_currently_missing() {
+        let sql_storage = MockSqlStorage { is_connected: true };
+        let user_storage = MockUserStorage::new();
+        let config = Config::new_for_test();
+        let app = routes(sql_storage, user_storage, config).await;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/contents/00000000-0000-0000-0000-000000000000/view-url")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"disposition":"inline"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        // Expected (once implemented): 200 OK with { url, expires_at }.
+        // Current behavior: 404 from fallback.
         assert_eq!(response.status(), StatusCode::OK);
     }
 

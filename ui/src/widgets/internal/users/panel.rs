@@ -2,7 +2,8 @@
 
 use collects_business::{
     CreateUserCommand, CreateUserCompute, CreateUserInput, InternalUserItem,
-    InternalUsersListUsersCompute, InternalUsersListUsersResult, RefreshInternalUsersCommand,
+    InternalUsersListUsersCompute, InternalUsersListUsersInput, InternalUsersListUsersResult,
+    RefreshInternalUsersCommand,
 };
 use collects_states::{StateCtx, Time};
 use egui::{Color32, Response, Ui};
@@ -21,6 +22,9 @@ use collects_business::{InternalUsersState, UserAction};
 
 /// Displays the internal users panel with a table and create button.
 pub fn internal_users_panel(state_ctx: &mut StateCtx, api_base_url: &str, ui: &mut Ui) -> Response {
+    // Check if OTP codes have become stale and auto-refresh if needed
+    check_and_auto_refresh_otp(state_ctx, api_base_url);
+
     let response = ui.vertical(|ui| {
         // Controls row: Refresh and Create buttons
         render_controls_row(state_ctx, api_base_url, ui);
@@ -51,6 +55,48 @@ pub fn internal_users_panel(state_ctx: &mut StateCtx, api_base_url: &str, ui: &m
     render_modals(state_ctx, api_base_url, ui);
 
     response.response
+}
+
+/// Checks if any OTP codes have become stale and triggers auto-refresh.
+///
+/// OTP codes change every 30 seconds. When the time remaining crosses a 30-second
+/// boundary, the cached OTP codes are stale and need to be refreshed from the API.
+/// This function automatically triggers a refresh when stale OTP is detected.
+#[inline]
+fn check_and_auto_refresh_otp(state_ctx: &mut StateCtx, api_base_url: &str) {
+    // Don't auto-refresh if already loading
+    let is_loading = state_ctx
+        .cached::<InternalUsersListUsersCompute>()
+        .map(|c| c.is_loading())
+        .unwrap_or(false);
+
+    if is_loading {
+        return;
+    }
+
+    // Get current time
+    let now = *state_ctx.state::<Time>().as_ref();
+
+    // Get users from the compute
+    let users: Vec<InternalUserItem> = match state_ctx.cached::<InternalUsersListUsersCompute>() {
+        Some(c) => match &c.result {
+            InternalUsersListUsersResult::Loaded(users) => users.clone(),
+            _ => return, // No data loaded yet
+        },
+        None => return,
+    };
+
+    // Check if any user's OTP is stale
+    let state = state_ctx.state::<InternalUsersState>();
+    let any_stale = users.iter().any(|user| state.is_otp_stale(user.time_remaining, now));
+
+    if any_stale {
+        // Trigger auto-refresh
+        state_ctx.update::<InternalUsersListUsersInput>(|input| {
+            input.api_base_url = Some(Ustr::from(api_base_url));
+        });
+        state_ctx.dispatch::<RefreshInternalUsersCommand>();
+    }
 }
 
 /// Renders the controls row with Refresh and Create buttons.

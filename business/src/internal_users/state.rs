@@ -326,6 +326,76 @@ impl InternalUsersState {
         // Clamp to valid range (1-30)
         adjusted.clamp(1, OTP_CYCLE_SECONDS) as u8
     }
+
+    /// Check if the OTP code is stale (has cycled since last fetch).
+    ///
+    /// OTP codes change every 30 seconds. This method determines if at least one
+    /// complete OTP cycle has passed since the last data fetch, indicating that
+    /// the cached OTP codes are no longer valid.
+    ///
+    /// # Arguments
+    ///
+    /// * `original_time_remaining` - The time remaining value from the fetched user data (1-30)
+    /// * `now` - The current time (from Time state for mockability)
+    ///
+    /// # Returns
+    ///
+    /// `true` if the OTP has cycled at least once since last_fetch, meaning the
+    /// current OTP code in the cache is stale and needs to be refreshed.
+    pub fn is_otp_stale(&self, original_time_remaining: u8, now: DateTime<Utc>) -> bool {
+        let Some(last_fetch) = self.last_fetch else {
+            // If no fetch time recorded, data hasn't been loaded yet
+            return false;
+        };
+
+        let elapsed_seconds = now.signed_duration_since(last_fetch).num_seconds();
+
+        if elapsed_seconds < 0 {
+            // Time went backwards (clock skew), assume data is still valid
+            return false;
+        }
+
+        // The OTP is stale if elapsed time exceeds the original_time_remaining.
+        // This means we've crossed at least one 30-second boundary.
+        elapsed_seconds >= original_time_remaining as i64
+    }
+
+    /// Get the number of complete OTP cycles elapsed since last fetch.
+    ///
+    /// This is useful for determining how stale the data is.
+    ///
+    /// # Arguments
+    ///
+    /// * `original_time_remaining` - The time remaining value from the fetched user data (1-30)
+    /// * `now` - The current time (from Time state for mockability)
+    ///
+    /// # Returns
+    ///
+    /// The number of complete OTP cycles that have elapsed. 0 means we're still
+    /// in the same cycle, 1 means one full cycle has passed, etc.
+    pub fn otp_cycles_elapsed(&self, original_time_remaining: u8, now: DateTime<Utc>) -> u32 {
+        const OTP_CYCLE_SECONDS: i64 = 30;
+
+        let Some(last_fetch) = self.last_fetch else {
+            return 0;
+        };
+
+        let elapsed_seconds = now.signed_duration_since(last_fetch).num_seconds();
+
+        if elapsed_seconds < 0 {
+            return 0;
+        }
+
+        // Time until first boundary was original_time_remaining
+        // After that, each 30 seconds is another cycle
+        if elapsed_seconds < original_time_remaining as i64 {
+            0
+        } else {
+            // Subtract the time to first boundary, then count 30-second cycles
+            let after_first_boundary = elapsed_seconds - original_time_remaining as i64;
+            1 + (after_first_boundary / OTP_CYCLE_SECONDS) as u32
+        }
+    }
 }
 
 #[cfg(test)]
@@ -490,5 +560,145 @@ mod tests {
     fn test_user_action_edit_profile_variant() {
         let action = UserAction::EditProfile(Ustr::from("alice"));
         assert_eq!(action, UserAction::EditProfile(Ustr::from("alice")));
+    }
+
+    // =====================
+    // Tests for is_otp_stale
+    // =====================
+
+    #[test]
+    fn test_is_otp_stale_no_last_fetch() {
+        let now = Utc::now();
+        let state = InternalUsersState::new();
+
+        // No last_fetch means not stale (data hasn't loaded yet)
+        assert!(!state.is_otp_stale(25, now));
+    }
+
+    #[test]
+    fn test_is_otp_stale_within_same_cycle() {
+        let now = Utc::now();
+        let fetch_time = now - Duration::seconds(5);
+        let state = state_with_last_fetch(fetch_time);
+
+        // If original time_remaining was 25, and 5 seconds elapsed,
+        // we still have 20 seconds in the same cycle - not stale
+        assert!(!state.is_otp_stale(25, now));
+        assert!(!state.is_otp_stale(10, now)); // 10 - 5 = 5 remaining, same cycle
+    }
+
+    #[test]
+    fn test_is_otp_stale_crosses_boundary() {
+        let now = Utc::now();
+        let fetch_time = now - Duration::seconds(10);
+        let state = state_with_last_fetch(fetch_time);
+
+        // If original time_remaining was 5, and 10 seconds elapsed,
+        // we've crossed the boundary into a new cycle - stale
+        assert!(state.is_otp_stale(5, now));
+        assert!(state.is_otp_stale(10, now)); // exactly at boundary
+    }
+
+    #[test]
+    fn test_is_otp_stale_exactly_at_boundary() {
+        let now = Utc::now();
+        let fetch_time = now - Duration::seconds(15);
+        let state = state_with_last_fetch(fetch_time);
+
+        // If original time_remaining was 15, and exactly 15 seconds elapsed,
+        // we're exactly at the boundary - considered stale (time_remaining would be 0)
+        assert!(state.is_otp_stale(15, now));
+    }
+
+    #[test]
+    fn test_is_otp_stale_multiple_cycles() {
+        let now = Utc::now();
+        let fetch_time = now - Duration::seconds(65); // More than 2 cycles
+        let state = state_with_last_fetch(fetch_time);
+
+        // Data is definitely stale after 65 seconds
+        assert!(state.is_otp_stale(25, now));
+        assert!(state.is_otp_stale(5, now));
+    }
+
+    #[test]
+    fn test_is_otp_stale_clock_skew() {
+        let now = Utc::now();
+        let fetch_time = now + Duration::seconds(5); // Future time
+        let state = state_with_last_fetch(fetch_time);
+
+        // If time went backwards, assume data is still valid
+        assert!(!state.is_otp_stale(25, now));
+    }
+
+    // =====================
+    // Tests for otp_cycles_elapsed
+    // =====================
+
+    #[test]
+    fn test_otp_cycles_elapsed_no_last_fetch() {
+        let now = Utc::now();
+        let state = InternalUsersState::new();
+
+        assert_eq!(state.otp_cycles_elapsed(25, now), 0);
+    }
+
+    #[test]
+    fn test_otp_cycles_elapsed_within_same_cycle() {
+        let now = Utc::now();
+        let fetch_time = now - Duration::seconds(5);
+        let state = state_with_last_fetch(fetch_time);
+
+        // Still in the first cycle
+        assert_eq!(state.otp_cycles_elapsed(25, now), 0);
+        assert_eq!(state.otp_cycles_elapsed(10, now), 0);
+    }
+
+    #[test]
+    fn test_otp_cycles_elapsed_one_cycle() {
+        let now = Utc::now();
+        let fetch_time = now - Duration::seconds(10);
+        let state = state_with_last_fetch(fetch_time);
+
+        // If original was 5, after 10 seconds, we've crossed into cycle 1
+        assert_eq!(state.otp_cycles_elapsed(5, now), 1);
+    }
+
+    #[test]
+    fn test_otp_cycles_elapsed_multiple_cycles() {
+        let now = Utc::now();
+        // Let's say original_time_remaining = 10
+        // After 10 seconds, cycle 1 begins (first boundary crossed)
+        // After 40 seconds, cycle 2 begins (40 = 10 + 30)
+        // After 70 seconds, cycle 3 begins (70 = 10 + 60)
+        // At 65 seconds: 65 - 10 = 55, 55 / 30 = 1 full 30-second cycles after first boundary
+        // Total cycles: 1 + 1 = 2
+        let fetch_time = now - Duration::seconds(65);
+        let state = state_with_last_fetch(fetch_time);
+
+        // 65 - 10 = 55, 55 / 30 = 1 (integer division)
+        // Total = 1 (first boundary) + 1 (full cycles after) = 2
+        assert_eq!(state.otp_cycles_elapsed(10, now), 2);
+    }
+
+    #[test]
+    fn test_otp_cycles_elapsed_clock_skew() {
+        let now = Utc::now();
+        let fetch_time = now + Duration::seconds(5);
+        let state = state_with_last_fetch(fetch_time);
+
+        // Time went backwards, return 0
+        assert_eq!(state.otp_cycles_elapsed(25, now), 0);
+    }
+
+    #[test]
+    fn test_otp_cycles_elapsed_exactly_at_boundary() {
+        let now = Utc::now();
+        let fetch_time = now - Duration::seconds(15);
+        let state = state_with_last_fetch(fetch_time);
+
+        // If original was 15, after exactly 15 seconds, we're at cycle 1
+        // 15 - 15 = 0, then 0 / 30 = 0, so total = 1 + 0 = 1
+        assert_eq!(state.otp_cycles_elapsed(15, now), 1);
     }
 }

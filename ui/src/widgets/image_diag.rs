@@ -5,7 +5,7 @@
 //!
 //! # Usage
 //!
-//! Toggle the diagnostic window with F2 key. The window displays:
+//! Toggle the diagnostic window with Shift+F2 key. The window displays:
 //! - Key event detection (Ctrl+V / Cmd+V hotkey detection)
 //! - Clipboard access logs (success/failure with detailed error info)
 //! - Drop event logs (hover, drop, file info)
@@ -42,7 +42,7 @@ pub fn image_diag_window(state_ctx: &StateCtx, ui: &mut Ui) -> ImageDiagAction {
     ui.heading("Image Paste/Drop Diagnostics");
     ui.add_space(4.0);
     ui.label(
-        RichText::new("Press F2 to close • Ctrl+V to test paste • Drag files to test drop")
+        RichText::new("Press Shift+F2 to close • Ctrl+V to test paste • Drag files to test drop")
             .small()
             .weak(),
     );

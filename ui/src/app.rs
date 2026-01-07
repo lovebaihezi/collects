@@ -330,15 +330,15 @@ impl<P: PasteHandler, D: DropHandler> eframe::App for CollectsApp<P, D> {
             });
         }
 
-        // Toggle API status display when F1 is pressed
-        // In WASM builds, F1 is reserved by browsers (e.g., Chrome help), so this shortcut is disabled
-        #[cfg(not(target_arch = "wasm32"))]
-        if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::F1)) {
+        // Toggle API status display with Shift+F1
+        // Use Shift+F1 instead of F1 to avoid browser defaults (e.g., Chrome help) in WASM
+        if ctx.input_mut(|i| i.consume_key(egui::Modifiers::SHIFT, egui::Key::F1)) {
             self.state.ctx.dispatch::<ToggleApiStatusCommand>();
         }
 
-        // Toggle image diagnostics window when F2 is pressed
-        if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::F2)) {
+        // Toggle image diagnostics window with Shift+F2
+        // Use Shift+F2 for consistency with API status toggle
+        if ctx.input_mut(|i| i.consume_key(egui::Modifiers::SHIFT, egui::Key::F2)) {
             self.state.ctx.update::<ImageDiagState>(|diag| {
                 diag.toggle_window();
             });

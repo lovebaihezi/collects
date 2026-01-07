@@ -1,8 +1,8 @@
-//! Integration tests for Image Diagnostics window functionality (F2 key).
+//! Integration tests for Image Diagnostics window functionality (Shift+F2 key).
 //!
 //! These tests verify:
 //! 1. Image diagnostics window is hidden by default
-//! 2. F2 key press correctly toggles visibility
+//! 2. Shift+F2 key press correctly toggles visibility
 //! 3. Key events are recorded in the diagnostic state
 //! 4. Paste/drop events are recorded in the diagnostic state
 //! 5. Clear history functionality works correctly
@@ -28,7 +28,7 @@ fn is_image_diag_visible(harness: &egui_kittest::Harness<'_, collects_ui::Collec
 }
 
 // =============================================================================
-// TOGGLE FUNCTIONALITY TESTS (Using F2 key press via harness)
+// TOGGLE FUNCTIONALITY TESTS (Using Shift+F2 key press via harness)
 // =============================================================================
 
 /// Tests that image diagnostics window is hidden by default.
@@ -47,7 +47,7 @@ async fn test_image_diag_hidden_by_default() {
     );
 }
 
-/// Tests that F2 key press toggles the visibility from off to on.
+/// Tests that Shift+F2 key press toggles the visibility from off to on.
 #[tokio::test]
 async fn test_f2_key_shows_image_diag() {
     let mut ctx = TestCtx::new_app().await;
@@ -64,8 +64,8 @@ async fn test_f2_key_shows_image_diag() {
         "Should be hidden initially"
     );
 
-    // Press F2 key to toggle
-    harness.key_press(egui::Key::F2);
+    // Press Shift+F2 key to toggle
+    harness.key_press_modifiers(egui::Modifiers::SHIFT, egui::Key::F2);
     harness.step();
     harness.step();
 
@@ -76,7 +76,7 @@ async fn test_f2_key_shows_image_diag() {
     );
 }
 
-/// Tests that F2 key press toggles the visibility from on to off.
+/// Tests that Shift+F2 key press toggles the visibility from on to off.
 #[tokio::test]
 async fn test_f2_key_hides_image_diag() {
     let mut ctx = TestCtx::new_app().await;
@@ -87,8 +87,8 @@ async fn test_f2_key_hides_image_diag() {
         harness.step();
     }
 
-    // Press F2 to show
-    harness.key_press(egui::Key::F2);
+    // Press Shift+F2 to show
+    harness.key_press_modifiers(egui::Modifiers::SHIFT, egui::Key::F2);
     harness.step();
     harness.step();
 
@@ -98,8 +98,8 @@ async fn test_f2_key_hides_image_diag() {
         "Should be visible after first F2 press"
     );
 
-    // Press F2 again to hide
-    harness.key_press(egui::Key::F2);
+    // Press Shift+F2 again to hide
+    harness.key_press_modifiers(egui::Modifiers::SHIFT, egui::Key::F2);
     harness.step();
     harness.step();
 
@@ -110,7 +110,7 @@ async fn test_f2_key_hides_image_diag() {
     );
 }
 
-/// Tests multiple F2 key presses toggle correctly.
+/// Tests multiple Shift+F2 key presses toggle correctly.
 #[tokio::test]
 async fn test_f2_key_multiple_toggles() {
     let mut ctx = TestCtx::new_app().await;
@@ -126,7 +126,7 @@ async fn test_f2_key_multiple_toggles() {
 
     // Toggle multiple times
     for i in 0..4 {
-        harness.key_press(egui::Key::F2);
+        harness.key_press_modifiers(egui::Modifiers::SHIFT, egui::Key::F2);
         harness.step();
         harness.step();
 
@@ -440,7 +440,7 @@ async fn test_image_diag_shows_platform_info() {
     }
 
     // Show the diagnostics window
-    harness.key_press(egui::Key::F2);
+    harness.key_press_modifiers(egui::Modifiers::SHIFT, egui::Key::F2);
     harness.step();
     harness.step();
 
@@ -463,7 +463,7 @@ async fn test_image_diag_shows_env_info() {
     }
 
     // Show the diagnostics window
-    harness.key_press(egui::Key::F2);
+    harness.key_press_modifiers(egui::Modifiers::SHIFT, egui::Key::F2);
     harness.step();
     harness.step();
 
@@ -486,7 +486,7 @@ async fn test_image_diag_has_clear_button() {
     }
 
     // Show the diagnostics window
-    harness.key_press(egui::Key::F2);
+    harness.key_press_modifiers(egui::Modifiers::SHIFT, egui::Key::F2);
     harness.step();
     harness.step();
 
@@ -509,7 +509,7 @@ async fn test_image_diag_shows_statistics() {
     }
 
     // Show the diagnostics window
-    harness.key_press(egui::Key::F2);
+    harness.key_press_modifiers(egui::Modifiers::SHIFT, egui::Key::F2);
     harness.step();
     harness.step();
 
@@ -532,7 +532,7 @@ async fn test_image_diag_shows_event_log() {
     }
 
     // Show the diagnostics window
-    harness.key_press(egui::Key::F2);
+    harness.key_press_modifiers(egui::Modifiers::SHIFT, egui::Key::F2);
     harness.step();
     harness.step();
 
@@ -556,7 +556,7 @@ async fn test_image_diag_statistics_section_exists() {
     }
 
     // Show the diagnostics window
-    harness.key_press(egui::Key::F2);
+    harness.key_press_modifiers(egui::Modifiers::SHIFT, egui::Key::F2);
     harness.step();
     harness.step();
 

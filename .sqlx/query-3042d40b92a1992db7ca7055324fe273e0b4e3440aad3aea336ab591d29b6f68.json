@@ -1,0 +1,46 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT id, group_id, content_id, sort_order, added_at\n            FROM content_group_items\n            WHERE group_id = $1\n            ORDER BY sort_order ASC, added_at ASC\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "group_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "content_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "sort_order",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 4,
+        "name": "added_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "3042d40b92a1992db7ca7055324fe273e0b4e3440aad3aea336ab591d29b6f68"
+}

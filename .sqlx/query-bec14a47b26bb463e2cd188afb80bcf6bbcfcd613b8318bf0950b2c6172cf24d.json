@@ -1,0 +1,82 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT\n                id, owner_id, token, name, permission, password_hash,\n                max_access_count, access_count, expires_at, is_active, created_at\n            FROM share_links\n            WHERE owner_id = $1\n            ORDER BY created_at DESC\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "owner_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "token",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 3,
+        "name": "name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 4,
+        "name": "permission",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 5,
+        "name": "password_hash",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
+        "name": "max_access_count",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 7,
+        "name": "access_count",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 8,
+        "name": "expires_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 9,
+        "name": "is_active",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 10,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      false,
+      true,
+      true,
+      false,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "bec14a47b26bb463e2cd188afb80bcf6bbcfcd613b8318bf0950b2c6172cf24d"
+}

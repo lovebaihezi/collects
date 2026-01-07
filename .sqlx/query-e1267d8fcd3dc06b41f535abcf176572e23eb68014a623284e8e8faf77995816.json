@@ -1,0 +1,46 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT t.id, t.user_id, t.name, t.color, t.created_at\n            FROM content_tags ct\n            JOIN tags t ON t.id = ct.tag_id\n            WHERE ct.content_id = $1\n            ORDER BY t.created_at DESC\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "user_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 3,
+        "name": "color",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 4,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "e1267d8fcd3dc06b41f535abcf176572e23eb68014a623284e8e8faf77995816"
+}

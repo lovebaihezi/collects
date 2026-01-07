@@ -1,0 +1,109 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT\n                id, user_id, title, description,\n                storage_backend, storage_profile, storage_key,\n                content_type, file_size, status, visibility,\n                trashed_at, archived_at, created_at, updated_at\n            FROM contents\n            WHERE user_id = $1\n              AND ($2::text IS NULL OR status = $2)\n            ORDER BY created_at DESC\n            LIMIT $3 OFFSET $4\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "user_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "title",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 3,
+        "name": "description",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "storage_backend",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "storage_profile",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
+        "name": "storage_key",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 7,
+        "name": "content_type",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 8,
+        "name": "file_size",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 9,
+        "name": "status",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 10,
+        "name": "visibility",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 11,
+        "name": "trashed_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 12,
+        "name": "archived_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 13,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 14,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "93f46eb327bfe81d351e7687f561a45534d0e15e357e95c49a78464a12e003b5"
+}

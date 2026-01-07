@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE share_links\n            SET is_active = false\n            WHERE id = $1 AND owner_id = $2\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "d4793a23ea53420ebe49a9fc446cfb4aed2eebedd3d92a243f481e239830799c"
+}

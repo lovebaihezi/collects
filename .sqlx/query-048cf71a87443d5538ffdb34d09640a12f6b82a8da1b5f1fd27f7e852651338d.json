@@ -1,0 +1,81 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE content_groups\n            SET\n                name = COALESCE($3, name),\n                description = CASE\n                    WHEN $4::bool THEN $5\n                    ELSE description\n                END,\n                visibility = COALESCE($6, visibility)\n            WHERE id = $1 AND user_id = $2\n            RETURNING\n                id, user_id, name, description,\n                visibility, status,\n                trashed_at, archived_at, created_at, updated_at\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "user_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 3,
+        "name": "description",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "visibility",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 5,
+        "name": "status",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 6,
+        "name": "trashed_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 7,
+        "name": "archived_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 8,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 9,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Varchar",
+        "Bool",
+        "Text",
+        "Varchar"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      true,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "048cf71a87443d5538ffdb34d09640a12f6b82a8da1b5f1fd27f7e852651338d"
+}

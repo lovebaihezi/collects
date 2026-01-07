@@ -33,6 +33,7 @@ opentelemetry_sdk = { workspace = true }
 mimalloc = { workspace = true }
 totp-rs = { version = "5.7.0", features = ["otpauth", "gen_secret"] }
 collects-utils = { path = "../utils" }
+uuid = { workspace = true }
 
 [dev-dependencies]
 axum-test = "18.1.0"

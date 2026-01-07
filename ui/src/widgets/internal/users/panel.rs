@@ -88,7 +88,9 @@ fn check_and_auto_refresh_otp(state_ctx: &mut StateCtx, api_base_url: &str) {
 
     // Check if any user's OTP is stale
     let state = state_ctx.state::<InternalUsersState>();
-    let any_stale = users.iter().any(|user| state.is_otp_stale(user.time_remaining, now));
+    let any_stale = users
+        .iter()
+        .any(|user| state.is_otp_stale(user.time_remaining, now));
 
     if any_stale {
         // Trigger auto-refresh

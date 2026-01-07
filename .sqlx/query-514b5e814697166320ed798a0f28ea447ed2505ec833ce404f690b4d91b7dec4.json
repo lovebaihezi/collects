@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO content_group_items (group_id, content_id, sort_order)\n            VALUES ($1,$2,$3)\n            ON CONFLICT (group_id, content_id) DO UPDATE SET sort_order = EXCLUDED.sort_order\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Int4"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "514b5e814697166320ed798a0f28ea447ed2505ec833ce404f690b4d91b7dec4"
+}

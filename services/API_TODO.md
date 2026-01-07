@@ -558,12 +558,12 @@ Maps to `share_links`, `content_shares`, `content_group_shares`, `share_link_acc
 ## Implementation TODO Checklist (Engineering Work)
 
 ### A) SQL / Storage integration
-- [ ] Implement `contents` queries with `sqlx`:
+- [x] Implement `contents` queries with `sqlx`:
   - insert, list, get, update, lifecycle updates
-- [ ] Implement `content_groups` queries and join table operations
-- [ ] Implement `tags` queries + content_tags attach/detach
-- [ ] Implement `share_links` and share join tables
-- [ ] Write audit log helper; log key actions
+- [x] Implement `content_groups` queries and join table operations
+- [x] Implement `tags` queries + content_tags attach/detach
+- [x] Implement `share_links` and share join tables
+- [x] Write audit log helper; log key actions
 
 ### B) Direct upload / signed URL generation
 - [ ] Decide upload strategy:
@@ -591,7 +591,7 @@ Maps to `share_links`, `content_shares`, `content_group_shares`, `share_link_acc
 - [ ] Add structured logging for:
   - upload init/complete
   - view-url generation
-- [ ] Add tests:
+- [x] Add tests:
   - unit tests for SQL queries (or integration tests with test DB)
   - integration tests for API flows using existing test harness approach
 

@@ -1,0 +1,61 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO content_shares (\n                content_id, shared_with_user_id, share_link_id, permission, created_by\n            )\n            VALUES ($1,$2,NULL,$3,$4)\n            RETURNING id, content_id, shared_with_user_id, share_link_id, permission, created_at, created_by\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "content_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "shared_with_user_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "share_link_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 4,
+        "name": "permission",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 5,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 6,
+        "name": "created_by",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Varchar",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      true,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "d79565beb50c09546ac129a10a756e15003f26a10e485ceb5d0d499a274647fa"
+}

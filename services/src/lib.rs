@@ -233,6 +233,238 @@ mod tests {
         async fn is_connected(&self) -> bool {
             self.is_connected
         }
+
+        async fn contents_insert(
+            &self,
+            _input: crate::database::ContentsInsert,
+        ) -> Result<crate::database::ContentRow, crate::database::SqlStorageError> {
+            Err(crate::database::SqlStorageError::Db(
+                "MockSqlStorage.contents_insert: unimplemented".to_string(),
+            ))
+        }
+
+        async fn contents_get(
+            &self,
+            _id: uuid::Uuid,
+        ) -> Result<Option<crate::database::ContentRow>, crate::database::SqlStorageError> {
+            Ok(None)
+        }
+
+        async fn contents_list_for_user(
+            &self,
+            _user_id: uuid::Uuid,
+            _params: crate::database::ContentsListParams,
+        ) -> Result<Vec<crate::database::ContentRow>, crate::database::SqlStorageError> {
+            Ok(vec![])
+        }
+
+        async fn contents_update_metadata(
+            &self,
+            _id: uuid::Uuid,
+            _user_id: uuid::Uuid,
+            _changes: crate::database::ContentsUpdate,
+        ) -> Result<Option<crate::database::ContentRow>, crate::database::SqlStorageError> {
+            Ok(None)
+        }
+
+        async fn contents_set_status(
+            &self,
+            _id: uuid::Uuid,
+            _user_id: uuid::Uuid,
+            _new_status: crate::database::ContentStatus,
+            _now: chrono::DateTime<chrono::Utc>,
+        ) -> Result<Option<crate::database::ContentRow>, crate::database::SqlStorageError> {
+            Ok(None)
+        }
+
+        async fn groups_create(
+            &self,
+            _input: crate::database::GroupCreate,
+        ) -> Result<crate::database::ContentGroupRow, crate::database::SqlStorageError> {
+            Err(crate::database::SqlStorageError::Db(
+                "MockSqlStorage.groups_create: unimplemented".to_string(),
+            ))
+        }
+
+        async fn groups_get(
+            &self,
+            _id: uuid::Uuid,
+        ) -> Result<Option<crate::database::ContentGroupRow>, crate::database::SqlStorageError>
+        {
+            Ok(None)
+        }
+
+        async fn groups_list_for_user(
+            &self,
+            _user_id: uuid::Uuid,
+            _params: crate::database::GroupsListParams,
+        ) -> Result<Vec<crate::database::ContentGroupRow>, crate::database::SqlStorageError>
+        {
+            Ok(vec![])
+        }
+
+        async fn groups_update_metadata(
+            &self,
+            _id: uuid::Uuid,
+            _user_id: uuid::Uuid,
+            _changes: crate::database::GroupUpdate,
+        ) -> Result<Option<crate::database::ContentGroupRow>, crate::database::SqlStorageError>
+        {
+            Ok(None)
+        }
+
+        async fn groups_set_status(
+            &self,
+            _id: uuid::Uuid,
+            _user_id: uuid::Uuid,
+            _new_status: crate::database::GroupStatus,
+            _now: chrono::DateTime<chrono::Utc>,
+        ) -> Result<Option<crate::database::ContentGroupRow>, crate::database::SqlStorageError>
+        {
+            Ok(None)
+        }
+
+        async fn group_items_add(
+            &self,
+            _group_id: uuid::Uuid,
+            _content_id: uuid::Uuid,
+            _sort_order: i32,
+        ) -> Result<(), crate::database::SqlStorageError> {
+            Ok(())
+        }
+
+        async fn group_items_remove(
+            &self,
+            _group_id: uuid::Uuid,
+            _content_id: uuid::Uuid,
+        ) -> Result<bool, crate::database::SqlStorageError> {
+            Ok(false)
+        }
+
+        async fn group_items_list(
+            &self,
+            _group_id: uuid::Uuid,
+        ) -> Result<Vec<crate::database::ContentGroupItemRow>, crate::database::SqlStorageError>
+        {
+            Ok(vec![])
+        }
+
+        async fn tags_create(
+            &self,
+            _input: crate::database::TagCreate,
+        ) -> Result<crate::database::TagRow, crate::database::SqlStorageError> {
+            Err(crate::database::SqlStorageError::Db(
+                "MockSqlStorage.tags_create: unimplemented".to_string(),
+            ))
+        }
+
+        async fn tags_list_for_user(
+            &self,
+            _user_id: uuid::Uuid,
+        ) -> Result<Vec<crate::database::TagRow>, crate::database::SqlStorageError> {
+            Ok(vec![])
+        }
+
+        async fn tags_delete(
+            &self,
+            _user_id: uuid::Uuid,
+            _tag_id: uuid::Uuid,
+        ) -> Result<bool, crate::database::SqlStorageError> {
+            Ok(false)
+        }
+
+        async fn content_tags_attach(
+            &self,
+            _content_id: uuid::Uuid,
+            _tag_id: uuid::Uuid,
+        ) -> Result<(), crate::database::SqlStorageError> {
+            Ok(())
+        }
+
+        async fn content_tags_detach(
+            &self,
+            _content_id: uuid::Uuid,
+            _tag_id: uuid::Uuid,
+        ) -> Result<bool, crate::database::SqlStorageError> {
+            Ok(false)
+        }
+
+        async fn content_tags_list_for_content(
+            &self,
+            _content_id: uuid::Uuid,
+        ) -> Result<Vec<crate::database::TagRow>, crate::database::SqlStorageError> {
+            Ok(vec![])
+        }
+
+        async fn share_links_create(
+            &self,
+            _input: crate::database::ShareLinkCreate,
+        ) -> Result<crate::database::ShareLinkRow, crate::database::SqlStorageError> {
+            Err(crate::database::SqlStorageError::Db(
+                "MockSqlStorage.share_links_create: unimplemented".to_string(),
+            ))
+        }
+
+        async fn share_links_get_by_token(
+            &self,
+            _token: &str,
+        ) -> Result<Option<crate::database::ShareLinkRow>, crate::database::SqlStorageError>
+        {
+            Ok(None)
+        }
+
+        async fn share_links_list_for_owner(
+            &self,
+            _owner_id: uuid::Uuid,
+        ) -> Result<Vec<crate::database::ShareLinkRow>, crate::database::SqlStorageError> {
+            Ok(vec![])
+        }
+
+        async fn share_links_deactivate(
+            &self,
+            _owner_id: uuid::Uuid,
+            _share_link_id: uuid::Uuid,
+        ) -> Result<bool, crate::database::SqlStorageError> {
+            Ok(false)
+        }
+
+        async fn content_shares_create_for_user(
+            &self,
+            _input: crate::database::ContentShareCreateForUser,
+        ) -> Result<crate::database::ContentShareRow, crate::database::SqlStorageError> {
+            Err(crate::database::SqlStorageError::Db(
+                "MockSqlStorage.content_shares_create_for_user: unimplemented".to_string(),
+            ))
+        }
+
+        async fn content_shares_create_for_link(
+            &self,
+            _input: crate::database::ContentShareCreateForLink,
+        ) -> Result<crate::database::ContentShareRow, crate::database::SqlStorageError> {
+            Err(crate::database::SqlStorageError::Db(
+                "MockSqlStorage.content_shares_create_for_link: unimplemented".to_string(),
+            ))
+        }
+
+        async fn group_shares_create_for_user(
+            &self,
+            _input: crate::database::GroupShareCreateForUser,
+        ) -> Result<crate::database::ContentGroupShareRow, crate::database::SqlStorageError>
+        {
+            Err(crate::database::SqlStorageError::Db(
+                "MockSqlStorage.group_shares_create_for_user: unimplemented".to_string(),
+            ))
+        }
+
+        async fn group_shares_create_for_link(
+            &self,
+            _input: crate::database::GroupShareCreateForLink,
+        ) -> Result<crate::database::ContentGroupShareRow, crate::database::SqlStorageError>
+        {
+            Err(crate::database::SqlStorageError::Db(
+                "MockSqlStorage.group_shares_create_for_link: unimplemented".to_string(),
+            ))
+        }
     }
 
     #[tokio::test]

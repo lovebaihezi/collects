@@ -3,6 +3,59 @@
 -- ============================================================================
 
 -- ============================================================================
+-- Extensions
+-- ============================================================================
+-- Required for gen_random_bytes() used by uuid_v7()
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+-- ============================================================================
+-- UUIDv7 helper
+-- ============================================================================
+-- We generate UUIDv7 in Postgres so IDs are roughly time-ordered and still UUID-typed.
+-- NOTE: This is a best-effort UUIDv7 implementation using built-in primitives.
+CREATE OR REPLACE FUNCTION uuid_v7()
+RETURNS UUID
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    unix_ms BIGINT;
+    time_hex TEXT;
+    rand_bytes BYTEA;
+    rand_hex TEXT;
+    uuid_hex TEXT;
+BEGIN
+    -- milliseconds since unix epoch
+    unix_ms := (EXTRACT(EPOCH FROM clock_timestamp()) * 1000)::BIGINT;
+
+    -- 48-bit timestamp (12 hex chars)
+    time_hex := lpad(to_hex(unix_ms), 12, '0');
+
+    -- 10 random bytes (20 hex chars)
+    rand_bytes := gen_random_bytes(10);
+    rand_hex := encode(rand_bytes, 'hex');
+
+    -- Compose UUIDv7:
+    -- - 48 bits timestamp
+    -- - 4 bits version (7)
+    -- - 12 bits random
+    -- - 2 bits variant (RFC 4122 => 10xx)
+    -- - 62 bits random
+    --
+    -- Layout (hex, with hyphens):
+    -- time(12) - ver+rand(4) - var+rand(4) - rand(4) - rand(12)
+    uuid_hex :=
+        substr(time_hex, 1, 8) || '-' ||
+        substr(time_hex, 9, 4) || '-' ||
+        '7' || substr(rand_hex, 1, 3) || '-' ||
+        -- set variant to 10xx by forcing top two bits to 10 (i.e. 8..b)
+        to_hex((('x' || substr(rand_hex, 4, 2))::bit(8)::int & 63) | 128)::text || substr(rand_hex, 6, 2) || '-' ||
+        substr(rand_hex, 8, 12);
+
+    RETURN uuid_hex::uuid;
+END;
+$$;
+
+-- ============================================================================
 -- TABLE: users
 -- ============================================================================
 --
@@ -159,7 +212,7 @@
 --
 -- ============================================================================
 CREATE TABLE users (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY DEFAULT uuid_v7(),
     username VARCHAR(50) NOT NULL UNIQUE,
     otp_secret TEXT NOT NULL,  -- Base32 encoded, consider encryption at rest
     nickname VARCHAR(100),
@@ -175,7 +228,7 @@ CREATE TABLE users (
 
 -- Sessions for maintaining login state after OTP verification
 CREATE TABLE sessions (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY DEFAULT uuid_v7(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     token_hash TEXT NOT NULL,  -- SHA256 hash of session token
     expires_at TIMESTAMPTZ NOT NULL,
@@ -187,7 +240,7 @@ CREATE TABLE sessions (
 
 -- Rate limiting for OTP attempts
 CREATE TABLE otp_attempts (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY DEFAULT uuid_v7(),
     username VARCHAR(50) NOT NULL,
     attempted_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     success BOOLEAN NOT NULL DEFAULT false,
@@ -200,7 +253,7 @@ CREATE TABLE otp_attempts (
 
 -- Content uploaded by users
 CREATE TABLE contents (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY DEFAULT uuid_v7(),
     user_id UUID NOT NULL REFERENCES users(id),
     title VARCHAR(255) NOT NULL,
     description TEXT,
@@ -220,7 +273,7 @@ CREATE TABLE contents (
 
 -- Content groups (collections for sharing multiple items together)
 CREATE TABLE content_groups (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY DEFAULT uuid_v7(),
     user_id UUID NOT NULL REFERENCES users(id),
     name VARCHAR(255) NOT NULL,
     description TEXT,
@@ -237,7 +290,7 @@ CREATE TABLE content_groups (
 
 -- Junction table: contents belonging to groups
 CREATE TABLE content_group_items (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY DEFAULT uuid_v7(),
     group_id UUID NOT NULL REFERENCES content_groups(id) ON DELETE CASCADE,
     content_id UUID NOT NULL REFERENCES contents(id) ON DELETE CASCADE,
     sort_order INT NOT NULL DEFAULT 0,
@@ -252,7 +305,7 @@ CREATE TABLE content_group_items (
 
 -- Share links for public/restricted access
 CREATE TABLE share_links (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY DEFAULT uuid_v7(),
     owner_id UUID NOT NULL REFERENCES users(id),
     token VARCHAR(64) NOT NULL UNIQUE,  -- Unique share token for URLs
     name VARCHAR(255),  -- Optional friendly name for the link
@@ -269,7 +322,7 @@ CREATE TABLE share_links (
 
 -- Individual content shares (to specific users or via link)
 CREATE TABLE content_shares (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY DEFAULT uuid_v7(),
     content_id UUID NOT NULL REFERENCES contents(id) ON DELETE CASCADE,
     shared_with_user_id UUID REFERENCES users(id) ON DELETE CASCADE,  -- NULL if using share_link
     share_link_id UUID REFERENCES share_links(id) ON DELETE CASCADE,  -- NULL if direct user share
@@ -286,7 +339,7 @@ CREATE TABLE content_shares (
 
 -- Group shares (share entire collection)
 CREATE TABLE content_group_shares (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY DEFAULT uuid_v7(),
     group_id UUID NOT NULL REFERENCES content_groups(id) ON DELETE CASCADE,
     shared_with_user_id UUID REFERENCES users(id) ON DELETE CASCADE,
     share_link_id UUID REFERENCES share_links(id) ON DELETE CASCADE,
@@ -303,7 +356,7 @@ CREATE TABLE content_group_shares (
 
 -- Track share link accesses
 CREATE TABLE share_link_accesses (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY DEFAULT uuid_v7(),
     share_link_id UUID NOT NULL REFERENCES share_links(id) ON DELETE CASCADE,
     accessed_by_user_id UUID REFERENCES users(id),  -- NULL if anonymous
     ip_address INET,
@@ -316,7 +369,7 @@ CREATE TABLE share_link_accesses (
 -- ============================================================================
 
 CREATE TABLE tags (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY DEFAULT uuid_v7(),
     user_id UUID NOT NULL REFERENCES users(id),
     name VARCHAR(100) NOT NULL,
     color VARCHAR(7),  -- Hex color code
@@ -338,7 +391,7 @@ CREATE TABLE content_tags (
 -- ============================================================================
 
 CREATE TABLE audit_logs (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY DEFAULT uuid_v7(),
     user_id UUID REFERENCES users(id),  -- NULL for system events
     action VARCHAR(100) NOT NULL,
     entity_type VARCHAR(50) NOT NULL,

@@ -87,26 +87,19 @@ pub fn api_status(state_ctx: &StateCtx, ui: &mut Ui) -> Response {
     #[cfg(any(feature = "env_internal", feature = "env_test_internal"))]
     let (internal_tooltip, internal_color) = get_internal_api_status_info(state_ctx);
 
-    // Use centered layout for the status dots
-    ui.with_layout(
-        egui::Layout::centered_and_justified(egui::Direction::LeftToRight),
-        |ui| {
-            ui.horizontal(|ui| {
-                // Regular API status dot
-                let response = status_dot(ui, api_tooltip, api_color);
+    ui.horizontal(|ui| {
+        // Regular API status dot
+        let response = status_dot(ui, api_tooltip, api_color);
 
-                // Internal API status dot (only for internal builds)
-                #[cfg(any(feature = "env_internal", feature = "env_test_internal"))]
-                {
-                    ui.add_space(4.0);
-                    status_dot(ui, internal_tooltip, internal_color);
-                }
+        // Internal API status dot (only for internal builds)
+        #[cfg(any(feature = "env_internal", feature = "env_test_internal"))]
+        {
+            ui.add_space(4.0);
+            status_dot(ui, internal_tooltip, internal_color);
+        }
 
-                response
-            })
-            .inner
-        },
-    )
+        response
+    })
     .inner
 }
 

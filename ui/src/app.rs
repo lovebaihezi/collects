@@ -379,6 +379,7 @@ impl<P: PasteHandler, D: DropHandler> eframe::App for CollectsApp<P, D> {
                 .collapsible(false)
                 .resizable(false)
                 .title_bar(false)
+                .auto_sized()
                 .show(ctx, |ui| {
                     // API status dots (includes internal API for internal builds)
                     // The Window name "API Status" is used for accessibility/kittest queries

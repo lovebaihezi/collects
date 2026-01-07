@@ -39,6 +39,14 @@ pub trait Compute: Debug + Any {
     /// Used for updating the compute's value after a recalculation.
     fn assign_box(&mut self, new_self: Box<dyn Any + Send>);
 
+    /// Returns an owned clone for command snapshots when supported.
+    ///
+    /// Default implementation returns `None` for computes that are not intended to be
+    /// snapshot-readable by commands.
+    fn snapshot(&self) -> Option<Box<dyn Any + Send + 'static>> {
+        None
+    }
+
     /// Returns the name of the compute type.
     ///
     /// Defaults to the type name.

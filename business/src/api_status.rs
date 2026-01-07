@@ -3,7 +3,8 @@ use std::any::{Any, TypeId};
 use crate::BusinessConfig;
 use chrono::{DateTime, Utc};
 use collects_states::{
-    Command, Compute, ComputeDeps, Dep, State, Time, Updater, assign_impl, state_assign_impl,
+    Command, CommandSnapshot, Compute, ComputeDeps, Dep, State, Time, Updater, assign_impl,
+    state_assign_impl,
 };
 use log::{debug, info, warn};
 use ustr::Ustr;
@@ -14,7 +15,7 @@ const SERVICE_VERSION_HEADER: &str = "x-service-version";
 /// Maximum number of retry attempts on failure before waiting for the full interval
 const MAX_RETRY_COUNT: u8 = 3;
 
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone)]
 pub struct ApiStatus {
     last_update_time: Option<DateTime<Utc>>,
     /// If exists error, means api unavailable
@@ -185,6 +186,10 @@ impl Compute for ApiStatus {
     fn assign_box(&mut self, new_self: Box<dyn Any + Send>) {
         assign_impl(self, new_self);
     }
+
+    fn snapshot(&self) -> Option<Box<dyn Any + Send + 'static>> {
+        Some(Box::new(self.clone()))
+    }
 }
 
 impl State for ApiStatus {
@@ -194,6 +199,10 @@ impl State for ApiStatus {
 
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
+    }
+
+    fn snapshot(&self) -> Option<Box<dyn Any + Send + 'static>> {
+        Some(Box::new(self.clone()))
     }
 
     fn assign_box(&mut self, new_self: Box<dyn Any + Send>) {
@@ -208,8 +217,8 @@ impl State for ApiStatus {
 pub struct ToggleApiStatusCommand;
 
 impl Command for ToggleApiStatusCommand {
-    fn run(&self, deps: Dep, updater: Updater) {
-        let current = deps.get_compute_ref::<ApiStatus>();
+    fn run(&self, snap: CommandSnapshot, updater: Updater) {
+        let current = snap.get_compute::<ApiStatus>();
         let new_show_status = !current.show_status;
 
         updater.set(ApiStatus {

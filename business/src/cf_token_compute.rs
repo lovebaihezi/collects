@@ -33,7 +33,8 @@
 use std::any::Any;
 
 use collects_states::{
-    Command, Compute, ComputeDeps, Dep, State, Updater, assign_impl, state_assign_impl,
+    Command, CommandSnapshot, Compute, ComputeDeps, Dep, State, Updater, assign_impl,
+    state_assign_impl,
 };
 use log::info;
 
@@ -56,6 +57,10 @@ impl State for CFTokenInput {
 
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
+    }
+
+    fn snapshot(&self) -> Option<Box<dyn Any + Send + 'static>> {
+        Some(Box::new(self.clone()))
     }
 
     fn assign_box(&mut self, new_self: Box<dyn Any + Send>) {
@@ -90,7 +95,7 @@ impl CFTokenResult {
 ///
 /// This is intentionally a `Compute` with a no-op `compute()` so it can be read through
 /// the normal caching path and updated via `Updater::set(...)` from a command.
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone)]
 pub struct CFTokenCompute {
     pub result: CFTokenResult,
 }
@@ -128,6 +133,10 @@ impl Compute for CFTokenCompute {
     fn assign_box(&mut self, new_self: Box<dyn Any + Send>) {
         assign_impl(self, new_self);
     }
+
+    fn snapshot(&self) -> Option<Box<dyn Any + Send + 'static>> {
+        Some(Box::new(self.clone()))
+    }
 }
 
 impl State for CFTokenCompute {
@@ -137,6 +146,10 @@ impl State for CFTokenCompute {
 
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
+    }
+
+    fn snapshot(&self) -> Option<Box<dyn Any + Send + 'static>> {
+        Some(Box::new(self.clone()))
     }
 
     fn assign_box(&mut self, new_self: Box<dyn Any + Send>) {
@@ -151,8 +164,8 @@ impl State for CFTokenCompute {
 pub struct SetCFTokenCommand;
 
 impl Command for SetCFTokenCommand {
-    fn run(&self, deps: Dep, updater: Updater) {
-        let input = deps.get_state_ref::<CFTokenInput>();
+    fn run(&self, snap: CommandSnapshot, updater: Updater) {
+        let input = snap.get_state::<CFTokenInput>();
 
         let token = input
             .token

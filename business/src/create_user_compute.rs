@@ -34,7 +34,8 @@ use crate::cf_token_compute::CFTokenCompute;
 use crate::internal::{CreateUserRequest, CreateUserResponse};
 
 use collects_states::{
-    Command, Compute, ComputeDeps, Dep, State, Updater, assign_impl, state_assign_impl,
+    Command, CommandSnapshot, Compute, ComputeDeps, Dep, State, Updater, assign_impl,
+    state_assign_impl,
 };
 use log::{error, info};
 
@@ -55,6 +56,10 @@ impl State for CreateUserInput {
 
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
+    }
+
+    fn snapshot(&self) -> Option<Box<dyn Any + Send + 'static>> {
+        Some(Box::new(self.clone()))
     }
 
     fn assign_box(&mut self, new_self: Box<dyn Any + Send>) {
@@ -163,10 +168,10 @@ impl State for CreateUserCompute {
 pub struct CreateUserCommand;
 
 impl Command for CreateUserCommand {
-    fn run(&self, deps: Dep, updater: Updater) {
-        let input = deps.get_state_ref::<CreateUserInput>();
-        let config = deps.get_state_ref::<BusinessConfig>();
-        let cf_token = deps.get_state_ref::<CFTokenCompute>();
+    fn run(&self, snap: CommandSnapshot, updater: Updater) {
+        let input = snap.get_state::<CreateUserInput>();
+        let config = snap.get_state::<BusinessConfig>();
+        let cf_token = snap.get_state::<CFTokenCompute>();
 
         let username = match &input.username {
             Some(name) if !name.trim().is_empty() => name.trim().to_string(),

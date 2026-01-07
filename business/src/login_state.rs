@@ -17,7 +17,8 @@ use std::any::Any;
 
 use crate::BusinessConfig;
 use collects_states::{
-    Command, Compute, ComputeDeps, Dep, State, Updater, assign_impl, state_assign_impl,
+    Command, CommandSnapshot, Compute, ComputeDeps, Dep, State, Updater, assign_impl,
+    state_assign_impl,
 };
 use log::{error, info};
 use serde::{Deserialize, Serialize};
@@ -228,9 +229,9 @@ fn extract_error_message(response_bytes: &[u8], default: &str) -> String {
 pub struct LoginCommand;
 
 impl Command for LoginCommand {
-    fn run(&self, deps: Dep, updater: Updater) {
-        let input = deps.get_state_ref::<LoginInput>();
-        let config = deps.get_state_ref::<BusinessConfig>();
+    fn run(&self, snap: CommandSnapshot, updater: Updater) {
+        let input = snap.get_state::<LoginInput>();
+        let config = snap.get_state::<BusinessConfig>();
 
         let username = input.username.trim().to_string();
         let otp = input.otp.trim().to_string();
@@ -369,7 +370,7 @@ impl Command for LoginCommand {
 pub struct LogoutCommand;
 
 impl Command for LogoutCommand {
-    fn run(&self, _deps: Dep, updater: Updater) {
+    fn run(&self, _snap: CommandSnapshot, updater: Updater) {
         info!("LogoutCommand: user logged out");
         updater.set(AuthCompute {
             status: AuthStatus::NotAuthenticated,
@@ -419,9 +420,9 @@ impl State for PendingTokenValidation {
 pub struct ValidateTokenCommand;
 
 impl Command for ValidateTokenCommand {
-    fn run(&self, deps: Dep, updater: Updater) {
-        let pending = deps.get_state_ref::<PendingTokenValidation>();
-        let config = deps.get_state_ref::<BusinessConfig>();
+    fn run(&self, snap: CommandSnapshot, updater: Updater) {
+        let pending = snap.get_state::<PendingTokenValidation>();
+        let config = snap.get_state::<BusinessConfig>();
 
         let token = match &pending.token {
             Some(t) if !t.is_empty() => t.clone(),

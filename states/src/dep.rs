@@ -40,8 +40,8 @@ impl Dep {
     ///
     /// # Panics
     /// Panics if the state type is not registered.
-    #[allow(clippy::mut_from_ref)]
-    pub fn state_mut<T: State + 'static>(&self) -> &'static mut T {
+    #[allow(clippy::mut_from_ref, dead_code)]
+    pub(crate) fn state_mut<T: State + 'static>(&self) -> &'static mut T {
         self.inner
             .get(&TypeId::of::<T>())
             .and_then(|ptr| unsafe { ptr.cast::<T>().as_ptr().as_mut() })

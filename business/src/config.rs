@@ -64,6 +64,10 @@ impl State for BusinessConfig {
         self
     }
 
+    fn snapshot(&self) -> Option<Box<dyn Any + Send + 'static>> {
+        Some(Box::new(self.clone()))
+    }
+
     fn assign_box(&mut self, new_self: Box<dyn Any + Send>) {
         state_assign_impl(self, new_self);
     }

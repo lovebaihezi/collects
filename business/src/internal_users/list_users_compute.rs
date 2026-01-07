@@ -14,7 +14,8 @@
 use std::any::Any;
 
 use collects_states::{
-    Command, Compute, ComputeDeps, Dep, State, Updater, assign_impl, state_assign_impl,
+    Command, CommandSnapshot, Compute, ComputeDeps, Dep, State, Updater, assign_impl,
+    state_assign_impl,
 };
 use ustr::Ustr;
 
@@ -102,6 +103,10 @@ impl State for InternalUsersListUsersCompute {
         self
     }
 
+    fn snapshot(&self) -> Option<Box<dyn Any + Send + 'static>> {
+        Some(Box::new(self.clone()))
+    }
+
     fn assign_box(&mut self, new_self: Box<dyn Any + Send>) {
         state_assign_impl(self, new_self);
     }
@@ -142,11 +147,11 @@ impl State for InternalUsersListUsersInput {
 pub struct RefreshInternalUsersCommand;
 
 impl Command for RefreshInternalUsersCommand {
-    fn run(&self, deps: Dep, updater: Updater) {
+    fn run(&self, snap: CommandSnapshot, updater: Updater) {
         // Read inputs/config.
-        let input = deps.get_state_ref::<InternalUsersListUsersInput>();
-        let config = deps.get_state_ref::<BusinessConfig>();
-        let cf_token = deps.get_state_ref::<CFTokenCompute>();
+        let input = snap.get_state::<InternalUsersListUsersInput>();
+        let config = snap.get_state::<BusinessConfig>();
+        let cf_token = snap.get_state::<CFTokenCompute>();
 
         // Determine base URL:
         // - Prefer explicit input when set (UI/tests can override).
@@ -171,7 +176,7 @@ impl Command for RefreshInternalUsersCommand {
         });
 
         // Kick off async request; update compute on completion.
-        internal_users_api::list_users(&api_base_url, cf_token, move |result| match result {
+        internal_users_api::list_users(&api_base_url, &cf_token, move |result| match result {
             Ok(users) => {
                 updater.set(InternalUsersListUsersCompute {
                     result: InternalUsersListUsersResult::Loaded(users),

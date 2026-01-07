@@ -17,7 +17,8 @@
 use std::any::Any;
 
 use collects_states::{
-    Command, Compute, ComputeDeps, Dep, State, Updater, assign_impl, state_assign_impl,
+    Command, CommandSnapshot, Compute, ComputeDeps, Dep, State, Updater, assign_impl,
+    state_assign_impl,
 };
 use ustr::Ustr;
 
@@ -121,6 +122,10 @@ impl State for InternalUsersActionCompute {
         self
     }
 
+    fn snapshot(&self) -> Option<Box<dyn Any + Send + 'static>> {
+        Some(Box::new(self.clone()))
+    }
+
     fn assign_box(&mut self, new_self: Box<dyn Any + Send>) {
         state_assign_impl(self, new_self);
     }
@@ -178,12 +183,12 @@ fn missing(field: &str, cmd: &str) -> String {
 pub struct UpdateUsernameCommand;
 
 impl Command for UpdateUsernameCommand {
-    fn run(&self, deps: Dep, updater: Updater) {
-        let input = deps.get_state_ref::<InternalUsersActionInput>();
-        let config = deps.get_state_ref::<BusinessConfig>();
-        let cf_token = deps.get_state_ref::<CFTokenCompute>();
+    fn run(&self, snap: CommandSnapshot, updater: Updater) {
+        let input = snap.get_state::<InternalUsersActionInput>();
+        let config = snap.get_state::<BusinessConfig>();
+        let cf_token = snap.get_state::<CFTokenCompute>();
 
-        let api_base_url = resolve_api_base_url(input, config);
+        let api_base_url = resolve_api_base_url(&input, &config);
         if api_base_url.trim().is_empty() {
             updater.set(InternalUsersActionCompute {
                 state: InternalUsersActionState::Error {
@@ -234,7 +239,7 @@ impl Command for UpdateUsernameCommand {
 
         internal_users_api::update_username(
             &api_base_url,
-            cf_token,
+            &cf_token,
             &user_str,
             &new_username_str,
             move |result: internal_users_api::ApiResult<UpdateUsernameResponse>| match result {
@@ -265,12 +270,12 @@ impl Command for UpdateUsernameCommand {
 pub struct UpdateProfileCommand;
 
 impl Command for UpdateProfileCommand {
-    fn run(&self, deps: Dep, updater: Updater) {
-        let input = deps.get_state_ref::<InternalUsersActionInput>();
-        let config = deps.get_state_ref::<BusinessConfig>();
-        let cf_token = deps.get_state_ref::<CFTokenCompute>();
+    fn run(&self, snap: CommandSnapshot, updater: Updater) {
+        let input = snap.get_state::<InternalUsersActionInput>();
+        let config = snap.get_state::<BusinessConfig>();
+        let cf_token = snap.get_state::<CFTokenCompute>();
 
-        let api_base_url = resolve_api_base_url(input, config);
+        let api_base_url = resolve_api_base_url(&input, &config);
         if api_base_url.trim().is_empty() {
             updater.set(InternalUsersActionCompute {
                 state: InternalUsersActionState::Error {
@@ -308,7 +313,7 @@ impl Command for UpdateProfileCommand {
 
         internal_users_api::update_profile(
             &api_base_url,
-            cf_token,
+            &cf_token,
             &user_str,
             nickname,
             avatar_url,
@@ -340,12 +345,12 @@ impl Command for UpdateProfileCommand {
 pub struct DeleteUserCommand;
 
 impl Command for DeleteUserCommand {
-    fn run(&self, deps: Dep, updater: Updater) {
-        let input = deps.get_state_ref::<InternalUsersActionInput>();
-        let config = deps.get_state_ref::<BusinessConfig>();
-        let cf_token = deps.get_state_ref::<CFTokenCompute>();
+    fn run(&self, snap: CommandSnapshot, updater: Updater) {
+        let input = snap.get_state::<InternalUsersActionInput>();
+        let config = snap.get_state::<BusinessConfig>();
+        let cf_token = snap.get_state::<CFTokenCompute>();
 
-        let api_base_url = resolve_api_base_url(input, config);
+        let api_base_url = resolve_api_base_url(&input, &config);
         if api_base_url.trim().is_empty() {
             updater.set(InternalUsersActionCompute {
                 state: InternalUsersActionState::Error {
@@ -381,7 +386,7 @@ impl Command for DeleteUserCommand {
 
         internal_users_api::delete_user(
             &api_base_url,
-            cf_token,
+            &cf_token,
             &user_str,
             move |result: internal_users_api::ApiResult<DeleteUserResponse>| match result {
                 Ok(resp) => {
@@ -421,12 +426,12 @@ impl Command for DeleteUserCommand {
 pub struct RevokeOtpCommand;
 
 impl Command for RevokeOtpCommand {
-    fn run(&self, deps: Dep, updater: Updater) {
-        let input = deps.get_state_ref::<InternalUsersActionInput>();
-        let config = deps.get_state_ref::<BusinessConfig>();
-        let cf_token = deps.get_state_ref::<CFTokenCompute>();
+    fn run(&self, snap: CommandSnapshot, updater: Updater) {
+        let input = snap.get_state::<InternalUsersActionInput>();
+        let config = snap.get_state::<BusinessConfig>();
+        let cf_token = snap.get_state::<CFTokenCompute>();
 
-        let api_base_url = resolve_api_base_url(input, config);
+        let api_base_url = resolve_api_base_url(&input, &config);
         if api_base_url.trim().is_empty() {
             updater.set(InternalUsersActionCompute {
                 state: InternalUsersActionState::Error {
@@ -462,7 +467,7 @@ impl Command for RevokeOtpCommand {
 
         internal_users_api::revoke_otp(
             &api_base_url,
-            cf_token,
+            &cf_token,
             &user_str,
             move |result: internal_users_api::ApiResult<RevokeOtpResponse>| match result {
                 Ok(resp) => {
@@ -496,7 +501,7 @@ impl Command for RevokeOtpCommand {
 pub struct ResetInternalUsersActionCommand;
 
 impl Command for ResetInternalUsersActionCommand {
-    fn run(&self, _deps: Dep, updater: Updater) {
+    fn run(&self, _snap: CommandSnapshot, updater: Updater) {
         updater.set(InternalUsersActionCompute {
             state: InternalUsersActionState::Idle,
         });
@@ -507,12 +512,12 @@ impl Command for ResetInternalUsersActionCommand {
 pub struct GetUserQrCommand;
 
 impl Command for GetUserQrCommand {
-    fn run(&self, deps: Dep, updater: Updater) {
-        let input = deps.get_state_ref::<InternalUsersActionInput>();
-        let config = deps.get_state_ref::<BusinessConfig>();
-        let cf_token = deps.get_state_ref::<CFTokenCompute>();
+    fn run(&self, snap: CommandSnapshot, updater: Updater) {
+        let input = snap.get_state::<InternalUsersActionInput>();
+        let config = snap.get_state::<BusinessConfig>();
+        let cf_token = snap.get_state::<CFTokenCompute>();
 
-        let api_base_url = resolve_api_base_url(input, config);
+        let api_base_url = resolve_api_base_url(&input, &config);
         if api_base_url.trim().is_empty() {
             updater.set(InternalUsersActionCompute {
                 state: InternalUsersActionState::Error {
@@ -548,7 +553,7 @@ impl Command for GetUserQrCommand {
 
         internal_users_api::get_user(
             &api_base_url,
-            cf_token,
+            &cf_token,
             &user_str,
             move |result: internal_users_api::ApiResult<GetUserResponse>| match result {
                 Ok(resp) => {

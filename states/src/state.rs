@@ -22,6 +22,14 @@ pub trait State: Any + Debug {
     /// This method is called when the state is first added to the context.
     fn init(&mut self) {}
 
+    /// Returns an owned clone for command snapshots when supported.
+    ///
+    /// Default implementation returns `None` to skip snapshotting types that are not
+    /// cloneable or not intended for command access.
+    fn snapshot(&self) -> Option<Box<dyn Any + Send + 'static>> {
+        None
+    }
+
     /// Returns the name of the state type.
     ///
     /// Defaults to the type name.

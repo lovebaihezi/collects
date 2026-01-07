@@ -7,7 +7,10 @@ use std::{
 
 use log::{Level, log_enabled, trace};
 
-use crate::{Command, Dep, Reader, Updater, state::UpdateMessage};
+use crate::{
+    Command, CommandSnapshot, ComputeSnapshot, Dep, Reader, StateSnapshot, Updater,
+    state::UpdateMessage,
+};
 
 use super::{Compute, Stage, State, StateRuntime};
 
@@ -182,6 +185,26 @@ impl StateCtx {
         self.run_by_id_with_deps(&target_id);
     }
 
+    fn build_state_snapshot(&self) -> StateSnapshot {
+        let mut snapshot = StateSnapshot::new();
+        for (id, (state_cell, _)) in &self.states {
+            if let Some(cloned) = state_cell.borrow().snapshot() {
+                snapshot.insert_cloned(*id, cloned);
+            }
+        }
+        snapshot
+    }
+
+    fn build_compute_snapshot(&self) -> ComputeSnapshot {
+        let mut snapshot = ComputeSnapshot::new();
+        for (id, (compute_cell, _)) in &self.computes {
+            if let Some(cloned) = compute_cell.borrow().snapshot() {
+                snapshot.insert_cloned(*id, cloned);
+            }
+        }
+        snapshot
+    }
+
     /// Dispatches a manual-only command by its type.
     ///
     /// The command is executed immediately and synchronously in the caller's thread.
@@ -193,24 +216,10 @@ impl StateCtx {
             panic!("No command found for id: {:?}", id);
         };
 
-        // Build deps from currently registered states + computes (commands may read both).
-        //
-        // Commands are intentionally not part of the dependency graph, so we construct
-        // the dependency access from what's available in this context at dispatch time.
-        let state_ids: Vec<TypeId> = self.states.keys().copied().collect();
-        let compute_ids: Vec<TypeId> = self.computes.keys().copied().collect();
-
-        let deps = Dep::new(
-            state_ids
-                .into_iter()
-                .map(|dep_id| (dep_id, self.get_state_ptr(&dep_id))),
-            compute_ids
-                .into_iter()
-                .map(|dep_id| (dep_id, self.get_compute_ptr(&dep_id))),
-        );
-
         let borrowed = cell.borrow();
-        borrowed.run(deps, self.updater());
+        let snapshot =
+            CommandSnapshot::new(self.build_state_snapshot(), self.build_compute_snapshot());
+        borrowed.run(snapshot, self.updater());
     }
 
     /// Runs a compute by TypeId, first running any dirty dependencies in topological order.

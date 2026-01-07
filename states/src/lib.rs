@@ -7,6 +7,7 @@ mod dep;
 mod enum_states;
 mod graph;
 mod runtime;
+mod snapshot;
 mod state;
 mod state_sync_status;
 
@@ -17,6 +18,7 @@ pub use dep::Dep;
 pub use enum_states::BasicStates;
 pub use graph::{DepRoute, Graph, TopologyError};
 pub use runtime::StateRuntime;
+pub use snapshot::{CommandSnapshot, ComputeSnapshot, StateSnapshot};
 pub use state::{Reader, State, Updater, state_assign_impl};
 pub use state_sync_status::Stage;
 
@@ -55,10 +57,9 @@ pub use state_sync_status::Stage;
 pub trait Command: std::fmt::Debug + Send + Sync + 'static {
     /// Runs the command.
     ///
-    /// NOTE: During migration this signature still receives `Dep`, but command implementations
-    /// must treat it as **read-only**. Do not call any API that produces mutable access to live
-    /// state from here (e.g. `Dep::state_mut()`).
-    fn run(&self, dep: Dep, updater: Updater);
+    /// Commands receive **snapshots** of states and computes (owned clones) and must treat them
+    /// as read-only. All mutations should flow through `Updater`.
+    fn run(&self, snap: CommandSnapshot, updater: Updater);
 }
 
 #[cfg(test)]
@@ -365,7 +366,7 @@ mod state_runtime_test {
     }
 
     impl Command for IncrementCountCommand {
-        fn run(&self, _dep: Dep, _updater: Updater) {
+        fn run(&self, _snap: CommandSnapshot, _updater: Updater) {
             self.shared.fetch_add(1, Ordering::SeqCst);
         }
     }
@@ -438,7 +439,7 @@ mod state_runtime_test {
     }
 
     impl Command for SetComputeValueCommand {
-        fn run(&self, _dep: Dep, updater: Updater) {
+        fn run(&self, _snap: CommandSnapshot, updater: Updater) {
             updater.set(DummyComputeFromCommand { value: self.value });
         }
     }
@@ -506,7 +507,7 @@ mod state_runtime_test {
     }
 
     impl Command for SetUnregisteredComputeCommand {
-        fn run(&self, _dep: Dep, updater: Updater) {
+        fn run(&self, _snap: CommandSnapshot, updater: Updater) {
             // Intentionally send an update for a compute type that was never registered.
             updater.set(UnregisteredCompute { value: self.value });
         }

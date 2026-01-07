@@ -121,38 +121,50 @@ add-migrate *args: install-sqlx
 # Usage: just services::migrate local
 migrate env: install-sqlx
     #!/bin/bash
-    set -eux
+    set -euo pipefail
 
     # Get database secret using centralized env config
     DATABASE_SECRET=$(just scripts::env-secret {{env}})
 
     echo "Running migrations for {{env}} environment using secret: ${DATABASE_SECRET}"
+
+    # Avoid leaking the secret via xtrace in CI logs (never enable xtrace).
+    set +x
     DATABASE_URL=$(gcloud secrets versions access latest --secret=${DATABASE_SECRET})
     export DATABASE_URL
+
     sqlx migrate run
 
 # Check if migrations are pending for a specific environment
 # Usage: just services::migrate-info local
 migrate-info env: install-sqlx
     #!/bin/bash
-    set -eux
+    set -euo pipefail
 
     DATABASE_SECRET=$(just scripts::env-secret {{env}})
 
     echo "Checking migration status for {{env}} environment..."
+
+    # Avoid leaking the secret via xtrace in CI logs (never enable xtrace).
+    set +x
     DATABASE_URL=$(gcloud secrets versions access latest --secret=${DATABASE_SECRET})
     export DATABASE_URL
+
     sqlx migrate info
 
 reset env: install-sqlx
     #!/bin/bash
-    set -eux
+    set -euo pipefail
 
     DATABASE_SECRET=$(just scripts::env-secret {{env}})
 
     echo "Resetting database for {{env}} environment..."
+
+    # Avoid leaking the secret via xtrace in CI logs (never enable xtrace).
+    set +x
     DATABASE_URL=$(gcloud secrets versions access latest --secret=${DATABASE_SECRET})
     export DATABASE_URL
+
     sqlx database reset
 
 # Create sqlx offline query cache for builds
@@ -160,13 +172,17 @@ reset env: install-sqlx
 # Usage: just services::prepare local
 prepare env: install-sqlx
     #!/bin/bash
-    set -eux
+    set -euo pipefail
 
     DATABASE_SECRET=$(just scripts::env-secret {{env}})
 
     echo "Generating sqlx offline cache using {{env}} environment..."
+
+    # Avoid leaking the secret via xtrace in CI logs (never enable xtrace).
+    set +x
     DATABASE_URL=$(gcloud secrets versions access latest --secret=${DATABASE_SECRET})
     export DATABASE_URL
+
     # Run from workspace root to generate .sqlx at the workspace level
     cd .. && cargo sqlx prepare --workspace
 
@@ -174,13 +190,17 @@ prepare env: install-sqlx
 # Usage: just services::prepare-check local
 prepare-check env: install-sqlx
     #!/bin/bash
-    set -eux
+    set -euo pipefail
 
     DATABASE_SECRET=$(just scripts::env-secret {{env}})
 
     echo "Checking sqlx offline cache using {{env}} environment..."
+
+    # Avoid leaking the secret via xtrace in CI logs (never enable xtrace).
+    set +x
     DATABASE_URL=$(gcloud secrets versions access latest --secret=${DATABASE_SECRET})
     export DATABASE_URL
+
     # Run from workspace root where .sqlx directory is located
     cd .. && cargo sqlx prepare --workspace --check
 

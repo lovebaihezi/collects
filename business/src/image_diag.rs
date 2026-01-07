@@ -5,7 +5,7 @@
 //!
 //! # Usage
 //!
-//! Toggle the diagnostic window with F2 key. The window displays:
+//! Toggle the diagnostic window with Shift+F2 key. The window displays:
 //! - Key event detection (Ctrl+V / Cmd+V hotkey detection)
 //! - Clipboard access logs (success/failure with detailed error info)
 //! - Drop event logs (hover, drop, file info)

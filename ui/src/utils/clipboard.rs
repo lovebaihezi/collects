@@ -56,15 +56,35 @@
 //! - `SystemClipboard`: Production implementation (arboard on native, web_sys on WASM)
 //! - `MockClipboard`: Test implementation for unit testing
 //!
-//! # Example
+//! # Example (Native)
 //!
 //! ```rust,no_run
 //! use collects_ui::utils::clipboard::{ClipboardProvider, SystemClipboard};
 //!
-//! // Production usage
+//! // Production usage on native platforms
 //! let clipboard = SystemClipboard;
 //! if let Ok(Some(image)) = clipboard.get_image() {
 //!     println!("Image: {}x{}", image.width, image.height);
+//! }
+//! ```
+//!
+//! # Example (WASM)
+//!
+//! On WASM, clipboard operations are asynchronous:
+//!
+//! ```rust,no_run
+//! # #[cfg(target_arch = "wasm32")]
+//! use collects_ui::utils::clipboard::{handle_paste_shortcut};
+//! use egui::Context;
+//!
+//! // In your UI update loop
+//! fn update(&mut self, ctx: &Context) {
+//!     // handle_paste_shortcut triggers async clipboard read
+//!     // and returns immediately with any previously cached result
+//!     if let Some(image) = handle_paste_shortcut(ctx) {
+//!         println!("Pasted image: {}x{}", image.width, image.height);
+//!         // Process the image...
+//!     }
 //! }
 //! ```
 

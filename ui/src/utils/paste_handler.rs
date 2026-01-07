@@ -47,15 +47,36 @@ impl<C: clipboard::ClipboardProvider> PasteHandler for GenericPasteHandler<C> {
     }
 }
 
-/// Stub paste handler for WASM target.
+/// System paste handler for WASM target using web_sys.
 #[cfg(target_arch = "wasm32")]
 #[derive(Default)]
 pub struct SystemPasteHandler;
 
 #[cfg(target_arch = "wasm32")]
 impl PasteHandler for SystemPasteHandler {
-    fn handle_paste(&self, _ctx: &egui::Context) -> Option<ClipboardImage> {
-        None
+    fn handle_paste(&self, ctx: &egui::Context) -> Option<ClipboardImage> {
+        clipboard::handle_paste_shortcut(ctx)
+    }
+}
+
+/// Generic paste handler that wraps any ClipboardProvider for testing (WASM).
+#[cfg(target_arch = "wasm32")]
+pub struct GenericPasteHandler<C: clipboard::ClipboardProvider> {
+    clipboard: C,
+}
+
+#[cfg(target_arch = "wasm32")]
+impl<C: clipboard::ClipboardProvider> GenericPasteHandler<C> {
+    /// Create a new paste handler with the given clipboard provider.
+    pub fn new(clipboard: C) -> Self {
+        Self { clipboard }
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+impl<C: clipboard::ClipboardProvider> PasteHandler for GenericPasteHandler<C> {
+    fn handle_paste(&self, ctx: &egui::Context) -> Option<ClipboardImage> {
+        clipboard::handle_paste_shortcut_with_clipboard(ctx, &self.clipboard)
     }
 }
 

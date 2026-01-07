@@ -52,8 +52,24 @@ urlencoding = "2.1"
 # web:
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen-futures = "0.4.50"
-web-sys = "0.3.70"
+web-sys = { version = "0.3.70", features = [
+    "Clipboard",
+    "Navigator",
+    "Window",
+    "Blob",
+    "FileReader",
+    "ClipboardItem",
+    "ImageData",
+    "ImageBitmap",
+    "HtmlCanvasElement",
+    "CanvasRenderingContext2d",
+    "HtmlImageElement",
+    "Url",
+    "Document",
+] }
 getrandom = { version = "0.2", features = ["js"] }
+js-sys = "0.3.70"
+futures-channel = "0.3"
 
 [dev-dependencies]
 kittest = "0.3"

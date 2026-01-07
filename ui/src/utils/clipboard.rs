@@ -530,12 +530,12 @@ impl ClipboardProvider for SystemClipboard {
         // For now, we return None as the sync interface doesn't fit well
         // with the async clipboard API. The actual implementation will
         // need to be integrated with the async runtime.
-        
+
         log::trace!(
             target: "collects_ui::paste",
             "WASM clipboard access requested - async operation required"
         );
-        
+
         // Check if we have a stored result from a previous async read
         use wasm_clipboard::get_stored_image;
         if let Some(image) = get_stored_image() {
@@ -571,11 +571,11 @@ pub fn handle_paste_shortcut_with_clipboard<C: ClipboardProvider>(
 
     if paste_pressed {
         log::trace!(target: "collects_ui::paste", "paste_shortcut_detected");
-        
+
         // Trigger async clipboard read
         use wasm_clipboard::trigger_clipboard_read;
         trigger_clipboard_read();
-        
+
         // Check if we have a result from a previous read
         read_clipboard_image(clipboard)
     } else {
@@ -678,10 +678,10 @@ mod wasm_clipboard {
     use super::ClipboardImage;
     use std::cell::RefCell;
     use std::rc::Rc;
-    use wasm_bindgen::prelude::*;
     use wasm_bindgen::JsCast;
+    use wasm_bindgen::prelude::*;
     use wasm_bindgen_futures::spawn_local;
-    use web_sys::{window, Blob, HtmlCanvasElement};
+    use web_sys::{Blob, HtmlCanvasElement, window};
 
     thread_local! {
         /// Storage for the most recent clipboard image read.
@@ -768,7 +768,7 @@ mod wasm_clipboard {
             // Look for image types
             for j in 0..types.length() {
                 let type_str = types.get(j).as_string().unwrap_or_default();
-                
+
                 log::trace!(
                     target: "collects_ui::paste",
                     "Clipboard type: {}",
@@ -808,7 +808,9 @@ mod wasm_clipboard {
 
         // Create an image element
         let window = window().ok_or_else(|| JsValue::from_str("No window"))?;
-        let document = window.document().ok_or_else(|| JsValue::from_str("No document"))?;
+        let document = window
+            .document()
+            .ok_or_else(|| JsValue::from_str("No document"))?;
         let img = document
             .create_element("img")?
             .dyn_into::<web_sys::HtmlImageElement>()?;
@@ -854,9 +856,7 @@ mod wasm_clipboard {
                 );
 
                 // Create a canvas to extract pixel data
-                let canvas: HtmlCanvasElement = document
-                    .create_element("canvas")?
-                    .dyn_into()?;
+                let canvas: HtmlCanvasElement = document.create_element("canvas")?.dyn_into()?;
                 canvas.set_width(width as u32);
                 canvas.set_height(height as u32);
 

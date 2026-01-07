@@ -271,16 +271,16 @@ fn downscale_image(
 
     // Simple nearest-neighbor downsampling
     let mut result = vec![0u8; new_width * new_height * 4];
-    
+
     for y in 0..new_height {
         for x in 0..new_width {
             // Map to source coordinates
             let src_x = ((x as f64 / new_width as f64) * width as f64) as usize;
             let src_y = ((y as f64 / new_height as f64) * height as f64) as usize;
-            
+
             let src_idx = (src_y * width + src_x) * 4;
             let dst_idx = (y * new_width + x) * 4;
-            
+
             // Copy RGBA values
             result[dst_idx..dst_idx + 4].copy_from_slice(&rgba_bytes[src_idx..src_idx + 4]);
         }

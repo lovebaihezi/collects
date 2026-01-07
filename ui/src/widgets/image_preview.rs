@@ -224,7 +224,6 @@ fn max_texture_size(ctx: &Context) -> usize {
 /// # Returns
 ///
 /// A tuple of (new_width, new_height, new_rgba_bytes) if successful, None on error.
-#[cfg(not(target_arch = "wasm32"))]
 fn downscale_image(
     rgba_bytes: &[u8],
     width: usize,
@@ -251,42 +250,6 @@ fn downscale_image(
     );
 
     Some((new_width, new_height, resized.into_raw()))
-}
-
-/// WASM version of downscale_image using simple pixel sampling.
-///
-/// Since the `image` crate is not available on WASM, we use a simpler
-/// downscaling algorithm. This is less efficient but works on all platforms.
-#[cfg(target_arch = "wasm32")]
-fn downscale_image(
-    rgba_bytes: &[u8],
-    width: usize,
-    height: usize,
-    max_size: usize,
-) -> Option<(usize, usize, Vec<u8>)> {
-    // Calculate new dimensions preserving aspect ratio
-    let scale = (max_size as f64 / width as f64).min(max_size as f64 / height as f64);
-    let new_width = ((width as f64 * scale) as usize).max(1);
-    let new_height = ((height as f64 * scale) as usize).max(1);
-
-    // Simple nearest-neighbor downsampling
-    let mut result = vec![0u8; new_width * new_height * 4];
-
-    for y in 0..new_height {
-        for x in 0..new_width {
-            // Map to source coordinates
-            let src_x = ((x as f64 / new_width as f64) * width as f64) as usize;
-            let src_y = ((y as f64 / new_height as f64) * height as f64) as usize;
-
-            let src_idx = (src_y * width + src_x) * 4;
-            let dst_idx = (y * new_width + x) * 4;
-
-            // Copy RGBA values
-            result[dst_idx..dst_idx + 4].copy_from_slice(&rgba_bytes[src_idx..src_idx + 4]);
-        }
-    }
-
-    Some((new_width, new_height, result))
 }
 
 /// Renders the image in fullscreen mode.

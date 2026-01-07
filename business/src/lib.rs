@@ -1,5 +1,6 @@
 mod api_status;
 pub mod cf_token_compute;
+pub mod clipboard_compute;
 pub mod config;
 pub mod create_user_compute;
 pub mod image_diag;
@@ -14,6 +15,7 @@ pub use collects_utils::version_info;
 
 pub use api_status::{APIAvailability, ApiStatus, ToggleApiStatusCommand};
 pub use cf_token_compute::{CFTokenCompute, CFTokenInput, CFTokenResult, SetCFTokenCommand};
+pub use clipboard_compute::{ClipboardCompute, ClipboardImageData};
 pub use config::BusinessConfig;
 pub use create_user_compute::{
     CreateUserCommand, CreateUserCompute, CreateUserInput, CreateUserResult,

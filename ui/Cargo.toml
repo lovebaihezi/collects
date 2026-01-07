@@ -57,19 +57,12 @@ web-sys = { version = "0.3.70", features = [
     "Navigator",
     "Window",
     "Blob",
-    "FileReader",
     "ClipboardItem",
-    "ImageData",
-    "ImageBitmap",
-    "HtmlCanvasElement",
-    "CanvasRenderingContext2d",
-    "HtmlImageElement",
-    "Url",
-    "Document",
 ] }
 getrandom = { version = "0.2", features = ["js"] }
 js-sys = "0.3.70"
-futures-channel = "0.3"
+image = "0.25"
+pollster = "0.4"
 
 [dev-dependencies]
 kittest = "0.3"

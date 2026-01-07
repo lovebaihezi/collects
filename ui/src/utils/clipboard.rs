@@ -505,15 +505,18 @@ fn read_clipboard_image<C: ClipboardProvider>(clipboard: &C) -> Option<Clipboard
 ///
 /// # Platform Behavior
 ///
-/// The implementation spawns an async task to read from the clipboard.
-/// Images are converted from blob format to RGBA pixel data via canvas.
+/// The implementation uses pollster to block on async clipboard reads.
+/// Images are converted from blob bytes to RGBA pixel data using the image crate.
+/// Results are stored in ClipboardCompute via Updater.
 ///
 /// # Returns
 ///
 /// Returns clipboard image if available, or None if no image or access denied.
 #[cfg(target_arch = "wasm32")]
-pub fn handle_paste_shortcut(ctx: &Context) -> Option<ClipboardImage> {
-    handle_paste_shortcut_with_clipboard(ctx, &SystemClipboard)
+pub fn handle_paste_shortcut(_ctx: &Context) -> Option<ClipboardImage> {
+    // On WASM, we use the SystemClipboard directly via handle_paste_shortcut_with_clipboard
+    // The StateCtx integration happens at a higher level in the app
+    handle_paste_shortcut_with_clipboard(_ctx, &SystemClipboard)
 }
 
 /// System clipboard implementation for WASM using web_sys.
@@ -524,35 +527,38 @@ pub struct SystemClipboard;
 #[cfg(target_arch = "wasm32")]
 impl ClipboardProvider for SystemClipboard {
     fn get_image(&self) -> Result<Option<ClipboardImage>, ClipboardError> {
-        // The WASM clipboard API is async, but we need a sync interface.
-        // We spawn the async read in the background and store the result
-        // in a global state that can be polled synchronously.
-        // For now, we return None as the sync interface doesn't fit well
-        // with the async clipboard API. The actual implementation will
-        // need to be integrated with the async runtime.
-
         log::trace!(
             target: "collects_ui::paste",
-            "WASM clipboard access requested - async operation required"
+            "WASM SystemClipboard::get_image called - using pollster for sync access"
         );
 
-        // Check if we have a stored result from a previous async read
-        use wasm_clipboard::get_stored_image;
-        if let Some(image) = get_stored_image() {
-            log::trace!(
-                target: "collects_ui::paste",
-                "clipboard_get_image_ok {}x{} bytes={}",
-                image.width,
-                image.height,
-                image.bytes.len()
-            );
-            Ok(Some(image))
-        } else {
-            log::trace!(
-                target: "collects_ui::paste",
-                "clipboard_no_stored_image"
-            );
-            Ok(None)
+        // Use pollster to block on the async clipboard read
+        match pollster::block_on(wasm_clipboard::read_clipboard_image_async()) {
+            Ok(Some(image)) => {
+                log::trace!(
+                    target: "collects_ui::paste",
+                    "clipboard_get_image_ok {}x{} bytes={}",
+                    image.width,
+                    image.height,
+                    image.bytes.len()
+                );
+                Ok(Some(image))
+            }
+            Ok(None) => {
+                log::trace!(
+                    target: "collects_ui::paste",
+                    "clipboard_no_image"
+                );
+                Ok(None)
+            }
+            Err(e) => {
+                log::warn!(
+                    target: "collects_ui::paste",
+                    "clipboard_access_error {:?}",
+                    e
+                );
+                Err(ClipboardError::AccessError(format!("{:?}", e)))
+            }
         }
     }
 }
@@ -572,11 +578,7 @@ pub fn handle_paste_shortcut_with_clipboard<C: ClipboardProvider>(
     if paste_pressed {
         log::trace!(target: "collects_ui::paste", "paste_shortcut_detected");
 
-        // Trigger async clipboard read
-        use wasm_clipboard::trigger_clipboard_read;
-        trigger_clipboard_read();
-
-        // Check if we have a result from a previous read
+        // Read clipboard synchronously via pollster
         read_clipboard_image(clipboard)
     } else {
         None
@@ -676,66 +678,16 @@ fn read_clipboard_image<C: ClipboardProvider>(clipboard: &C) -> Option<Clipboard
 #[cfg(target_arch = "wasm32")]
 mod wasm_clipboard {
     use super::ClipboardImage;
-    use std::cell::RefCell;
-    use std::rc::Rc;
     use wasm_bindgen::JsCast;
-    use wasm_bindgen::prelude::*;
-    use wasm_bindgen_futures::spawn_local;
-    use web_sys::{Blob, HtmlCanvasElement, window};
-
-    thread_local! {
-        /// Storage for the most recent clipboard image read.
-        /// This allows the async clipboard read to communicate with the sync API.
-        static CLIPBOARD_IMAGE: Rc<RefCell<Option<ClipboardImage>>> = Rc::new(RefCell::new(None));
-    }
-
-    /// Trigger an async clipboard read operation.
-    ///
-    /// This spawns a task that attempts to read an image from the clipboard.
-    /// The result is stored in thread-local storage for later retrieval.
-    pub fn trigger_clipboard_read() {
-        spawn_local(async {
-            match read_clipboard_image_async().await {
-                Ok(Some(image)) => {
-                    log::info!(
-                        target: "collects_ui::paste",
-                        "Async clipboard read successful: {}x{}",
-                        image.width,
-                        image.height
-                    );
-                    CLIPBOARD_IMAGE.with(|storage| {
-                        *storage.borrow_mut() = Some(image);
-                    });
-                }
-                Ok(None) => {
-                    log::trace!(
-                        target: "collects_ui::paste",
-                        "Async clipboard read: no image found"
-                    );
-                }
-                Err(e) => {
-                    log::warn!(
-                        target: "collects_ui::paste",
-                        "Async clipboard read error: {:?}",
-                        e
-                    );
-                }
-            }
-        });
-    }
-
-    /// Get the stored clipboard image from a previous async read.
-    ///
-    /// This consumes the stored image, so subsequent calls will return None
-    /// until another clipboard read completes.
-    pub fn get_stored_image() -> Option<ClipboardImage> {
-        CLIPBOARD_IMAGE.with(|storage| storage.borrow_mut().take())
-    }
+    use wasm_bindgen::JsValue;
+    use wasm_bindgen_futures::JsFuture;
+    use web_sys::{Blob, window};
 
     /// Async function to read an image from the browser clipboard.
     ///
     /// This uses the Clipboard API to read clipboard items and extract image data.
-    async fn read_clipboard_image_async() -> Result<Option<ClipboardImage>, JsValue> {
+    /// Uses the image crate to decode blob bytes into RGBA pixel data.
+    pub async fn read_clipboard_image_async() -> Result<Option<ClipboardImage>, JsValue> {
         // Get the clipboard from the navigator
         let window = window().ok_or_else(|| JsValue::from_str("No window"))?;
         let navigator = window.navigator();
@@ -743,7 +695,7 @@ mod wasm_clipboard {
 
         // Read clipboard items
         let promise = clipboard.read();
-        let items_js = wasm_bindgen_futures::JsFuture::from(promise).await?;
+        let items_js = JsFuture::from(promise).await?;
         let items = js_sys::Array::from(&items_js);
 
         log::trace!(
@@ -778,7 +730,7 @@ mod wasm_clipboard {
                 if type_str.starts_with("image/") {
                     // Found an image, read it as a blob
                     let blob_promise = clipboard_item.get_type(&type_str);
-                    let blob_js = wasm_bindgen_futures::JsFuture::from(blob_promise).await?;
+                    let blob_js = JsFuture::from(blob_promise).await?;
                     let blob: Blob = blob_js.dyn_into()?;
 
                     log::trace!(
@@ -787,7 +739,7 @@ mod wasm_clipboard {
                         blob.size() as u64
                     );
 
-                    // Convert blob to image data
+                    // Convert blob to image data using the image crate
                     if let Some(image) = blob_to_image_data(blob).await? {
                         return Ok(Some(image));
                     }
@@ -800,100 +752,49 @@ mod wasm_clipboard {
 
     /// Convert a blob containing image data to ClipboardImage.
     ///
-    /// This creates an Image element, loads the blob into it, then draws
-    /// it to a canvas to extract RGBA pixel data.
+    /// This reads the blob as bytes and uses the image crate to decode it.
     async fn blob_to_image_data(blob: Blob) -> Result<Option<ClipboardImage>, JsValue> {
-        // Create an object URL for the blob
-        let url = web_sys::Url::create_object_url_with_blob(&blob)?;
+        use image::GenericImageView;
 
-        // Create an image element
-        let window = window().ok_or_else(|| JsValue::from_str("No window"))?;
-        let document = window
-            .document()
-            .ok_or_else(|| JsValue::from_str("No document"))?;
-        let img = document
-            .create_element("img")?
-            .dyn_into::<web_sys::HtmlImageElement>()?;
+        // Read blob as array buffer
+        let promise = blob.array_buffer();
+        let array_buffer_js = JsFuture::from(promise).await?;
+        let array_buffer = js_sys::Uint8Array::new(&array_buffer_js);
+        let bytes = array_buffer.to_vec();
 
-        // Set up a promise for image load
-        let (sender, receiver) = futures_channel::oneshot::channel();
-        let sender = Rc::new(RefCell::new(Some(sender)));
+        log::trace!(
+            target: "collects_ui::paste",
+            "Blob read as {} bytes",
+            bytes.len()
+        );
 
-        let onload = {
-            let sender = sender.clone();
-            Closure::once(Box::new(move || {
-                if let Some(sender) = sender.borrow_mut().take() {
-                    let _ = sender.send(Ok(()));
-                }
-            }) as Box<dyn FnOnce()>)
-        };
-
-        let onerror = {
-            let sender = sender.clone();
-            Closure::once(Box::new(move || {
-                if let Some(sender) = sender.borrow_mut().take() {
-                    let _ = sender.send(Err(JsValue::from_str("Image load error")));
-                }
-            }) as Box<dyn FnOnce()>)
-        };
-
-        img.set_onload(Some(onload.as_ref().unchecked_ref()));
-        img.set_onerror(Some(onerror.as_ref().unchecked_ref()));
-        img.set_src(&url);
-
-        // Wait for image to load
-        match receiver.await {
-            Ok(Ok(())) => {
-                // Image loaded successfully
-                let width = img.natural_width() as usize;
-                let height = img.natural_height() as usize;
+        // Decode image using the image crate
+        match image::load_from_memory(&bytes) {
+            Ok(img) => {
+                let rgba = img.to_rgba8();
+                let (width, height) = img.dimensions();
 
                 log::trace!(
                     target: "collects_ui::paste",
-                    "Image loaded: {}x{}",
+                    "Image decoded: {}x{}, {} bytes",
                     width,
-                    height
-                );
-
-                // Create a canvas to extract pixel data
-                let canvas: HtmlCanvasElement = document.create_element("canvas")?.dyn_into()?;
-                canvas.set_width(width as u32);
-                canvas.set_height(height as u32);
-
-                let ctx = canvas
-                    .get_context("2d")?
-                    .ok_or_else(|| JsValue::from_str("No 2d context"))?
-                    .dyn_into::<web_sys::CanvasRenderingContext2d>()?;
-
-                // Draw image to canvas
-                ctx.draw_image_with_html_image_element(&img, 0.0, 0.0)?;
-
-                // Get image data
-                let image_data = ctx.get_image_data(0.0, 0.0, width as f64, height as f64)?;
-                let bytes = image_data.data().to_vec();
-
-                // Clean up object URL
-                web_sys::Url::revoke_object_url(&url)?;
-
-                log::trace!(
-                    target: "collects_ui::paste",
-                    "Extracted pixel data: {} bytes",
-                    bytes.len()
+                    height,
+                    rgba.len()
                 );
 
                 Ok(Some(ClipboardImage {
-                    width,
-                    height,
-                    bytes,
+                    width: width as usize,
+                    height: height as usize,
+                    bytes: rgba.into_raw(),
                 }))
             }
-            Ok(Err(e)) => {
-                web_sys::Url::revoke_object_url(&url)?;
-                Err(e)
-            }
-            Err(_) => {
-                web_sys::Url::revoke_object_url(&url)?;
-                Err(JsValue::from_str("Image load canceled"))
+            Err(e) => {
+                log::warn!(
+                    target: "collects_ui::paste",
+                    "Failed to decode image: {:?}",
+                    e
+                );
+                Ok(None)
             }
         }
     }

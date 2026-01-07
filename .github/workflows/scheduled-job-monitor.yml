@@ -5,7 +5,9 @@ on:
   workflow_run:
     workflows:
       - "Artifact Cleanup"
-      # Add other scheduled workflows here as needed
+      - "Deploy Worker"
+      - "Deploy Services"
+      - "Native Release"
     types:
       - completed
 

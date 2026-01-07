@@ -48,12 +48,8 @@ impl StateSnapshot {
     /// # Panics
     /// Panics if the state type is not present in the snapshot.
     pub fn get<T: 'static>(&self) -> &T {
-        self.try_get::<T>().unwrap_or_else(|| {
-            panic!(
-                "State type {} not found in snapshot",
-                type_name::<T>()
-            )
-        })
+        self.try_get::<T>()
+            .unwrap_or_else(|| panic!("State type {} not found in snapshot", type_name::<T>()))
     }
 
     /// Tries to get a reference to a state by type.
@@ -93,12 +89,8 @@ impl ComputeSnapshot {
     /// # Panics
     /// Panics if the compute type is not present in the snapshot.
     pub fn get<T: 'static>(&self) -> &T {
-        self.try_get::<T>().unwrap_or_else(|| {
-            panic!(
-                "Compute type {} not found in snapshot",
-                type_name::<T>()
-            )
-        })
+        self.try_get::<T>()
+            .unwrap_or_else(|| panic!("Compute type {} not found in snapshot", type_name::<T>()))
     }
 
     /// Tries to get a reference to a compute by type.
@@ -231,8 +223,11 @@ mod tests {
     fn state_snapshot_get() {
         let state = TestState { value: 42 };
         let snap = StateSnapshot::new(
-            [(TypeId::of::<TestState>(), Box::new(state.clone()) as Box<dyn Any + Send>)]
-                .into_iter(),
+            [(
+                TypeId::of::<TestState>(),
+                Box::new(state.clone()) as Box<dyn Any + Send>,
+            )]
+            .into_iter(),
         );
 
         let retrieved: &TestState = snap.get();
@@ -243,8 +238,11 @@ mod tests {
     fn state_snapshot_try_get() {
         let state = TestState { value: 42 };
         let snap = StateSnapshot::new(
-            [(TypeId::of::<TestState>(), Box::new(state.clone()) as Box<dyn Any + Send>)]
-                .into_iter(),
+            [(
+                TypeId::of::<TestState>(),
+                Box::new(state.clone()) as Box<dyn Any + Send>,
+            )]
+            .into_iter(),
         );
 
         assert!(snap.try_get::<TestState>().is_some());
@@ -255,8 +253,11 @@ mod tests {
     fn state_snapshot_contains() {
         let state = TestState { value: 42 };
         let snap = StateSnapshot::new(
-            [(TypeId::of::<TestState>(), Box::new(state.clone()) as Box<dyn Any + Send>)]
-                .into_iter(),
+            [(
+                TypeId::of::<TestState>(),
+                Box::new(state.clone()) as Box<dyn Any + Send>,
+            )]
+            .into_iter(),
         );
 
         assert!(snap.contains::<TestState>());
@@ -276,8 +277,11 @@ mod tests {
             result: "hello".to_string(),
         };
         let snap = ComputeSnapshot::new(
-            [(TypeId::of::<TestCompute>(), Box::new(compute.clone()) as Box<dyn Any + Send>)]
-                .into_iter(),
+            [(
+                TypeId::of::<TestCompute>(),
+                Box::new(compute.clone()) as Box<dyn Any + Send>,
+            )]
+            .into_iter(),
         );
 
         let retrieved: &TestCompute = snap.get();
@@ -290,8 +294,11 @@ mod tests {
             result: "hello".to_string(),
         };
         let snap = ComputeSnapshot::new(
-            [(TypeId::of::<TestCompute>(), Box::new(compute.clone()) as Box<dyn Any + Send>)]
-                .into_iter(),
+            [(
+                TypeId::of::<TestCompute>(),
+                Box::new(compute.clone()) as Box<dyn Any + Send>,
+            )]
+            .into_iter(),
         );
 
         assert!(snap.try_get::<TestCompute>().is_some());
@@ -306,10 +313,16 @@ mod tests {
         };
 
         let snap = CommandSnapshot::from_iters(
-            [(TypeId::of::<TestState>(), Box::new(state.clone()) as Box<dyn Any + Send>)]
-                .into_iter(),
-            [(TypeId::of::<TestCompute>(), Box::new(compute.clone()) as Box<dyn Any + Send>)]
-                .into_iter(),
+            [(
+                TypeId::of::<TestState>(),
+                Box::new(state.clone()) as Box<dyn Any + Send>,
+            )]
+            .into_iter(),
+            [(
+                TypeId::of::<TestCompute>(),
+                Box::new(compute.clone()) as Box<dyn Any + Send>,
+            )]
+            .into_iter(),
         );
 
         let s: &TestState = snap.state();
@@ -323,8 +336,11 @@ mod tests {
     fn command_snapshot_try_accessors() {
         let state = TestState { value: 123 };
         let snap = CommandSnapshot::from_iters(
-            [(TypeId::of::<TestState>(), Box::new(state.clone()) as Box<dyn Any + Send>)]
-                .into_iter(),
+            [(
+                TypeId::of::<TestState>(),
+                Box::new(state.clone()) as Box<dyn Any + Send>,
+            )]
+            .into_iter(),
             std::iter::empty(),
         );
 
@@ -341,8 +357,16 @@ mod tests {
         };
 
         let snap = CommandSnapshot::from_iters(
-            [(TypeId::of::<TestState>(), Box::new(state) as Box<dyn Any + Send>)].into_iter(),
-            [(TypeId::of::<TestCompute>(), Box::new(compute) as Box<dyn Any + Send>)].into_iter(),
+            [(
+                TypeId::of::<TestState>(),
+                Box::new(state) as Box<dyn Any + Send>,
+            )]
+            .into_iter(),
+            [(
+                TypeId::of::<TestCompute>(),
+                Box::new(compute) as Box<dyn Any + Send>,
+            )]
+            .into_iter(),
         );
 
         assert!(snap.has_state::<TestState>());
@@ -359,8 +383,16 @@ mod tests {
         };
 
         let snap = CommandSnapshot::from_iters(
-            [(TypeId::of::<TestState>(), Box::new(state) as Box<dyn Any + Send>)].into_iter(),
-            [(TypeId::of::<TestCompute>(), Box::new(compute) as Box<dyn Any + Send>)].into_iter(),
+            [(
+                TypeId::of::<TestState>(),
+                Box::new(state) as Box<dyn Any + Send>,
+            )]
+            .into_iter(),
+            [(
+                TypeId::of::<TestCompute>(),
+                Box::new(compute) as Box<dyn Any + Send>,
+            )]
+            .into_iter(),
         );
 
         // Can access inner snapshots

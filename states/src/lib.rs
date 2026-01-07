@@ -28,7 +28,36 @@ pub use state_sync_status::Stage;
 /// Best practice:
 /// - Keep `Compute` pure/derived.
 /// - Put IO / async work / heavy CPU into `Command`.
+///
+/// ## New rule: snapshot-based command reads + queued writes (IMPORTANT)
+///
+/// This repo is migrating to a model where commands:
+/// - **Read only from snapshots (owned clones)** of State/Compute values.
+/// - **Never borrow or mutate live state/compute references** during execution.
+/// - **Write only via queued updates** (e.g. `Updater::set(...)` / `Updater::set_state(...)`).
+///
+/// Rationale:
+/// - Supports concurrent async work safely (including `wasm32` where threads are limited).
+/// - Prevents commands from observing or racing against mid-frame mutations.
+///
+/// ### Concurrent async and out-of-order completion
+///
+/// If commands can start multiple in-flight requests for the same compute type, `TypeId` alone
+/// is not sufficient to identify a request. Use `(TypeId, generation)` where `generation: u64`
+/// increments per compute type, and carry `generation` through async completion so stale results
+/// can be ignored.
+///
+/// ### UI-affine state boundary
+///
+/// States containing non-Send UI types (e.g. `egui::TextureHandle`) must be mutated only on the
+/// UI thread and must not be updated from async completion via `Updater::set_state()`.
+/// Keep that state in UI code and update it via `StateCtx::update()` / `StateCtx::state_mut()`.
 pub trait Command: std::fmt::Debug + Send + Sync + 'static {
+    /// Runs the command.
+    ///
+    /// NOTE: During migration this signature still receives `Dep`, but command implementations
+    /// must treat it as **read-only**. Do not call any API that produces mutable access to live
+    /// state from here (e.g. `Dep::state_mut()`).
     fn run(&self, dep: Dep, updater: Updater);
 }
 

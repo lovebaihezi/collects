@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                SELECT COUNT(*) as \"count!\"\n                FROM otp_attempts\n                WHERE ip_address = $1\n                  AND success = false\n                  AND attempted_at > now() - ($2 || ' seconds')::INTERVAL\n                ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "count!",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Inet",
+        "Text"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "c7f2b4b6ed56e4550b23b70403788056b85fd95fb38309b61fb1ce47314418a1"
+}

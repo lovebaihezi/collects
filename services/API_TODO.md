@@ -42,17 +42,18 @@ User checks:
 - [x] All `/v1/*` protected routes return `401` without a token.
 - [x] Suspended/archived users can't login (enforced at OTP verify time via `status = 'active'` filter).
 
-### OTP rate limiting primitive (MVP safety)
+### OTP rate limiting primitive (MVP safety) ✅
 We have `otp_attempts` table; enforce in OTP verify flow:
-- Record every attempt (success/failure)
-- Reject when too many attempts:
-  - per `username` over time window
-  - per `ip_address` over time window
-- Use safe error messaging (avoid leaking whether a username exists).
+- [x] Record every attempt (success/failure)
+- [x] Reject when too many attempts:
+  - [x] per `username` over time window (default: 5 failed attempts / 15 min)
+  - [x] per `ip_address` over time window (default: 20 failed attempts / 15 min)
+- [x] Use safe error messaging (avoid leaking whether a username exists)
+- [x] Extract client IP from `CF-Connecting-IP`, `X-Real-IP`, or `X-Forwarded-For` headers
 
 User checks:
-- Repeated wrong OTP attempts are throttled/blocked.
-- A successful OTP resets or reduces lockout impact (policy-dependent).
+- [x] Repeated wrong OTP attempts are throttled/blocked (returns 429 Too Many Requests).
+- [ ] A successful OTP resets or reduces lockout impact (policy-dependent) — *not yet implemented*.
 
 ### Auth event auditing (recommended for MVP)
 Write `audit_logs` entries for:
@@ -590,7 +591,7 @@ Maps to `share_links`, `content_shares`, `content_group_shares`, `share_link_acc
   - `public`: accessible without auth (optional; still can use signed URLs)
 
 ### D) Observability / safety
-- [ ] Add rate limiting for OTP endpoints (use `otp_attempts`)
+- [x] Add rate limiting for OTP endpoints (use `otp_attempts`)
 - [ ] Add upload limits (max file size, allowed MIME types)
 - [ ] Add structured logging for:
   - upload init/complete

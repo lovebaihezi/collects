@@ -1,6 +1,8 @@
 use crate::config::Config;
+use ipnet::IpNet;
 use sqlx::postgres::{PgPool, PgPoolOptions};
 use std::future::Future;
+use std::net::IpAddr;
 
 /// Initialize a PostgreSQL connection pool
 pub async fn create_pool(config: &Config) -> anyhow::Result<PgPool> {
@@ -198,6 +200,29 @@ pub trait SqlStorage: Clone + Send + Sync + 'static {
         &self,
         input: GroupShareCreateForLink,
     ) -> impl Future<Output = Result<ContentGroupShareRow, SqlStorageError>> + Send;
+
+    // -------------------------------------------------------------------------
+    // OTP rate limiting
+    // -------------------------------------------------------------------------
+
+    /// Record an OTP verification attempt.
+    ///
+    /// This should be called after every OTP verification attempt (success or failure)
+    /// to enable rate limiting queries.
+    fn otp_record_attempt(
+        &self,
+        input: OtpAttemptRecord,
+    ) -> impl Future<Output = Result<(), SqlStorageError>> + Send;
+
+    /// Check if OTP attempts are rate-limited for a given username or IP address.
+    ///
+    /// Returns `true` if the request should be blocked due to too many attempts.
+    fn otp_is_rate_limited(
+        &self,
+        username: &str,
+        ip_address: Option<IpAddr>,
+        config: &OtpRateLimitConfig,
+    ) -> impl Future<Output = Result<bool, SqlStorageError>> + Send;
 }
 
 /// Minimal error type for SQL storage operations.
@@ -492,6 +517,45 @@ pub struct GroupShareCreateForLink {
     pub share_link_id: uuid::Uuid,
     pub permission: SharePermission,
     pub created_by: uuid::Uuid,
+}
+
+// -----------------------------------------------------------------------------
+// OTP Rate Limiting Types
+// -----------------------------------------------------------------------------
+
+/// Record of an OTP verification attempt for rate limiting.
+#[derive(Debug, Clone)]
+pub struct OtpAttemptRecord {
+    /// The username that was attempted.
+    pub username: String,
+    /// Whether the attempt was successful.
+    pub success: bool,
+    /// The IP address of the requester, if available.
+    pub ip_address: Option<IpAddr>,
+}
+
+/// Configuration for OTP rate limiting.
+#[derive(Debug, Clone)]
+pub struct OtpRateLimitConfig {
+    /// Maximum failed attempts per username within the time window.
+    pub max_attempts_per_username: i64,
+    /// Maximum failed attempts per IP address within the time window.
+    pub max_attempts_per_ip: i64,
+    /// Time window in seconds for counting attempts.
+    pub window_seconds: i64,
+}
+
+impl Default for OtpRateLimitConfig {
+    fn default() -> Self {
+        Self {
+            // 5 failed attempts per username in 15 minutes
+            max_attempts_per_username: 5,
+            // 20 failed attempts per IP in 15 minutes (allows multiple users behind NAT)
+            max_attempts_per_ip: 20,
+            // 15-minute window
+            window_seconds: 900,
+        }
+    }
 }
 
 // -----------------------------------------------------------------------------
@@ -1492,5 +1556,89 @@ impl SqlStorage for PgStorage {
             created_at: rec.created_at,
             created_by: rec.created_by,
         })
+    }
+
+    async fn otp_record_attempt(&self, input: OtpAttemptRecord) -> Result<(), SqlStorageError> {
+        // Convert IpAddr to IpNet for SQLx INET type
+        let ip_net: Option<IpNet> = input.ip_address.map(IpNet::from);
+
+        sqlx::query!(
+            r#"
+            INSERT INTO otp_attempts (username, success, ip_address)
+            VALUES ($1, $2, $3)
+            "#,
+            input.username,
+            input.success,
+            ip_net as Option<IpNet>
+        )
+        .execute(&self.pool)
+        .await
+        .map_err(|e| SqlStorageError::Db(e.to_string()))?;
+
+        Ok(())
+    }
+
+    async fn otp_is_rate_limited(
+        &self,
+        username: &str,
+        ip_address: Option<IpAddr>,
+        config: &OtpRateLimitConfig,
+    ) -> Result<bool, SqlStorageError> {
+        // Check username-based rate limit
+        let username_count = sqlx::query_scalar!(
+            r#"
+            SELECT COUNT(*) as "count!"
+            FROM otp_attempts
+            WHERE username = $1
+              AND success = false
+              AND attempted_at > now() - ($2 || ' seconds')::INTERVAL
+            "#,
+            username,
+            config.window_seconds.to_string()
+        )
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| SqlStorageError::Db(e.to_string()))?;
+
+        if username_count >= config.max_attempts_per_username {
+            tracing::warn!(
+                username = %username,
+                count = %username_count,
+                max = %config.max_attempts_per_username,
+                "OTP rate limit exceeded for username"
+            );
+            return Ok(true);
+        }
+
+        // Check IP-based rate limit if IP is provided
+        if let Some(ip) = ip_address {
+            let ip_net: IpNet = IpNet::from(ip);
+            let ip_count = sqlx::query_scalar!(
+                r#"
+                SELECT COUNT(*) as "count!"
+                FROM otp_attempts
+                WHERE ip_address = $1
+                  AND success = false
+                  AND attempted_at > now() - ($2 || ' seconds')::INTERVAL
+                "#,
+                ip_net as IpNet,
+                config.window_seconds.to_string()
+            )
+            .fetch_one(&self.pool)
+            .await
+            .map_err(|e| SqlStorageError::Db(e.to_string()))?;
+
+            if ip_count >= config.max_attempts_per_ip {
+                tracing::warn!(
+                    ip = %ip,
+                    count = %ip_count,
+                    max = %config.max_attempts_per_ip,
+                    "OTP rate limit exceeded for IP address"
+                );
+                return Ok(true);
+            }
+        }
+
+        Ok(false)
     }
 }

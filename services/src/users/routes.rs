@@ -30,11 +30,12 @@
 use axum::{
     Json, Router,
     extract::{Path, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::IntoResponse,
     routing::{delete, get, post, put},
 };
 use serde::{Deserialize, Serialize};
+use std::net::IpAddr;
 
 use super::otp::{
     CreateUserRequest, CreateUserResponse, OtpError, ValidateTokenRequest, ValidateTokenResponse,
@@ -43,7 +44,7 @@ use super::otp::{
 };
 use super::storage::{UserStorage, UserStorageError};
 use crate::config::Config;
-use crate::database::SqlStorage;
+use crate::database::{OtpAttemptRecord, OtpRateLimitConfig, SqlStorage};
 
 /// Response for listing users with their current OTP codes.
 #[derive(Debug, Serialize, Deserialize)]
@@ -441,6 +442,7 @@ where
 async fn verify_otp_handler<S, U>(
     State(state): State<AppState<S, U>>,
     axum::extract::Extension(config): axum::extract::Extension<Config>,
+    headers: HeaderMap,
     Json(payload): Json<VerifyOtpRequest>,
 ) -> impl IntoResponse
 where
@@ -448,6 +450,13 @@ where
     U: UserStorage,
 {
     tracing::info!("Verifying OTP code");
+
+    // Extract client IP address from headers (supports reverse proxy scenarios)
+    let client_ip = extract_client_ip(&headers);
+    tracing::debug!(client_ip = ?client_ip, "Extracted client IP");
+
+    // Rate limit configuration
+    let rate_limit_config = OtpRateLimitConfig::default();
 
     // Validate that username is not empty
     if payload.username.is_empty() {
@@ -478,11 +487,48 @@ where
             .into_response();
     }
 
+    // Check rate limiting BEFORE processing the OTP verification
+    // This prevents timing attacks and protects against brute force
+    match state
+        .sql_storage
+        .otp_is_rate_limited(&payload.username, client_ip, &rate_limit_config)
+        .await
+    {
+        Ok(true) => {
+            tracing::warn!(
+                username = %payload.username,
+                client_ip = ?client_ip,
+                "OTP verification blocked due to rate limiting"
+            );
+            // Use generic error message to avoid leaking information
+            return (
+                StatusCode::TOO_MANY_REQUESTS,
+                Json(VerifyOtpResponse {
+                    valid: false,
+                    message: Some("Too many attempts. Please try again later.".to_string()),
+                    token: None,
+                }),
+            )
+                .into_response();
+        }
+        Ok(false) => {
+            // Not rate limited, continue
+        }
+        Err(e) => {
+            tracing::error!("Failed to check rate limit: {}", e);
+            // On rate limit check failure, allow the request but log the error
+            // This prevents a database issue from completely blocking authentication
+        }
+    }
+
     // Look up the user's secret from storage
     let secret = match state.user_storage.get_user_secret(&payload.username).await {
         Ok(Some(secret)) => secret,
         Ok(None) => {
             tracing::warn!("User not found: {}", payload.username);
+            // Record failed attempt (user not found counts as a failure)
+            record_otp_attempt(&state.sql_storage, &payload.username, false, client_ip).await;
+            // Use generic error message to avoid revealing whether username exists
             return (
                 StatusCode::UNAUTHORIZED,
                 Json(VerifyOtpResponse {
@@ -511,6 +557,8 @@ where
     match verify_otp(&secret, &payload.code) {
         Ok(true) => {
             tracing::info!("OTP verification successful");
+            // Record successful attempt
+            record_otp_attempt(&state.sql_storage, &payload.username, true, client_ip).await;
             // Generate session token for the authenticated user
             let token = match generate_session_token(&payload.username, config.jwt_secret()) {
                 Ok(t) => Some(t),
@@ -539,6 +587,8 @@ where
         }
         Ok(false) => {
             tracing::warn!("OTP verification failed - invalid code");
+            // Record failed attempt
+            record_otp_attempt(&state.sql_storage, &payload.username, false, client_ip).await;
             (
                 StatusCode::UNAUTHORIZED,
                 Json(VerifyOtpResponse {
@@ -561,6 +611,70 @@ where
             )
                 .into_response()
         }
+    }
+}
+
+/// Extract client IP address from request headers.
+///
+/// Checks headers in order of preference:
+/// 1. `CF-Connecting-IP` - Cloudflare's real client IP header
+/// 2. `X-Real-IP` - Common reverse proxy header
+/// 3. `X-Forwarded-For` - Standard proxy header (uses first IP in chain)
+///
+/// Returns `None` if no valid IP address is found.
+fn extract_client_ip(headers: &HeaderMap) -> Option<IpAddr> {
+    // Try CF-Connecting-IP first (Cloudflare)
+    if let Some(value) = headers.get("cf-connecting-ip")
+        && let Ok(ip_str) = value.to_str()
+        && let Ok(ip) = ip_str.trim().parse::<IpAddr>()
+    {
+        return Some(ip);
+    }
+
+    // Try X-Real-IP
+    if let Some(value) = headers.get("x-real-ip")
+        && let Ok(ip_str) = value.to_str()
+        && let Ok(ip) = ip_str.trim().parse::<IpAddr>()
+    {
+        return Some(ip);
+    }
+
+    // Try X-Forwarded-For (take first IP in the chain)
+    // X-Forwarded-For can contain multiple IPs: "client, proxy1, proxy2"
+    if let Some(value) = headers.get("x-forwarded-for")
+        && let Ok(ip_str) = value.to_str()
+        && let Some(first_ip) = ip_str.split(',').next()
+        && let Ok(ip) = first_ip.trim().parse::<IpAddr>()
+    {
+        return Some(ip);
+    }
+
+    None
+}
+
+/// Record an OTP verification attempt in the database.
+///
+/// This is a fire-and-forget operation - failures are logged but don't affect
+/// the authentication flow.
+async fn record_otp_attempt<S: SqlStorage>(
+    storage: &S,
+    username: &str,
+    success: bool,
+    ip_address: Option<IpAddr>,
+) {
+    let record = OtpAttemptRecord {
+        username: username.to_string(),
+        success,
+        ip_address,
+    };
+
+    if let Err(e) = storage.otp_record_attempt(record).await {
+        tracing::error!(
+            username = %username,
+            success = %success,
+            error = %e,
+            "Failed to record OTP attempt"
+        );
     }
 }
 
@@ -1282,6 +1396,24 @@ mod tests {
             Err(crate::database::SqlStorageError::Db(
                 "MockSqlStorage.group_shares_create_for_link: unimplemented".to_string(),
             ))
+        }
+
+        async fn otp_record_attempt(
+            &self,
+            _input: crate::database::OtpAttemptRecord,
+        ) -> Result<(), crate::database::SqlStorageError> {
+            // Mock: silently succeed
+            Ok(())
+        }
+
+        async fn otp_is_rate_limited(
+            &self,
+            _username: &str,
+            _ip_address: Option<std::net::IpAddr>,
+            _config: &crate::database::OtpRateLimitConfig,
+        ) -> Result<bool, crate::database::SqlStorageError> {
+            // Mock: never rate limited
+            Ok(false)
         }
     }
 
@@ -2291,5 +2423,130 @@ mod tests {
 
         assert!(!response.valid, "Token should be invalid");
         assert!(response.message.is_some(), "Should return error message");
+    }
+
+    // =========================================================================
+    // Tests for extract_client_ip
+    // =========================================================================
+
+    #[test]
+    fn test_extract_client_ip_cf_connecting_ip() {
+        use axum::http::HeaderMap;
+
+        let mut headers = HeaderMap::new();
+        headers.insert("cf-connecting-ip", "192.168.1.100".parse().unwrap());
+
+        let ip = super::extract_client_ip(&headers);
+        assert_eq!(ip, Some("192.168.1.100".parse().unwrap()));
+    }
+
+    #[test]
+    fn test_extract_client_ip_cf_connecting_ip_ipv6() {
+        use axum::http::HeaderMap;
+
+        let mut headers = HeaderMap::new();
+        headers.insert("cf-connecting-ip", "2001:db8::1".parse().unwrap());
+
+        let ip = super::extract_client_ip(&headers);
+        assert_eq!(ip, Some("2001:db8::1".parse().unwrap()));
+    }
+
+    #[test]
+    fn test_extract_client_ip_x_real_ip() {
+        use axum::http::HeaderMap;
+
+        let mut headers = HeaderMap::new();
+        headers.insert("x-real-ip", "10.0.0.50".parse().unwrap());
+
+        let ip = super::extract_client_ip(&headers);
+        assert_eq!(ip, Some("10.0.0.50".parse().unwrap()));
+    }
+
+    #[test]
+    fn test_extract_client_ip_x_forwarded_for_single() {
+        use axum::http::HeaderMap;
+
+        let mut headers = HeaderMap::new();
+        headers.insert("x-forwarded-for", "203.0.113.195".parse().unwrap());
+
+        let ip = super::extract_client_ip(&headers);
+        assert_eq!(ip, Some("203.0.113.195".parse().unwrap()));
+    }
+
+    #[test]
+    fn test_extract_client_ip_x_forwarded_for_multiple() {
+        use axum::http::HeaderMap;
+
+        let mut headers = HeaderMap::new();
+        // X-Forwarded-For with multiple IPs (client, proxy1, proxy2)
+        headers.insert(
+            "x-forwarded-for",
+            "203.0.113.195, 70.41.3.18, 150.172.238.178"
+                .parse()
+                .unwrap(),
+        );
+
+        let ip = super::extract_client_ip(&headers);
+        // Should return the first IP (the original client)
+        assert_eq!(ip, Some("203.0.113.195".parse().unwrap()));
+    }
+
+    #[test]
+    fn test_extract_client_ip_priority_cf_over_x_real_ip() {
+        use axum::http::HeaderMap;
+
+        let mut headers = HeaderMap::new();
+        headers.insert("cf-connecting-ip", "192.168.1.1".parse().unwrap());
+        headers.insert("x-real-ip", "10.0.0.1".parse().unwrap());
+        headers.insert("x-forwarded-for", "172.16.0.1".parse().unwrap());
+
+        let ip = super::extract_client_ip(&headers);
+        // CF-Connecting-IP should have highest priority
+        assert_eq!(ip, Some("192.168.1.1".parse().unwrap()));
+    }
+
+    #[test]
+    fn test_extract_client_ip_priority_x_real_ip_over_forwarded() {
+        use axum::http::HeaderMap;
+
+        let mut headers = HeaderMap::new();
+        headers.insert("x-real-ip", "10.0.0.1".parse().unwrap());
+        headers.insert("x-forwarded-for", "172.16.0.1".parse().unwrap());
+
+        let ip = super::extract_client_ip(&headers);
+        // X-Real-IP should have priority over X-Forwarded-For
+        assert_eq!(ip, Some("10.0.0.1".parse().unwrap()));
+    }
+
+    #[test]
+    fn test_extract_client_ip_no_headers() {
+        use axum::http::HeaderMap;
+
+        let headers = HeaderMap::new();
+
+        let ip = super::extract_client_ip(&headers);
+        assert_eq!(ip, None);
+    }
+
+    #[test]
+    fn test_extract_client_ip_invalid_ip() {
+        use axum::http::HeaderMap;
+
+        let mut headers = HeaderMap::new();
+        headers.insert("cf-connecting-ip", "not-an-ip".parse().unwrap());
+
+        let ip = super::extract_client_ip(&headers);
+        assert_eq!(ip, None);
+    }
+
+    #[test]
+    fn test_extract_client_ip_with_whitespace() {
+        use axum::http::HeaderMap;
+
+        let mut headers = HeaderMap::new();
+        headers.insert("cf-connecting-ip", "  192.168.1.100  ".parse().unwrap());
+
+        let ip = super::extract_client_ip(&headers);
+        assert_eq!(ip, Some("192.168.1.100".parse().unwrap()));
     }
 }

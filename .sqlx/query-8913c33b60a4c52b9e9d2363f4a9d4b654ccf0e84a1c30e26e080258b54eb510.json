@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO otp_attempts (username, success, ip_address)\n            VALUES ($1, $2, $3)\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Varchar",
+        "Bool",
+        "Inet"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "8913c33b60a4c52b9e9d2363f4a9d4b654ccf0e84a1c30e26e080258b54eb510"
+}

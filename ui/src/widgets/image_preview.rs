@@ -18,7 +18,7 @@
 //! 2. Call `image_preview()` to render the current image
 //! 3. Click the image to maximize it in a modal
 
-use collects_states::State;
+use collects_states::{SnapshotClone, State};
 use egui::{Color32, ColorImage, Context, Response, TextureHandle, TextureOptions, Ui, Window};
 use std::any::Any;
 
@@ -61,6 +61,11 @@ impl std::fmt::Debug for ImagePreviewState {
             .finish()
     }
 }
+
+// ImagePreviewState is UI-affine (contains TextureHandle which is !Send).
+// It should not be snapshotted for command execution.
+// The default SnapshotClone implementation returns None.
+impl SnapshotClone for ImagePreviewState {}
 
 impl State for ImagePreviewState {
     fn as_any(&self) -> &dyn Any {

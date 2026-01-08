@@ -219,7 +219,10 @@ mod api_state_widget_test {
         );
 
         // Enqueue and flush the toggle command
-        harness.state_mut().ctx.enqueue_command::<ToggleApiStatusCommand>();
+        harness
+            .state_mut()
+            .ctx
+            .enqueue_command::<ToggleApiStatusCommand>();
         harness.state_mut().ctx.flush_commands();
 
         // Sync computes to apply the update
@@ -239,7 +242,10 @@ mod api_state_widget_test {
         );
 
         // Toggle again
-        harness.state_mut().ctx.enqueue_command::<ToggleApiStatusCommand>();
+        harness
+            .state_mut()
+            .ctx
+            .enqueue_command::<ToggleApiStatusCommand>();
         harness.state_mut().ctx.flush_commands();
         harness.state_mut().ctx.sync_computes();
         harness.step();
@@ -269,7 +275,10 @@ mod api_state_widget_test {
         harness.step();
 
         // Toggle to show the API status
-        harness.state_mut().ctx.enqueue_command::<ToggleApiStatusCommand>();
+        harness
+            .state_mut()
+            .ctx
+            .enqueue_command::<ToggleApiStatusCommand>();
         harness.state_mut().ctx.flush_commands();
         harness.state_mut().ctx.sync_computes();
         harness.step();
@@ -320,7 +329,10 @@ mod api_state_widget_test {
         harness.state_mut().ctx.run_all_dirty();
 
         // Toggle while fetch might be in-flight
-        harness.state_mut().ctx.enqueue_command::<ToggleApiStatusCommand>();
+        harness
+            .state_mut()
+            .ctx
+            .enqueue_command::<ToggleApiStatusCommand>();
         harness.state_mut().ctx.flush_commands();
         harness.state_mut().ctx.sync_computes();
         harness.step();

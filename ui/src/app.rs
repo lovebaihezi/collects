@@ -475,7 +475,9 @@ impl<P: PasteHandler, D: DropHandler> CollectsApp<P, D> {
             // Auto-fetch users when navigating to Internal route
             #[cfg(any(feature = "env_internal", feature = "env_test_internal"))]
             if matches!(new_route, Route::Internal) {
-                self.state.ctx.enqueue_command::<RefreshInternalUsersCommand>();
+                self.state
+                    .ctx
+                    .enqueue_command::<RefreshInternalUsersCommand>();
                 self.state.ctx.flush_commands();
             }
         }

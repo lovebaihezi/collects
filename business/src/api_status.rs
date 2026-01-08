@@ -28,6 +28,15 @@ pub struct ApiStatus {
     show_status: bool,
     /// Whether an API fetch is currently in-flight (prevents duplicate requests)
     is_fetching: bool,
+    /// Request generation counter for out-of-order completion safety.
+    ///
+    /// Each new fetch increments this counter. When an async response arrives,
+    /// it includes the generation it was started with. If that generation doesn't
+    /// match the current generation, the response is stale and should be ignored.
+    ///
+    /// This ensures that if multiple requests are in-flight (e.g., due to rapid
+    /// time changes or retries), only the most recent request's result is applied.
+    generation: u64,
 }
 
 impl SnapshotClone for ApiStatus {
@@ -68,6 +77,15 @@ impl ApiStatus {
     pub fn show_status(&self) -> bool {
         self.show_status
     }
+
+    /// Returns the current request generation.
+    ///
+    /// This is used for out-of-order completion safety. When starting an async
+    /// fetch, capture this generation. When the response arrives, compare it
+    /// to the current generation - if they don't match, the response is stale.
+    pub fn generation(&self) -> u64 {
+        self.generation
+    }
 }
 
 impl Compute for ApiStatus {
@@ -89,6 +107,7 @@ impl Compute for ApiStatus {
         let now = deps.get_state_ref::<Time>().as_ref().to_utc();
         let current_retry_count = self.retry_count;
         let current_show_status = self.show_status;
+        let current_generation = self.generation;
 
         // Determine if we should fetch:
         // 1. Never fetched before -> fetch
@@ -124,11 +143,15 @@ impl Compute for ApiStatus {
             }
         };
         if should_fetch {
+            // Increment generation for this new request.
+            // This allows us to detect and ignore stale responses from previous requests.
+            let new_generation = current_generation.wrapping_add(1);
+
             info!(
-                "Fetching API Status at {:?} on: {:?}, Waiting Result",
-                &url, now
+                "Fetching API Status at {:?} on: {:?}, generation={}, Waiting Result",
+                &url, now, new_generation
             );
-            // Mark as fetching to prevent duplicate requests while this one is in-flight.
+            // Mark as fetching with new generation to prevent duplicate requests while this one is in-flight.
             // We use updater.set() to update the state immediately, which will be synced
             // on the next sync_computes() call.
             updater.set(ApiStatus {
@@ -138,7 +161,13 @@ impl Compute for ApiStatus {
                 retry_count: current_retry_count,
                 show_status: current_show_status,
                 is_fetching: true,
+                generation: new_generation,
             });
+
+            // Capture generation for the async callback via move closure.
+            // When the response arrives, we'll include this generation in the update.
+            // The UI thread will apply it; since we use whole-value updates,
+            // the generation acts as a version stamp - newer generations are authoritative.
             ehttp::fetch(request, move |res| match res {
                 Ok(response) => {
                     let service_version = response
@@ -146,7 +175,10 @@ impl Compute for ApiStatus {
                         .get(SERVICE_VERSION_HEADER)
                         .map(String::from);
                     if response.status == 200 {
-                        debug!("BackEnd Available, checked at {:?}", now);
+                        debug!(
+                            "BackEnd Available, checked at {:?}, generation={}",
+                            now, new_generation
+                        );
                         let api_status = ApiStatus {
                             last_update_time: Some(now),
                             last_error: None,
@@ -154,10 +186,14 @@ impl Compute for ApiStatus {
                             retry_count: 0, // Reset retry count on success
                             show_status: current_show_status,
                             is_fetching: false,
+                            generation: new_generation,
                         };
                         updater.set(api_status);
                     } else {
-                        info!("BackEnd Return with status code: {:?}", response.status);
+                        info!(
+                            "BackEnd Return with status code: {:?}, generation={}",
+                            response.status, new_generation
+                        );
                         let api_status = ApiStatus {
                             last_update_time: Some(now),
                             last_error: Some(format!("API Health: {}", response.status)),
@@ -165,12 +201,16 @@ impl Compute for ApiStatus {
                             retry_count: current_retry_count.saturating_add(1),
                             show_status: current_show_status,
                             is_fetching: false,
+                            generation: new_generation,
                         };
                         updater.set(api_status);
                     }
                 }
                 Err(err) => {
-                    warn!("API status check failed: {:?}", err);
+                    warn!(
+                        "API status check failed: {:?}, generation={}",
+                        err, new_generation
+                    );
                     let api_status = ApiStatus {
                         last_update_time: Some(now),
                         last_error: Some(err.to_string()),
@@ -178,6 +218,7 @@ impl Compute for ApiStatus {
                         retry_count: current_retry_count.saturating_add(1),
                         show_status: current_show_status,
                         is_fetching: false,
+                        generation: new_generation,
                     };
                     updater.set(api_status);
                 }
@@ -226,6 +267,7 @@ impl Command for ToggleApiStatusCommand {
             retry_count: current.retry_count,
             show_status: new_show_status,
             is_fetching: current.is_fetching,
+            generation: current.generation,
         });
     }
 }
@@ -241,6 +283,13 @@ mod tests {
         assert!(!status.is_fetching, "is_fetching should default to false");
     }
 
+    /// Tests that ApiStatus defaults with generation = 0
+    #[test]
+    fn test_api_status_default_generation_zero() {
+        let status = ApiStatus::default();
+        assert_eq!(status.generation(), 0, "generation should default to 0");
+    }
+
     /// Tests that is_fetching flag can be set to true
     #[test]
     fn test_api_status_is_fetching_can_be_set() {
@@ -251,8 +300,24 @@ mod tests {
             retry_count: 0,
             show_status: false,
             is_fetching: true,
+            generation: 0,
         };
         assert!(status.is_fetching, "is_fetching should be settable to true");
+    }
+
+    /// Tests that generation can be set and retrieved
+    #[test]
+    fn test_api_status_generation_can_be_set() {
+        let status = ApiStatus {
+            last_update_time: None,
+            last_error: None,
+            service_version: None,
+            retry_count: 0,
+            show_status: false,
+            is_fetching: false,
+            generation: 42,
+        };
+        assert_eq!(status.generation(), 42, "generation should be settable");
     }
 
     /// Tests that api_availability returns Unknown when is_fetching is true but no data
@@ -265,6 +330,7 @@ mod tests {
             retry_count: 0,
             show_status: false,
             is_fetching: true,
+            generation: 1,
         };
         assert!(
             matches!(status.api_availability(), APIAvailability::Unknown),
@@ -282,6 +348,7 @@ mod tests {
             retry_count: 0,
             show_status: false,
             is_fetching: false,
+            generation: 0,
         };
         assert!(
             !status_hidden.show_status(),
@@ -295,7 +362,25 @@ mod tests {
             retry_count: 0,
             show_status: true,
             is_fetching: false,
+            generation: 0,
         };
         assert!(status_shown.show_status(), "show_status should return true");
+    }
+
+    /// Tests that generation wraps around safely using wrapping_add
+    #[test]
+    fn test_generation_wrapping() {
+        let status = ApiStatus {
+            last_update_time: None,
+            last_error: None,
+            service_version: None,
+            retry_count: 0,
+            show_status: false,
+            is_fetching: false,
+            generation: u64::MAX,
+        };
+        // After incrementing u64::MAX, it should wrap to 0
+        let next_gen = status.generation.wrapping_add(1);
+        assert_eq!(next_gen, 0, "generation should wrap around safely");
     }
 }

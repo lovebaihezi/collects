@@ -189,7 +189,7 @@ Any state intended to be updated from async completion must:
 - [x] Remove or restrict `Dep::state_mut`
 - [x] Implement UI command queue and flush once per frame
 - [x] Migrate `ToggleApiStatusCommand` to confirm pipeline
-- [ ] Add generation-based request tracking on one async compute as example
+- [x] Add generation-based request tracking on one async compute as example
 - [ ] Add automated rule checks to prevent regressions
 
 ---

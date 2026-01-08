@@ -7,3 +7,6 @@ pre-commit:
       run: just check-lint
     typos:
       run: just check-typos
+    migration-check:
+      run: just scripts::migration-check
+      glob: "services/migrations/*.sql"

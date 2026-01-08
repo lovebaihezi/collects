@@ -26,7 +26,7 @@ CREATE INDEX IF NOT EXISTS idx_contents_storage_profile ON contents(storage_prof
 -- ============================================================================
 
 CREATE TABLE uploads (
-    id UUID PRIMARY KEY DEFAULT uuid_v7(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES users(id),
 
     storage_backend TEXT NOT NULL,

@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "description": "Migration file checksums. DO NOT manually edit. Run `just scripts::migration-lock` to update.",
+  "migrations": [
+    {
+      "filename": "20251226105821_init-auth-storage.sql",
+      "sha256": "fcac8baf572a50f10125c0a11b00c571904a24f9ccdb50658a41af1edd985d64",
+      "lockedAt": "2026-01-08T08:11:18.645Z"
+    },
+    {
+      "filename": "20260107102609_add-storage-routing-to-contents.sql",
+      "sha256": "5a26c55072ede5a26e127a16dfaf8c7a258167d2ecd249de736ec844a4035e47",
+      "lockedAt": "2026-01-08T08:11:18.645Z"
+    },
+    {
+      "filename": "20260108080436_add-uuid-v7-support.sql",
+      "sha256": "078f9d0a3a681cb61a8a3a09d0e13c66aa25ad7399c0f85a257d798abdbb187b",
+      "lockedAt": "2026-01-08T08:11:18.645Z"
+    }
+  ]
+}

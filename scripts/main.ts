@@ -19,6 +19,10 @@ import { runScheduledJobIssueCLI } from "./gh-actions/scheduled-job-issue.ts";
 import { runArtifactCleanupCLI } from "./gh-actions/artifact-cleanup.ts";
 import { runArtifactCheckCLI } from "./gh-actions/artifact-check.ts";
 import {
+  runMigrationCheckCLI,
+  runMigrationLockCLI,
+} from "./gh-actions/migration-check.ts";
+import {
   getCargoFeature,
   getDatabaseSecret,
   getJwtSecret,
@@ -324,6 +328,24 @@ cli
     await runArtifactCheckCLI();
   });
 
+cli
+  .command(
+    "migration-check",
+    "Check that locked migration files haven't been modified",
+  )
+  .action(async () => {
+    await runMigrationCheckCLI({ update: false });
+  });
+
+cli
+  .command(
+    "migration-lock",
+    "Lock new migration files (add them to the checksum file)",
+  )
+  .action(async () => {
+    await runMigrationLockCLI();
+  });
+
 cli.command("", "Show help").action(() => {
   const helpText = `
 # Services Helper Script
@@ -533,7 +555,7 @@ That's it! Now when CI fails on a PR, Copilot will automatically be asked to hel
 
 ### \`scheduled-job-issue\`
 
-Creates GitHub issues when scheduled background jobs fail. This tool monitors scheduled workflow runs 
+Creates GitHub issues when scheduled background jobs fail. This tool monitors scheduled workflow runs
 and automatically creates detailed issues with diagnosis plans and possible root causes.
 
 **How it works:**

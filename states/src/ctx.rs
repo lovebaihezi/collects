@@ -1,7 +1,7 @@
 use std::{
     any::TypeId,
     cell::{RefCell, RefMut},
-    collections::BTreeMap,
+    collections::{BTreeMap, VecDeque},
     ptr::NonNull,
 };
 
@@ -26,6 +26,10 @@ use super::{Compute, Stage, State, StateRuntime};
 ///    - `run::<T>()`: Runs a specific compute and its dirty dependencies (for user events)
 ///
 /// 3. **Sync results**: Call `sync_computes()` to apply async compute results.
+///
+/// 4. **Command execution**: Commands are queued via `enqueue_command::<T>()` and executed
+///    at end-of-frame via `flush_commands()`. This ensures commands never execute mid-frame
+///    and always operate on snapshot copies of state/compute values.
 #[derive(Debug)]
 pub struct StateCtx {
     runtime: StateRuntime,
@@ -39,8 +43,16 @@ pub struct StateCtx {
     ///
     /// Commands are *not* part of the compute dependency graph and will never be
     /// executed by `run_all_dirty()`. They must be invoked explicitly via
-    /// `dispatch::<T>()`.
+    /// `enqueue_command::<T>()` and `flush_commands()` (preferred), or the
+    /// deprecated `dispatch::<T>()`.
     commands: BTreeMap<TypeId, RefCell<Box<dyn Command>>>,
+
+    /// Queue of commands to be executed at end-of-frame.
+    ///
+    /// Commands are enqueued via `enqueue_command::<T>()` and executed sequentially
+    /// during `flush_commands()`. Each command receives a `CommandSnapshot` containing
+    /// owned clones of states and computes at flush time.
+    command_queue: VecDeque<TypeId>,
 }
 
 impl Default for StateCtx {
@@ -61,11 +73,13 @@ impl StateCtx {
         let computes = BTreeMap::new();
         let states = BTreeMap::new();
         let commands = BTreeMap::new();
+        let command_queue = VecDeque::new();
         Self {
             runtime,
             states,
             computes,
             commands,
+            command_queue,
         }
     }
 
@@ -184,26 +198,107 @@ impl StateCtx {
 
     /// Dispatches a manual-only command by its type.
     ///
+    /// **Deprecated**: Prefer using `enqueue_command::<T>()` followed by `flush_commands()`
+    /// at end-of-frame to ensure commands execute deterministically after all UI updates.
+    ///
     /// The command is executed immediately and synchronously in the caller's thread.
     /// Commands receive a `CommandSnapshot` containing owned clones of states and computes,
     /// ensuring they never hold mutable references to live state during execution.
     ///
     /// Any async work should be spawned inside the command implementation (e.g. using tokio),
     /// and results should flow back through your chosen state update mechanism.
+    #[deprecated(
+        since = "0.2.0",
+        note = "Use `enqueue_command::<T>()` and `flush_commands()` for end-of-frame execution"
+    )]
     pub fn dispatch<T: Command + 'static>(&mut self) {
         let id = TypeId::of::<T>();
-        let Some(cell) = self.commands.get(&id) else {
-            panic!("No command found for id: {:?}", id);
+        self.execute_command_by_id(&id);
+    }
+
+    /// Enqueues a command for execution at end-of-frame.
+    ///
+    /// Commands are stored in a queue and executed sequentially during `flush_commands()`.
+    /// This ensures commands never execute mid-frame and always operate on snapshot copies
+    /// of state/compute values taken at flush time.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the command type was not previously registered via `record_command::<T>()`.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // In UI event handler:
+    /// ctx.enqueue_command::<ToggleApiStatusCommand>();
+    ///
+    /// // At end-of-frame (in eframe::App::update):
+    /// ctx.flush_commands();
+    /// ```
+    pub fn enqueue_command<T: Command + 'static>(&mut self) {
+        let id = TypeId::of::<T>();
+        if !self.commands.contains_key(&id) {
+            panic!(
+                "No command found for type {:?}. Did you forget to call `record_command::<T>()`?",
+                std::any::type_name::<T>()
+            );
+        }
+        trace!("Enqueue command: {:?}", std::any::type_name::<T>());
+        self.command_queue.push_back(id);
+    }
+
+    /// Executes all queued commands at end-of-frame.
+    ///
+    /// Each command receives a `CommandSnapshot` containing owned clones of states and computes
+    /// at flush time. Commands are executed sequentially in the order they were enqueued.
+    ///
+    /// This method should be called once per frame, after UI rendering and before the next
+    /// `sync_computes()` call to apply any updates emitted by commands.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // In eframe::App::update, after UI rendering:
+    /// ctx.sync_computes();      // Apply async results from prior frame
+    /// ctx.flush_commands();     // Execute queued commands
+    /// ctx.sync_computes();      // Apply updates from commands
+    /// ctx.run_all_dirty();      // Run dirty computes
+    /// ```
+    pub fn flush_commands(&mut self) {
+        let queue_len = self.command_queue.len();
+        if queue_len == 0 {
+            return;
+        }
+
+        trace!("Flushing {} queued commands", queue_len);
+
+        // Execute each queued command with a fresh snapshot
+        // Each command gets a snapshot of the current state at execution time
+        while let Some(id) = self.command_queue.pop_front() {
+            self.execute_command_by_id(&id);
+        }
+    }
+
+    /// Returns the number of commands currently in the queue.
+    pub fn command_queue_len(&self) -> usize {
+        self.command_queue.len()
+    }
+
+    /// Executes a single command immediately by TypeId.
+    fn execute_command_by_id(&self, id: &TypeId) {
+        let Some(cell) = self.commands.get(id) else {
+            panic!("No command found for id: {id:?}");
         };
 
         // Build snapshot from currently registered states + computes (commands may read both).
         //
         // Commands are intentionally not part of the dependency graph, so we construct
-        // the snapshot from what's available in this context at dispatch time.
+        // the snapshot from what's available in this context at execution time.
         // Only states/computes that implement SnapshotClone::clone_boxed will be included.
         let snapshot = self.create_command_snapshot();
 
         let borrowed = cell.borrow();
+        trace!("Executing command: {:?}", borrowed);
         borrowed.run(snapshot, self.updater());
     }
 

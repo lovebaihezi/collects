@@ -419,6 +419,7 @@ mod state_runtime_test {
         assert_eq!(shared.load(Ordering::SeqCst), 0);
 
         // Only runs when explicitly invoked.
+        #[allow(deprecated)]
         ctx.dispatch::<IncrementCountCommand>();
 
         assert_eq!(shared.load(Ordering::SeqCst), 1);
@@ -489,6 +490,7 @@ mod state_runtime_test {
 
         // Register the command and dispatch it.
         ctx.record_command(SetComputeValueCommand { value: 123 });
+        #[allow(deprecated)]
         ctx.dispatch::<SetComputeValueCommand>();
 
         // Command updates are delivered via the same runtime channel as computes.
@@ -565,6 +567,7 @@ mod state_runtime_test {
 
         // Dispatch queues an update; syncing must panic strictly because the compute
         // receiving the update was never registered with `record_compute`.
+        #[allow(deprecated)]
         ctx.dispatch::<SetUnregisteredComputeCommand>();
         ctx.sync_computes();
     }
@@ -730,6 +733,7 @@ mod state_runtime_test {
         });
 
         // Dispatch command
+        #[allow(deprecated)]
         ctx.dispatch::<SnapshotReadingCommand>();
         ctx.sync_computes();
 
@@ -738,5 +742,176 @@ mod state_runtime_test {
 
         // Verify command updated the compute via updater
         assert_eq!(ctx.cached::<DummyComputeFromCommand>().unwrap().value, 500);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // COMMAND QUEUE TESTS
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// Tests that enqueue_command adds commands to the queue without executing them.
+    #[test]
+    fn test_enqueue_command_does_not_execute_immediately() {
+        let shared = Arc::new(AtomicUsize::new(0));
+
+        let mut ctx = StateCtx::new();
+        ctx.record_command(IncrementCountCommand {
+            shared: Arc::clone(&shared),
+        });
+
+        // Enqueue the command
+        ctx.enqueue_command::<IncrementCountCommand>();
+
+        // Command should NOT have executed yet
+        assert_eq!(shared.load(Ordering::SeqCst), 0);
+        assert_eq!(ctx.command_queue_len(), 1);
+    }
+
+    /// Tests that flush_commands executes all queued commands.
+    #[test]
+    fn test_flush_commands_executes_queued_commands() {
+        let shared = Arc::new(AtomicUsize::new(0));
+
+        let mut ctx = StateCtx::new();
+        ctx.record_command(IncrementCountCommand {
+            shared: Arc::clone(&shared),
+        });
+
+        // Enqueue multiple instances of the same command
+        ctx.enqueue_command::<IncrementCountCommand>();
+        ctx.enqueue_command::<IncrementCountCommand>();
+        ctx.enqueue_command::<IncrementCountCommand>();
+
+        assert_eq!(ctx.command_queue_len(), 3);
+
+        // Flush should execute all commands
+        ctx.flush_commands();
+
+        assert_eq!(shared.load(Ordering::SeqCst), 3);
+        assert_eq!(ctx.command_queue_len(), 0);
+    }
+
+    /// Tests that flush_commands with empty queue does nothing.
+    #[test]
+    fn test_flush_commands_empty_queue() {
+        let mut ctx = StateCtx::new();
+
+        // Flushing empty queue should not panic
+        ctx.flush_commands();
+
+        assert_eq!(ctx.command_queue_len(), 0);
+    }
+
+    /// Tests that commands enqueued during flush are not executed until next flush.
+    #[derive(Debug)]
+    struct EnqueueAnotherCommand {
+        counter: Arc<AtomicUsize>,
+    }
+
+    impl Command for EnqueueAnotherCommand {
+        fn run(&self, _snap: CommandSnapshot, _updater: Updater) {
+            self.counter.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+
+    #[test]
+    fn test_flush_commands_order() {
+        let counter1 = Arc::new(AtomicUsize::new(0));
+        let counter2 = Arc::new(AtomicUsize::new(0));
+
+        let mut ctx = StateCtx::new();
+
+        ctx.record_command(IncrementCountCommand {
+            shared: Arc::clone(&counter1),
+        });
+        ctx.record_command(EnqueueAnotherCommand {
+            counter: Arc::clone(&counter2),
+        });
+
+        // Enqueue in specific order
+        ctx.enqueue_command::<IncrementCountCommand>();
+        ctx.enqueue_command::<EnqueueAnotherCommand>();
+        ctx.enqueue_command::<IncrementCountCommand>();
+
+        ctx.flush_commands();
+
+        // All three should have executed
+        assert_eq!(counter1.load(Ordering::SeqCst), 2);
+        assert_eq!(counter2.load(Ordering::SeqCst), 1);
+    }
+
+    /// Tests that enqueue_command panics for unregistered commands.
+    #[test]
+    #[should_panic(expected = "No command found")]
+    fn test_enqueue_unregistered_command_panics() {
+        let mut ctx = StateCtx::new();
+        // IncrementCountCommand was not registered
+        ctx.enqueue_command::<IncrementCountCommand>();
+    }
+
+    /// Tests that command queue works with snapshot reading.
+    #[test]
+    fn test_enqueue_command_reads_from_snapshot() {
+        let success = Arc::new(AtomicUsize::new(0));
+
+        let mut ctx = StateCtx::new();
+
+        // Add state with initial value 5
+        ctx.add_state(DummyState { base_value: 5 });
+
+        // Add compute (will compute doubled = 10)
+        ctx.record_compute(DummyComputeA { doubled: 0 });
+
+        // Add target compute for command to update
+        ctx.record_compute(DummyComputeFromCommand { value: 0 });
+
+        // Run initial compute
+        ctx.run_all_dirty();
+        ctx.sync_computes();
+
+        // Verify compute ran correctly
+        assert_eq!(ctx.cached::<DummyComputeA>().unwrap().doubled, 10);
+
+        // Register command expecting state.base_value=5, compute.doubled=10
+        ctx.record_command(SnapshotReadingCommand {
+            expected_state_value: 5,
+            expected_compute_value: 10,
+            shared_success: Arc::clone(&success),
+        });
+
+        // Enqueue and flush command
+        ctx.enqueue_command::<SnapshotReadingCommand>();
+        ctx.flush_commands();
+        ctx.sync_computes();
+
+        // Verify command ran successfully and assertions passed
+        assert_eq!(success.load(Ordering::SeqCst), 1);
+
+        // Verify command updated the compute via updater
+        assert_eq!(ctx.cached::<DummyComputeFromCommand>().unwrap().value, 500);
+    }
+
+    /// Tests the recommended end-of-frame pattern.
+    #[test]
+    fn test_end_of_frame_pattern() {
+        let mut ctx = StateCtx::new();
+        ctx.add_state(DummyState { base_value: 1 });
+        ctx.record_compute(DummyComputeFromCommand { value: 0 });
+        ctx.record_command(SetComputeValueCommand { value: 42 });
+
+        // Simulate frame loop
+        // 1. Sync any async results
+        ctx.sync_computes();
+
+        // 2. UI interaction enqueues command
+        ctx.enqueue_command::<SetComputeValueCommand>();
+
+        // 3. End of frame: flush commands
+        ctx.flush_commands();
+
+        // 4. Sync command results
+        ctx.sync_computes();
+
+        // 5. Verify state was updated
+        assert_eq!(ctx.cached::<DummyComputeFromCommand>().unwrap().value, 42);
     }
 }

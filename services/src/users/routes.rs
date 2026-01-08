@@ -1272,6 +1272,15 @@ mod tests {
             Ok(vec![])
         }
 
+        async fn group_items_reorder(
+            &self,
+            _group_id: uuid::Uuid,
+            _user_id: uuid::Uuid,
+            _items: &[(uuid::Uuid, i32)],
+        ) -> Result<(), crate::database::SqlStorageError> {
+            Ok(())
+        }
+
         async fn tags_create(
             &self,
             _input: crate::database::TagCreate,

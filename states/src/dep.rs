@@ -118,8 +118,10 @@ mod tests {
 
     #[test]
     fn test_dep_get_state_ref_returns_immutable_reference() {
-        let mut state = Box::new(TestDepState { value: 42 });
-        let state_ptr = NonNull::new(state.as_mut() as *mut dyn State).unwrap();
+        // Use Box::leak to get a &'static mut reference that stays valid for the test.
+        // This is safe in tests as the memory will be reclaimed when the process exits.
+        let state: &'static mut TestDepState = Box::leak(Box::new(TestDepState { value: 42 }));
+        let state_ptr = NonNull::new(state as *mut dyn State).unwrap();
 
         let dep = Dep::new(
             [(TypeId::of::<TestDepState>(), state_ptr)].into_iter(),
@@ -128,9 +130,6 @@ mod tests {
 
         let state_ref: &TestDepState = dep.get_state_ref();
         assert_eq!(state_ref.value, 42);
-
-        // Keep the state alive until after we're done with the dep
-        std::mem::forget(state);
     }
 
     /// Test documenting that `Dep::state_mut` is restricted to crate-internal use.
@@ -152,8 +151,11 @@ mod tests {
         //
         // External crates cannot call `dep.state_mut::<T>()` because it is pub(crate).
         // This is enforced at compile time by Rust's visibility rules.
-        let mut state = Box::new(TestDepState { value: 10 });
-        let state_ptr = NonNull::new(state.as_mut() as *mut dyn State).unwrap();
+        //
+        // Use Box::leak to get a &'static mut reference that stays valid for the test.
+        // This is safe in tests as the memory will be reclaimed when the process exits.
+        let state: &'static mut TestDepState = Box::leak(Box::new(TestDepState { value: 10 }));
+        let state_ptr = NonNull::new(state as *mut dyn State).unwrap();
 
         let dep = Dep::new(
             [(TypeId::of::<TestDepState>(), state_ptr)].into_iter(),
@@ -168,8 +170,5 @@ mod tests {
         // Verify the mutation worked
         let state_ref: &TestDepState = dep.get_state_ref();
         assert_eq!(state_ref.value, 99);
-
-        // Clean up
-        std::mem::forget(state);
     }
 }

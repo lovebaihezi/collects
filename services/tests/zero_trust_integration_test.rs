@@ -12,7 +12,7 @@ use collects_services::{
         ContentShareCreateForLink, ContentShareCreateForUser, ContentShareRow, ContentStatus,
         ContentsInsert, ContentsListParams, ContentsUpdate, GroupCreate, GroupShareCreateForLink,
         GroupShareCreateForUser, GroupStatus, GroupUpdate, GroupsListParams, ShareLinkCreate,
-        ShareLinkRow, SqlStorage, SqlStorageError, TagCreate, TagRow,
+        ShareLinkRow, SqlStorage, SqlStorageError, TagCreate, TagRow, TagUpdate,
     },
     routes,
     users::storage::MockUserStorage,
@@ -149,6 +149,15 @@ impl SqlStorage for MockSqlStorage {
         _tag_id: uuid::Uuid,
     ) -> Result<bool, SqlStorageError> {
         Ok(false)
+    }
+
+    async fn tags_update(
+        &self,
+        _user_id: uuid::Uuid,
+        _tag_id: uuid::Uuid,
+        _input: TagUpdate,
+    ) -> Result<Option<TagRow>, SqlStorageError> {
+        Ok(None)
     }
 
     async fn content_tags_attach(

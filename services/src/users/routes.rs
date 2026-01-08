@@ -1182,6 +1182,15 @@ mod tests {
             Ok(false)
         }
 
+        async fn tags_update(
+            &self,
+            _user_id: uuid::Uuid,
+            _tag_id: uuid::Uuid,
+            _input: crate::database::TagUpdate,
+        ) -> Result<Option<crate::database::TagRow>, crate::database::SqlStorageError> {
+            Ok(None)
+        }
+
         async fn content_tags_attach(
             &self,
             _content_id: uuid::Uuid,

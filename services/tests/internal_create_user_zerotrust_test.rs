@@ -423,6 +423,7 @@ impl UserStorage for RecordingUserStorage {
         };
 
         let updated_user = StoredUser::with_profile(
+            old_user.id,
             username,
             &old_user.secret,
             new_nickname,

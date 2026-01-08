@@ -437,37 +437,37 @@ This is the most important set to enable multi-media support without expensive s
 
 ---
 
-### 3) Contents (Collect Items)
+### 3) Contents (Collect Items) ✅
 These map to the `contents` table.
 
-**3.1 List contents (grid)**
+**3.1 List contents (grid)** ✅
 - `GET /v1/contents`
   - Query:
-    - `limit`, `cursor` (prefer cursor pagination)
+    - `limit`, `offset` (offset pagination for MVP)
     - `status=active|archived|trashed`
-    - `visibility=private|public|restricted`
-    - `type_prefix=image/` OR `content_type=...`
-    - `q=` search title/description
-    - `tag=` (later)
+    - ~~`visibility=private|public|restricted`~~ (TODO)
+    - ~~`type_prefix=image/` OR `content_type=...`~~ (TODO)
+    - ~~`q=` search title/description~~ (TODO)
+    - ~~`tag=` (later)~~ (TODO)
   - Response:
     - array of content summaries for grid
-    - next cursor
+    - total count
 
-**3.2 Get content detail**
+**3.2 Get content detail** ✅
 - `GET /v1/contents/:id`
-  - Response includes metadata and optionally the best “viewer info”:
+  - Response includes metadata and optionally the best "viewer info":
     - if image: recommend inline view URL endpoint below
 
-**3.3 Update metadata**
+**3.3 Update metadata** ✅
 - `PATCH /v1/contents/:id`
   - `title`, `description`, `visibility`
 
-**3.4 Lifecycle**
-- `POST /v1/contents/:id/trash`
-- `POST /v1/contents/:id/restore`
-- `POST /v1/contents/:id/archive`
-- `POST /v1/contents/:id/unarchive`
-- `DELETE /v1/contents/:id` (optional hard delete + delete storage object)
+**3.4 Lifecycle** ✅
+- `POST /v1/contents/:id/trash` ✅
+- `POST /v1/contents/:id/restore` ✅
+- `POST /v1/contents/:id/archive` ✅
+- `POST /v1/contents/:id/unarchive` ✅
+- `DELETE /v1/contents/:id` (optional hard delete + delete storage object) — TODO
 
 ---
 
@@ -617,7 +617,7 @@ Pragmatic approach:
 Implement only:
 - [x] Auth session (`/v1/me`, OTP verify) — `RequireAuth` extractor implemented
 - [ ] Upload init + complete (stubs exist, need presigned URL generation)
-- [ ] Contents list + get + update + trash/restore
+- [x] Contents list + get + update + trash/restore — implemented with `StoredUser.id` support
 - [ ] View-url endpoint (signed GET) (stub exists, need presigned URL generation)
 
 Then layer:

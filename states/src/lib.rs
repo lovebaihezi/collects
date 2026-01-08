@@ -686,7 +686,7 @@ mod state_runtime_test {
             let state: &DummyState = snap.state();
             assert_eq!(state.base_value, self.expected_state_value);
 
-            // Read compute from snapshot  
+            // Read compute from snapshot
             let compute: &DummyComputeA = snap.compute();
             assert_eq!(compute.doubled, self.expected_compute_value);
 
@@ -694,7 +694,9 @@ mod state_runtime_test {
             self.shared_success.fetch_add(1, Ordering::SeqCst);
 
             // Update another compute via updater
-            updater.set(DummyComputeFromCommand { value: state.base_value * 100 });
+            updater.set(DummyComputeFromCommand {
+                value: state.base_value * 100,
+            });
         }
     }
 
@@ -703,20 +705,20 @@ mod state_runtime_test {
         let success = Arc::new(AtomicUsize::new(0));
 
         let mut ctx = StateCtx::new();
-        
+
         // Add state with initial value 5
         ctx.add_state(DummyState { base_value: 5 });
-        
+
         // Add compute (will compute doubled = 10)
         ctx.record_compute(DummyComputeA { doubled: 0 });
-        
+
         // Add target compute for command to update
         ctx.record_compute(DummyComputeFromCommand { value: 0 });
-        
+
         // Run initial compute
         ctx.run_all_dirty();
         ctx.sync_computes();
-        
+
         // Verify compute ran correctly
         assert_eq!(ctx.cached::<DummyComputeA>().unwrap().doubled, 10);
 

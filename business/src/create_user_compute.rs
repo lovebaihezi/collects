@@ -34,8 +34,8 @@ use crate::cf_token_compute::CFTokenCompute;
 use crate::internal::{CreateUserRequest, CreateUserResponse};
 
 use collects_states::{
-    Command, CommandSnapshot, Compute, ComputeDeps, Dep, SnapshotClone, State, Updater, assign_impl,
-    state_assign_impl,
+    Command, CommandSnapshot, Compute, ComputeDeps, Dep, SnapshotClone, State, Updater,
+    assign_impl, state_assign_impl,
 };
 use log::{error, info};
 

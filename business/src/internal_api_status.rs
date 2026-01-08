@@ -9,7 +9,9 @@ use collects_states::state_assign_impl;
 
 use crate::BusinessConfig;
 use chrono::{DateTime, Utc};
-use collects_states::{Compute, ComputeDeps, Dep, SnapshotClone, State, Time, Updater, assign_impl};
+use collects_states::{
+    Compute, ComputeDeps, Dep, SnapshotClone, State, Time, Updater, assign_impl,
+};
 use log::{debug, info, warn};
 use ustr::Ustr;
 

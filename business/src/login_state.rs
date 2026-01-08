@@ -17,8 +17,8 @@ use std::any::Any;
 
 use crate::BusinessConfig;
 use collects_states::{
-    Command, CommandSnapshot, Compute, ComputeDeps, Dep, SnapshotClone, State, Updater, assign_impl,
-    state_assign_impl,
+    Command, CommandSnapshot, Compute, ComputeDeps, Dep, SnapshotClone, State, Updater,
+    assign_impl, state_assign_impl,
 };
 use log::{error, info};
 use serde::{Deserialize, Serialize};

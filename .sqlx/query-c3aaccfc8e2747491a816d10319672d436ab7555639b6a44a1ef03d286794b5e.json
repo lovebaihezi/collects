@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT COUNT(*) as \"count!\"\n            FROM otp_attempts\n            WHERE username = $1\n              AND success = false\n              AND attempted_at > now() - ($2 || ' seconds')::INTERVAL\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "count!",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "c3aaccfc8e2747491a816d10319672d436ab7555639b6a44a1ef03d286794b5e"
+}

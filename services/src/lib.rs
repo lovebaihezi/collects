@@ -91,6 +91,31 @@ where
         .route(
             "/tags/{id}",
             patch(v1_tags_update::<S, U>).delete(v1_tags_delete::<S, U>),
+        )
+        // Groups endpoints
+        .route(
+            "/groups",
+            get(v1_groups_list::<S, U>).post(v1_groups_create::<S, U>),
+        )
+        .route(
+            "/groups/{id}",
+            get(v1_groups_get::<S, U>).patch(v1_groups_update::<S, U>),
+        )
+        .route("/groups/{id}/trash", post(v1_groups_trash::<S, U>))
+        .route("/groups/{id}/restore", post(v1_groups_restore::<S, U>))
+        .route("/groups/{id}/archive", post(v1_groups_archive::<S, U>))
+        .route("/groups/{id}/unarchive", post(v1_groups_unarchive::<S, U>))
+        .route(
+            "/groups/{id}/contents",
+            get(v1_groups_contents_list::<S, U>).post(v1_groups_contents_add::<S, U>),
+        )
+        .route(
+            "/groups/{id}/contents/{content_id}",
+            delete(v1_groups_contents_remove::<S, U>),
+        )
+        .route(
+            "/groups/{id}/contents/reorder",
+            patch(v1_groups_contents_reorder::<S, U>),
         );
 
     Router::new()
@@ -417,6 +442,139 @@ struct V1TagUpdateRequest {
 #[derive(Debug, Deserialize)]
 struct V1ContentTagsAttachRequest {
     tag_id: String,
+}
+
+// =============================================================================
+// Groups API Types
+// =============================================================================
+
+/// Query parameters for listing groups.
+#[derive(Debug, Deserialize)]
+struct V1GroupsListQuery {
+    /// Maximum number of results to return (default: 50, max: 100)
+    #[serde(default)]
+    limit: Option<i64>,
+    /// Offset for pagination
+    #[serde(default)]
+    offset: Option<i64>,
+    /// Filter by status: active, archived, trashed
+    #[serde(default)]
+    status: Option<String>,
+}
+
+/// Response item for a group.
+#[derive(Debug, Serialize)]
+struct V1GroupItem {
+    id: String,
+    name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    description: Option<String>,
+    visibility: String,
+    status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trashed_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    archived_at: Option<String>,
+    created_at: String,
+    updated_at: String,
+}
+
+impl From<database::ContentGroupRow> for V1GroupItem {
+    fn from(row: database::ContentGroupRow) -> Self {
+        Self {
+            id: row.id.to_string(),
+            name: row.name,
+            description: row.description,
+            visibility: row.visibility,
+            status: row.status,
+            trashed_at: row.trashed_at.map(|t| t.to_rfc3339()),
+            archived_at: row.archived_at.map(|t| t.to_rfc3339()),
+            created_at: row.created_at.to_rfc3339(),
+            updated_at: row.updated_at.to_rfc3339(),
+        }
+    }
+}
+
+/// Response for listing groups.
+#[derive(Debug, Serialize)]
+struct V1GroupsListResponse {
+    items: Vec<V1GroupItem>,
+    total: usize,
+}
+
+/// Request body for creating a group.
+#[derive(Debug, Deserialize)]
+struct V1GroupCreateRequest {
+    name: String,
+    #[serde(default)]
+    description: Option<String>,
+    #[serde(default = "default_visibility")]
+    visibility: String,
+}
+
+fn default_visibility() -> String {
+    "private".to_string()
+}
+
+/// Request body for updating a group.
+#[derive(Debug, Deserialize)]
+struct V1GroupUpdateRequest {
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    description: Option<Option<String>>,
+    #[serde(default)]
+    visibility: Option<String>,
+}
+
+/// Response item for a group content item.
+#[derive(Debug, Serialize)]
+struct V1GroupContentItem {
+    id: String,
+    group_id: String,
+    content_id: String,
+    sort_order: i32,
+    added_at: String,
+}
+
+impl From<database::ContentGroupItemRow> for V1GroupContentItem {
+    fn from(row: database::ContentGroupItemRow) -> Self {
+        Self {
+            id: row.id.to_string(),
+            group_id: row.group_id.to_string(),
+            content_id: row.content_id.to_string(),
+            sort_order: row.sort_order,
+            added_at: row.added_at.to_rfc3339(),
+        }
+    }
+}
+
+/// Response for listing group contents.
+#[derive(Debug, Serialize)]
+struct V1GroupContentsListResponse {
+    items: Vec<V1GroupContentItem>,
+    total: usize,
+}
+
+/// Request body for adding content to a group.
+#[derive(Debug, Deserialize)]
+struct V1GroupAddContentRequest {
+    content_id: String,
+    #[serde(default)]
+    sort_order: Option<i32>,
+}
+
+/// Request body for reordering group contents.
+#[derive(Debug, Deserialize)]
+struct V1GroupReorderRequest {
+    /// List of (content_id, sort_order) pairs
+    items: Vec<V1GroupReorderItem>,
+}
+
+#[derive(Debug, Deserialize)]
+struct V1GroupReorderItem {
+    content_id: String,
+    sort_order: i32,
 }
 
 /// Generic error response.
@@ -1412,6 +1570,988 @@ where
     }
 }
 
+// =============================================================================
+// Groups API Handlers
+// =============================================================================
+
+/// List groups for the authenticated user.
+///
+/// GET /v1/groups?limit=50&offset=0&status=active
+async fn v1_groups_list<S, U>(
+    State(state): State<AppState<S, U>>,
+    auth: RequireAuth,
+    Query(query): Query<V1GroupsListQuery>,
+) -> impl IntoResponse
+where
+    S: SqlStorage,
+    U: UserStorage,
+{
+    // Get user ID from username
+    let user = match state.user_storage.get_user(auth.username()).await {
+        Ok(Some(user)) => user,
+        Ok(None) => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(V1ErrorResponse::not_found("User not found")),
+            )
+                .into_response();
+        }
+        Err(e) => {
+            tracing::error!("Failed to get user: {}", e);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(V1ErrorResponse::internal_error("Failed to get user")),
+            )
+                .into_response();
+        }
+    };
+
+    // Parse status filter
+    let status = query.status.as_deref().and_then(|s| match s {
+        "active" => Some(database::GroupStatus::Active),
+        "archived" => Some(database::GroupStatus::Archived),
+        "trashed" => Some(database::GroupStatus::Trashed),
+        _ => None,
+    });
+
+    let limit = query.limit.unwrap_or(50).clamp(1, 100);
+    let offset = query.offset.unwrap_or(0).max(0);
+
+    let params = database::GroupsListParams {
+        limit,
+        offset,
+        status,
+    };
+
+    match state
+        .sql_storage
+        .groups_list_for_user(user.id, params)
+        .await
+    {
+        Ok(rows) => {
+            let items: Vec<V1GroupItem> = rows.into_iter().map(V1GroupItem::from).collect();
+            let total = items.len();
+            (StatusCode::OK, Json(V1GroupsListResponse { items, total })).into_response()
+        }
+        Err(e) => {
+            tracing::error!("Failed to list groups: {:?}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(V1ErrorResponse::internal_error("Failed to list groups")),
+            )
+                .into_response()
+        }
+    }
+}
+
+/// Create a new group.
+///
+/// POST /v1/groups
+async fn v1_groups_create<S, U>(
+    State(state): State<AppState<S, U>>,
+    auth: RequireAuth,
+    Json(request): Json<V1GroupCreateRequest>,
+) -> impl IntoResponse
+where
+    S: SqlStorage,
+    U: UserStorage,
+{
+    // Get user ID from username
+    let user = match state.user_storage.get_user(auth.username()).await {
+        Ok(Some(user)) => user,
+        Ok(None) => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(V1ErrorResponse::not_found("User not found")),
+            )
+                .into_response();
+        }
+        Err(e) => {
+            tracing::error!("Failed to get user: {}", e);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(V1ErrorResponse::internal_error("Failed to get user")),
+            )
+                .into_response();
+        }
+    };
+
+    // Validate group name
+    let name = request.name.trim();
+    if name.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(V1ErrorResponse::bad_request("Group name cannot be empty")),
+        )
+            .into_response();
+    }
+
+    // Parse visibility
+    let visibility = match request.visibility.as_str() {
+        "private" => database::Visibility::Private,
+        "public" => database::Visibility::Public,
+        _ => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(V1ErrorResponse::bad_request(
+                    "Invalid visibility. Must be 'private' or 'public'",
+                )),
+            )
+                .into_response();
+        }
+    };
+
+    let input = database::GroupCreate {
+        user_id: user.id,
+        name: name.to_string(),
+        description: request.description,
+        visibility,
+    };
+
+    match state.sql_storage.groups_create(input).await {
+        Ok(row) => (StatusCode::CREATED, Json(V1GroupItem::from(row))).into_response(),
+        Err(e) => {
+            tracing::error!("Failed to create group: {:?}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(V1ErrorResponse::internal_error("Failed to create group")),
+            )
+                .into_response()
+        }
+    }
+}
+
+/// Get a specific group by ID.
+///
+/// GET /v1/groups/:id
+async fn v1_groups_get<S, U>(
+    State(state): State<AppState<S, U>>,
+    auth: RequireAuth,
+    Path(id): Path<String>,
+) -> impl IntoResponse
+where
+    S: SqlStorage,
+    U: UserStorage,
+{
+    // Get user ID from username
+    let user = match state.user_storage.get_user(auth.username()).await {
+        Ok(Some(user)) => user,
+        Ok(None) => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(V1ErrorResponse::not_found("User not found")),
+            )
+                .into_response();
+        }
+        Err(e) => {
+            tracing::error!("Failed to get user: {}", e);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(V1ErrorResponse::internal_error("Failed to get user")),
+            )
+                .into_response();
+        }
+    };
+
+    // Parse group ID
+    let group_id = match uuid::Uuid::parse_str(&id) {
+        Ok(id) => id,
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(V1ErrorResponse::bad_request("Invalid group ID format")),
+            )
+                .into_response();
+        }
+    };
+
+    match state.sql_storage.groups_get(group_id).await {
+        Ok(Some(row)) => {
+            // Verify ownership
+            if row.user_id != user.id {
+                return (
+                    StatusCode::NOT_FOUND,
+                    Json(V1ErrorResponse::not_found("Group not found")),
+                )
+                    .into_response();
+            }
+            (StatusCode::OK, Json(V1GroupItem::from(row))).into_response()
+        }
+        Ok(None) => (
+            StatusCode::NOT_FOUND,
+            Json(V1ErrorResponse::not_found("Group not found")),
+        )
+            .into_response(),
+        Err(e) => {
+            tracing::error!("Failed to get group: {:?}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(V1ErrorResponse::internal_error("Failed to get group")),
+            )
+                .into_response()
+        }
+    }
+}
+
+/// Update a group.
+///
+/// PATCH /v1/groups/:id
+async fn v1_groups_update<S, U>(
+    State(state): State<AppState<S, U>>,
+    auth: RequireAuth,
+    Path(id): Path<String>,
+    Json(request): Json<V1GroupUpdateRequest>,
+) -> impl IntoResponse
+where
+    S: SqlStorage,
+    U: UserStorage,
+{
+    // Get user ID from username
+    let user = match state.user_storage.get_user(auth.username()).await {
+        Ok(Some(user)) => user,
+        Ok(None) => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(V1ErrorResponse::not_found("User not found")),
+            )
+                .into_response();
+        }
+        Err(e) => {
+            tracing::error!("Failed to get user: {}", e);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(V1ErrorResponse::internal_error("Failed to get user")),
+            )
+                .into_response();
+        }
+    };
+
+    // Parse group ID
+    let group_id = match uuid::Uuid::parse_str(&id) {
+        Ok(id) => id,
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(V1ErrorResponse::bad_request("Invalid group ID format")),
+            )
+                .into_response();
+        }
+    };
+
+    // Validate name if provided
+    if let Some(ref name) = request.name
+        && name.trim().is_empty()
+    {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(V1ErrorResponse::bad_request("Group name cannot be empty")),
+        )
+            .into_response();
+    }
+
+    // Parse visibility if provided
+    let visibility = match &request.visibility {
+        Some(v) => match v.as_str() {
+            "private" => Some(database::Visibility::Private),
+            "public" => Some(database::Visibility::Public),
+            _ => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(V1ErrorResponse::bad_request(
+                        "Invalid visibility. Must be 'private' or 'public'",
+                    )),
+                )
+                    .into_response();
+            }
+        },
+        None => None,
+    };
+
+    let changes = database::GroupUpdate {
+        name: request.name.map(|n| n.trim().to_string()),
+        description: request.description,
+        visibility,
+    };
+
+    match state
+        .sql_storage
+        .groups_update_metadata(group_id, user.id, changes)
+        .await
+    {
+        Ok(Some(row)) => (StatusCode::OK, Json(V1GroupItem::from(row))).into_response(),
+        Ok(None) => (
+            StatusCode::NOT_FOUND,
+            Json(V1ErrorResponse::not_found("Group not found")),
+        )
+            .into_response(),
+        Err(e) => {
+            tracing::error!("Failed to update group: {:?}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(V1ErrorResponse::internal_error("Failed to update group")),
+            )
+                .into_response()
+        }
+    }
+}
+
+/// Helper to set group status.
+async fn v1_groups_set_status<S, U>(
+    state: &AppState<S, U>,
+    user_id: uuid::Uuid,
+    group_id: uuid::Uuid,
+    new_status: database::GroupStatus,
+) -> axum::response::Response
+where
+    S: SqlStorage,
+    U: UserStorage,
+{
+    let now = chrono::Utc::now();
+    match state
+        .sql_storage
+        .groups_set_status(group_id, user_id, new_status, now)
+        .await
+    {
+        Ok(Some(row)) => (StatusCode::OK, Json(V1GroupItem::from(row))).into_response(),
+        Ok(None) => (
+            StatusCode::NOT_FOUND,
+            Json(V1ErrorResponse::not_found("Group not found")),
+        )
+            .into_response(),
+        Err(database::SqlStorageError::Unauthorized) => (
+            StatusCode::FORBIDDEN,
+            Json(V1ErrorResponse {
+                error: "forbidden".to_string(),
+                message: "You do not have permission to modify this group".to_string(),
+            }),
+        )
+            .into_response(),
+        Err(e) => {
+            tracing::error!("Failed to set group status: {:?}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(V1ErrorResponse::internal_error(
+                    "Failed to update group status",
+                )),
+            )
+                .into_response()
+        }
+    }
+}
+
+/// Trash a group.
+///
+/// POST /v1/groups/:id/trash
+async fn v1_groups_trash<S, U>(
+    State(state): State<AppState<S, U>>,
+    auth: RequireAuth,
+    Path(id): Path<String>,
+) -> impl IntoResponse
+where
+    S: SqlStorage,
+    U: UserStorage,
+{
+    // Get user ID from username
+    let user = match state.user_storage.get_user(auth.username()).await {
+        Ok(Some(user)) => user,
+        Ok(None) => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(V1ErrorResponse::not_found("User not found")),
+            )
+                .into_response();
+        }
+        Err(e) => {
+            tracing::error!("Failed to get user: {}", e);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(V1ErrorResponse::internal_error("Failed to get user")),
+            )
+                .into_response();
+        }
+    };
+
+    // Parse group ID
+    let group_id = match uuid::Uuid::parse_str(&id) {
+        Ok(id) => id,
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(V1ErrorResponse::bad_request("Invalid group ID format")),
+            )
+                .into_response();
+        }
+    };
+
+    v1_groups_set_status(&state, user.id, group_id, database::GroupStatus::Trashed).await
+}
+
+/// Restore a group from trash.
+///
+/// POST /v1/groups/:id/restore
+async fn v1_groups_restore<S, U>(
+    State(state): State<AppState<S, U>>,
+    auth: RequireAuth,
+    Path(id): Path<String>,
+) -> impl IntoResponse
+where
+    S: SqlStorage,
+    U: UserStorage,
+{
+    // Get user ID from username
+    let user = match state.user_storage.get_user(auth.username()).await {
+        Ok(Some(user)) => user,
+        Ok(None) => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(V1ErrorResponse::not_found("User not found")),
+            )
+                .into_response();
+        }
+        Err(e) => {
+            tracing::error!("Failed to get user: {}", e);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(V1ErrorResponse::internal_error("Failed to get user")),
+            )
+                .into_response();
+        }
+    };
+
+    // Parse group ID
+    let group_id = match uuid::Uuid::parse_str(&id) {
+        Ok(id) => id,
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(V1ErrorResponse::bad_request("Invalid group ID format")),
+            )
+                .into_response();
+        }
+    };
+
+    v1_groups_set_status(&state, user.id, group_id, database::GroupStatus::Active).await
+}
+
+/// Archive a group.
+///
+/// POST /v1/groups/:id/archive
+async fn v1_groups_archive<S, U>(
+    State(state): State<AppState<S, U>>,
+    auth: RequireAuth,
+    Path(id): Path<String>,
+) -> impl IntoResponse
+where
+    S: SqlStorage,
+    U: UserStorage,
+{
+    // Get user ID from username
+    let user = match state.user_storage.get_user(auth.username()).await {
+        Ok(Some(user)) => user,
+        Ok(None) => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(V1ErrorResponse::not_found("User not found")),
+            )
+                .into_response();
+        }
+        Err(e) => {
+            tracing::error!("Failed to get user: {}", e);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(V1ErrorResponse::internal_error("Failed to get user")),
+            )
+                .into_response();
+        }
+    };
+
+    // Parse group ID
+    let group_id = match uuid::Uuid::parse_str(&id) {
+        Ok(id) => id,
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(V1ErrorResponse::bad_request("Invalid group ID format")),
+            )
+                .into_response();
+        }
+    };
+
+    v1_groups_set_status(&state, user.id, group_id, database::GroupStatus::Archived).await
+}
+
+/// Unarchive a group.
+///
+/// POST /v1/groups/:id/unarchive
+async fn v1_groups_unarchive<S, U>(
+    State(state): State<AppState<S, U>>,
+    auth: RequireAuth,
+    Path(id): Path<String>,
+) -> impl IntoResponse
+where
+    S: SqlStorage,
+    U: UserStorage,
+{
+    // Get user ID from username
+    let user = match state.user_storage.get_user(auth.username()).await {
+        Ok(Some(user)) => user,
+        Ok(None) => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(V1ErrorResponse::not_found("User not found")),
+            )
+                .into_response();
+        }
+        Err(e) => {
+            tracing::error!("Failed to get user: {}", e);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(V1ErrorResponse::internal_error("Failed to get user")),
+            )
+                .into_response();
+        }
+    };
+
+    // Parse group ID
+    let group_id = match uuid::Uuid::parse_str(&id) {
+        Ok(id) => id,
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(V1ErrorResponse::bad_request("Invalid group ID format")),
+            )
+                .into_response();
+        }
+    };
+
+    v1_groups_set_status(&state, user.id, group_id, database::GroupStatus::Active).await
+}
+
+/// List contents in a group.
+///
+/// GET /v1/groups/:id/contents
+async fn v1_groups_contents_list<S, U>(
+    State(state): State<AppState<S, U>>,
+    auth: RequireAuth,
+    Path(id): Path<String>,
+) -> impl IntoResponse
+where
+    S: SqlStorage,
+    U: UserStorage,
+{
+    // Get user ID from username
+    let user = match state.user_storage.get_user(auth.username()).await {
+        Ok(Some(user)) => user,
+        Ok(None) => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(V1ErrorResponse::not_found("User not found")),
+            )
+                .into_response();
+        }
+        Err(e) => {
+            tracing::error!("Failed to get user: {}", e);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(V1ErrorResponse::internal_error("Failed to get user")),
+            )
+                .into_response();
+        }
+    };
+
+    // Parse group ID
+    let group_id = match uuid::Uuid::parse_str(&id) {
+        Ok(id) => id,
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(V1ErrorResponse::bad_request("Invalid group ID format")),
+            )
+                .into_response();
+        }
+    };
+
+    // Verify user owns the group
+    match state.sql_storage.groups_get(group_id).await {
+        Ok(Some(row)) => {
+            if row.user_id != user.id {
+                return (
+                    StatusCode::NOT_FOUND,
+                    Json(V1ErrorResponse::not_found("Group not found")),
+                )
+                    .into_response();
+            }
+        }
+        Ok(None) => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(V1ErrorResponse::not_found("Group not found")),
+            )
+                .into_response();
+        }
+        Err(e) => {
+            tracing::error!("Failed to get group: {:?}", e);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(V1ErrorResponse::internal_error("Failed to get group")),
+            )
+                .into_response();
+        }
+    }
+
+    match state.sql_storage.group_items_list(group_id).await {
+        Ok(rows) => {
+            let items: Vec<V1GroupContentItem> =
+                rows.into_iter().map(V1GroupContentItem::from).collect();
+            let total = items.len();
+            (
+                StatusCode::OK,
+                Json(V1GroupContentsListResponse { items, total }),
+            )
+                .into_response()
+        }
+        Err(e) => {
+            tracing::error!("Failed to list group contents: {:?}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(V1ErrorResponse::internal_error(
+                    "Failed to list group contents",
+                )),
+            )
+                .into_response()
+        }
+    }
+}
+
+/// Add content to a group.
+///
+/// POST /v1/groups/:id/contents
+async fn v1_groups_contents_add<S, U>(
+    State(state): State<AppState<S, U>>,
+    auth: RequireAuth,
+    Path(id): Path<String>,
+    Json(request): Json<V1GroupAddContentRequest>,
+) -> impl IntoResponse
+where
+    S: SqlStorage,
+    U: UserStorage,
+{
+    // Get user ID from username
+    let user = match state.user_storage.get_user(auth.username()).await {
+        Ok(Some(user)) => user,
+        Ok(None) => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(V1ErrorResponse::not_found("User not found")),
+            )
+                .into_response();
+        }
+        Err(e) => {
+            tracing::error!("Failed to get user: {}", e);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(V1ErrorResponse::internal_error("Failed to get user")),
+            )
+                .into_response();
+        }
+    };
+
+    // Parse group ID
+    let group_id = match uuid::Uuid::parse_str(&id) {
+        Ok(id) => id,
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(V1ErrorResponse::bad_request("Invalid group ID format")),
+            )
+                .into_response();
+        }
+    };
+
+    // Parse content ID
+    let content_id = match uuid::Uuid::parse_str(&request.content_id) {
+        Ok(id) => id,
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(V1ErrorResponse::bad_request("Invalid content ID format")),
+            )
+                .into_response();
+        }
+    };
+
+    // Verify user owns the group
+    match state.sql_storage.groups_get(group_id).await {
+        Ok(Some(row)) => {
+            if row.user_id != user.id {
+                return (
+                    StatusCode::NOT_FOUND,
+                    Json(V1ErrorResponse::not_found("Group not found")),
+                )
+                    .into_response();
+            }
+        }
+        Ok(None) => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(V1ErrorResponse::not_found("Group not found")),
+            )
+                .into_response();
+        }
+        Err(e) => {
+            tracing::error!("Failed to get group: {:?}", e);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(V1ErrorResponse::internal_error("Failed to get group")),
+            )
+                .into_response();
+        }
+    }
+
+    // Verify user owns the content
+    match state.sql_storage.contents_get(content_id).await {
+        Ok(Some(row)) => {
+            if row.user_id != user.id {
+                return (
+                    StatusCode::NOT_FOUND,
+                    Json(V1ErrorResponse::not_found("Content not found")),
+                )
+                    .into_response();
+            }
+        }
+        Ok(None) => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(V1ErrorResponse::not_found("Content not found")),
+            )
+                .into_response();
+        }
+        Err(e) => {
+            tracing::error!("Failed to get content: {:?}", e);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(V1ErrorResponse::internal_error("Failed to get content")),
+            )
+                .into_response();
+        }
+    }
+
+    let sort_order = request.sort_order.unwrap_or(0);
+
+    match state
+        .sql_storage
+        .group_items_add(group_id, content_id, sort_order)
+        .await
+    {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(e) => {
+            tracing::error!("Failed to add content to group: {:?}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(V1ErrorResponse::internal_error(
+                    "Failed to add content to group",
+                )),
+            )
+                .into_response()
+        }
+    }
+}
+
+/// Remove content from a group.
+///
+/// DELETE /v1/groups/:id/contents/:content_id
+async fn v1_groups_contents_remove<S, U>(
+    State(state): State<AppState<S, U>>,
+    auth: RequireAuth,
+    Path((id, content_id_str)): Path<(String, String)>,
+) -> impl IntoResponse
+where
+    S: SqlStorage,
+    U: UserStorage,
+{
+    // Get user ID from username
+    let user = match state.user_storage.get_user(auth.username()).await {
+        Ok(Some(user)) => user,
+        Ok(None) => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(V1ErrorResponse::not_found("User not found")),
+            )
+                .into_response();
+        }
+        Err(e) => {
+            tracing::error!("Failed to get user: {}", e);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(V1ErrorResponse::internal_error("Failed to get user")),
+            )
+                .into_response();
+        }
+    };
+
+    // Parse group ID
+    let group_id = match uuid::Uuid::parse_str(&id) {
+        Ok(id) => id,
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(V1ErrorResponse::bad_request("Invalid group ID format")),
+            )
+                .into_response();
+        }
+    };
+
+    // Parse content ID
+    let content_id = match uuid::Uuid::parse_str(&content_id_str) {
+        Ok(id) => id,
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(V1ErrorResponse::bad_request("Invalid content ID format")),
+            )
+                .into_response();
+        }
+    };
+
+    // Verify user owns the group
+    match state.sql_storage.groups_get(group_id).await {
+        Ok(Some(row)) => {
+            if row.user_id != user.id {
+                return (
+                    StatusCode::NOT_FOUND,
+                    Json(V1ErrorResponse::not_found("Group not found")),
+                )
+                    .into_response();
+            }
+        }
+        Ok(None) => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(V1ErrorResponse::not_found("Group not found")),
+            )
+                .into_response();
+        }
+        Err(e) => {
+            tracing::error!("Failed to get group: {:?}", e);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(V1ErrorResponse::internal_error("Failed to get group")),
+            )
+                .into_response();
+        }
+    }
+
+    match state
+        .sql_storage
+        .group_items_remove(group_id, content_id)
+        .await
+    {
+        Ok(true) => StatusCode::NO_CONTENT.into_response(),
+        Ok(false) => (
+            StatusCode::NOT_FOUND,
+            Json(V1ErrorResponse::not_found("Content not in group")),
+        )
+            .into_response(),
+        Err(e) => {
+            tracing::error!("Failed to remove content from group: {:?}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(V1ErrorResponse::internal_error(
+                    "Failed to remove content from group",
+                )),
+            )
+                .into_response()
+        }
+    }
+}
+
+/// Reorder contents in a group.
+///
+/// PATCH /v1/groups/:id/contents/reorder
+async fn v1_groups_contents_reorder<S, U>(
+    State(state): State<AppState<S, U>>,
+    auth: RequireAuth,
+    Path(id): Path<String>,
+    Json(request): Json<V1GroupReorderRequest>,
+) -> impl IntoResponse
+where
+    S: SqlStorage,
+    U: UserStorage,
+{
+    // Get user ID from username
+    let user = match state.user_storage.get_user(auth.username()).await {
+        Ok(Some(user)) => user,
+        Ok(None) => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(V1ErrorResponse::not_found("User not found")),
+            )
+                .into_response();
+        }
+        Err(e) => {
+            tracing::error!("Failed to get user: {}", e);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(V1ErrorResponse::internal_error("Failed to get user")),
+            )
+                .into_response();
+        }
+    };
+
+    // Parse group ID
+    let group_id = match uuid::Uuid::parse_str(&id) {
+        Ok(id) => id,
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(V1ErrorResponse::bad_request("Invalid group ID format")),
+            )
+                .into_response();
+        }
+    };
+
+    // Parse and collect content IDs with sort orders
+    let mut items: Vec<(uuid::Uuid, i32)> = Vec::with_capacity(request.items.len());
+    for item in &request.items {
+        match uuid::Uuid::parse_str(&item.content_id) {
+            Ok(content_id) => items.push((content_id, item.sort_order)),
+            Err(_) => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(V1ErrorResponse::bad_request(format!(
+                        "Invalid content ID format: {}",
+                        item.content_id
+                    ))),
+                )
+                    .into_response();
+            }
+        }
+    }
+
+    match state
+        .sql_storage
+        .group_items_reorder(group_id, user.id, &items)
+        .await
+    {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(database::SqlStorageError::Unauthorized) => (
+            StatusCode::NOT_FOUND,
+            Json(V1ErrorResponse::not_found("Group not found")),
+        )
+            .into_response(),
+        Err(e) => {
+            tracing::error!("Failed to reorder group contents: {:?}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(V1ErrorResponse::internal_error(
+                    "Failed to reorder group contents",
+                )),
+            )
+                .into_response()
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1547,6 +2687,15 @@ mod tests {
             Ok(vec![])
         }
 
+        async fn group_items_reorder(
+            &self,
+            _group_id: uuid::Uuid,
+            _user_id: uuid::Uuid,
+            _items: &[(uuid::Uuid, i32)],
+        ) -> Result<(), crate::database::SqlStorageError> {
+            Ok(())
+        }
+
         async fn tags_create(
             &self,
             _input: crate::database::TagCreate,
@@ -1671,6 +2820,24 @@ mod tests {
             Err(crate::database::SqlStorageError::Db(
                 "MockSqlStorage.group_shares_create_for_link: unimplemented".to_string(),
             ))
+        }
+
+        async fn otp_record_attempt(
+            &self,
+            _input: crate::database::OtpAttemptRecord,
+        ) -> Result<(), crate::database::SqlStorageError> {
+            // Mock: silently succeed
+            Ok(())
+        }
+
+        async fn otp_is_rate_limited(
+            &self,
+            _username: &str,
+            _ip_address: Option<std::net::IpAddr>,
+            _config: &crate::database::OtpRateLimitConfig,
+        ) -> Result<bool, crate::database::SqlStorageError> {
+            // Mock: never rate limited
+            Ok(false)
         }
     }
 

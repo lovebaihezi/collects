@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                UPDATE content_group_items\n                SET sort_order = $3\n                WHERE group_id = $1 AND content_id = $2\n                ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Int4"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "4fa96098b86e54c3c7ab368119a75e2381833fa60762da45ac97f6d6207716bd"
+}

@@ -73,8 +73,8 @@ Define route categories explicitly:
   - [x] `/v1/me` — returns authenticated user info
   - [x] `/v1/uploads/*` — protected with `RequireAuth`
   - [x] `/v1/contents/*` — protected with `RequireAuth`
-  - [ ] `/v1/groups/*` — not yet implemented
-  - [ ] `/v1/tags/*` — not yet implemented
+  - [x] `/v1/groups/*` — protected with `RequireAuth`
+  - [x] `/v1/tags/*` — protected with `RequireAuth`
   - [ ] `/v1/share-links/*` (owner management) — not yet implemented
 - Internal-admin (MUST be secure by construction):
   - [x] `/internal/*` protected by Cloudflare Zero Trust (when configured)
@@ -500,18 +500,18 @@ We want: access objects stored in R2/GCS **without** routing bytes through servi
 
 ---
 
-### 5) Collections (content_groups)
+### 5) Collections (content_groups) ✅
 These map to `content_groups` and `content_group_items`.
 
-- `GET /v1/groups`
-- `POST /v1/groups`
-- `GET /v1/groups/:id`
-- `PATCH /v1/groups/:id`
-- `POST /v1/groups/:id/trash|restore|archive|unarchive`
-- `GET /v1/groups/:id/contents`
-- `POST /v1/groups/:id/contents` (add items)
-- `DELETE /v1/groups/:id/contents/:content_id`
-- `PATCH /v1/groups/:id/contents/reorder` (update sort_order)
+- [x] `GET /v1/groups`
+- [x] `POST /v1/groups`
+- [x] `GET /v1/groups/:id`
+- [x] `PATCH /v1/groups/:id`
+- [x] `POST /v1/groups/:id/trash|restore|archive|unarchive`
+- [x] `GET /v1/groups/:id/contents`
+- [x] `POST /v1/groups/:id/contents` (add items)
+- [x] `DELETE /v1/groups/:id/contents/:content_id`
+- [x] `PATCH /v1/groups/:id/contents/reorder` (update sort_order)
 
 ---
 

@@ -114,6 +114,15 @@ pub trait SqlStorage: Clone + Send + Sync + 'static {
         group_id: uuid::Uuid,
     ) -> impl Future<Output = Result<Vec<ContentGroupItemRow>, SqlStorageError>> + Send;
 
+    /// Batch update sort_order for items in a group.
+    /// `items` is a slice of (content_id, new_sort_order) pairs.
+    fn group_items_reorder(
+        &self,
+        group_id: uuid::Uuid,
+        user_id: uuid::Uuid,
+        items: &[(uuid::Uuid, i32)],
+    ) -> impl Future<Output = Result<(), SqlStorageError>> + Send;
+
     // -------------------------------------------------------------------------
     // Tags + attach/detach
     // -------------------------------------------------------------------------
@@ -1102,6 +1111,49 @@ impl SqlStorage for PgStorage {
                 added_at: rec.added_at,
             })
             .collect())
+    }
+
+    async fn group_items_reorder(
+        &self,
+        group_id: uuid::Uuid,
+        user_id: uuid::Uuid,
+        items: &[(uuid::Uuid, i32)],
+    ) -> Result<(), SqlStorageError> {
+        // First verify the group belongs to the user
+        let group = sqlx::query!(
+            r#"
+            SELECT id FROM content_groups
+            WHERE id = $1 AND user_id = $2
+            "#,
+            group_id,
+            user_id
+        )
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| SqlStorageError::Db(e.to_string()))?;
+
+        if group.is_none() {
+            return Err(SqlStorageError::Unauthorized);
+        }
+
+        // Update each item's sort_order
+        for (content_id, sort_order) in items {
+            sqlx::query!(
+                r#"
+                UPDATE content_group_items
+                SET sort_order = $3
+                WHERE group_id = $1 AND content_id = $2
+                "#,
+                group_id,
+                content_id,
+                sort_order
+            )
+            .execute(&self.pool)
+            .await
+            .map_err(|e| SqlStorageError::Db(e.to_string()))?;
+        }
+
+        Ok(())
     }
 
     async fn tags_create(&self, input: TagCreate) -> Result<TagRow, SqlStorageError> {

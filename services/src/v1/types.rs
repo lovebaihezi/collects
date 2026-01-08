@@ -189,7 +189,7 @@ pub struct V1ContentTagsAttachRequest {
 // =============================================================================
 
 /// Query parameters for listing groups.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Default)]
 pub struct V1GroupsListQuery {
     /// Maximum number of results to return (default: 50, max: 100)
     #[serde(default)]

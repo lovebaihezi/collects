@@ -1,14 +1,17 @@
 use crate::config::Config;
-use crate::database::SqlStorage;
+use crate::database::{
+    ContentRow, ContentStatus, ContentsListParams, ContentsUpdate, SqlStorage, SqlStorageError,
+    Visibility,
+};
 use crate::users::routes::AppState;
 use crate::users::session_auth::RequireAuth;
 use crate::users::storage::UserStorage;
 use axum::{
     Json, Router,
-    extract::{Extension, Path, Request, State},
+    extract::{Extension, Path, Query, Request, State},
     http::{HeaderName, HeaderValue, StatusCode},
     response::IntoResponse,
-    routing::{any, get, post},
+    routing::{any, get, patch, post},
 };
 use collects_utils::version_info::{RuntimeEnv, format_version_for_runtime_env};
 use opentelemetry::{global, propagation::Extractor};
@@ -56,6 +59,17 @@ where
     let v1_routes = Router::new()
         .route("/me", get(v1_me::<S, U>))
         .route("/uploads/init", post(v1_uploads_init::<S, U>))
+        // Contents endpoints
+        .route("/contents", get(v1_contents_list::<S, U>))
+        .route("/contents/{id}", get(v1_contents_get::<S, U>))
+        .route("/contents/{id}", patch(v1_contents_update::<S, U>))
+        .route("/contents/{id}/trash", post(v1_contents_trash::<S, U>))
+        .route("/contents/{id}/restore", post(v1_contents_restore::<S, U>))
+        .route("/contents/{id}/archive", post(v1_contents_archive::<S, U>))
+        .route(
+            "/contents/{id}/unarchive",
+            post(v1_contents_unarchive::<S, U>),
+        )
         .route(
             "/contents/{id}/view-url",
             post(v1_contents_view_url::<S, U>),
@@ -251,6 +265,501 @@ where
             expires_at: "1970-01-01T00:00:00Z".to_string(),
         }),
     )
+}
+
+// =============================================================================
+// Contents API Types
+// =============================================================================
+
+/// Query parameters for listing contents.
+#[derive(Debug, Deserialize, Default)]
+struct V1ContentsListQuery {
+    /// Maximum number of results to return (default: 50, max: 100)
+    #[serde(default)]
+    limit: Option<i64>,
+    /// Offset for pagination
+    #[serde(default)]
+    offset: Option<i64>,
+    /// Filter by status: active, archived, trashed
+    #[serde(default)]
+    status: Option<String>,
+}
+
+/// A content item in API responses.
+#[derive(Debug, Serialize)]
+struct V1ContentItem {
+    id: String,
+    title: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    description: Option<String>,
+    storage_backend: String,
+    storage_profile: String,
+    storage_key: String,
+    content_type: String,
+    file_size: i64,
+    status: String,
+    visibility: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trashed_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    archived_at: Option<String>,
+    created_at: String,
+    updated_at: String,
+}
+
+impl From<ContentRow> for V1ContentItem {
+    fn from(row: ContentRow) -> Self {
+        Self {
+            id: row.id.to_string(),
+            title: row.title,
+            description: row.description,
+            storage_backend: row.storage_backend,
+            storage_profile: row.storage_profile,
+            storage_key: row.storage_key,
+            content_type: row.content_type,
+            file_size: row.file_size,
+            status: row.status,
+            visibility: row.visibility,
+            trashed_at: row.trashed_at.map(|t| t.to_rfc3339()),
+            archived_at: row.archived_at.map(|t| t.to_rfc3339()),
+            created_at: row.created_at.to_rfc3339(),
+            updated_at: row.updated_at.to_rfc3339(),
+        }
+    }
+}
+
+/// Response for listing contents.
+#[derive(Debug, Serialize)]
+struct V1ContentsListResponse {
+    items: Vec<V1ContentItem>,
+    total: usize,
+}
+
+/// Request body for updating content metadata.
+#[derive(Debug, Deserialize)]
+struct V1ContentsUpdateRequest {
+    #[serde(default)]
+    title: Option<String>,
+    #[serde(default)]
+    description: Option<Option<String>>,
+    #[serde(default)]
+    visibility: Option<String>,
+}
+
+/// Generic error response.
+#[derive(Debug, Serialize)]
+struct V1ErrorResponse {
+    error: String,
+    message: String,
+}
+
+impl V1ErrorResponse {
+    fn not_found(message: impl Into<String>) -> Self {
+        Self {
+            error: "not_found".to_string(),
+            message: message.into(),
+        }
+    }
+
+    fn bad_request(message: impl Into<String>) -> Self {
+        Self {
+            error: "bad_request".to_string(),
+            message: message.into(),
+        }
+    }
+
+    fn internal_error(message: impl Into<String>) -> Self {
+        Self {
+            error: "internal_error".to_string(),
+            message: message.into(),
+        }
+    }
+}
+
+// =============================================================================
+// Contents API Handlers
+// =============================================================================
+
+/// List contents for the authenticated user.
+///
+/// GET /v1/contents?limit=50&offset=0&status=active
+async fn v1_contents_list<S, U>(
+    State(state): State<AppState<S, U>>,
+    auth: RequireAuth,
+    Query(query): Query<V1ContentsListQuery>,
+) -> impl IntoResponse
+where
+    S: SqlStorage,
+    U: UserStorage,
+{
+    // Get user ID from username
+    let user = match state.user_storage.get_user(auth.username()).await {
+        Ok(Some(user)) => user,
+        Ok(None) => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(V1ErrorResponse::not_found("User not found")),
+            )
+                .into_response();
+        }
+        Err(e) => {
+            tracing::error!("Failed to get user: {}", e);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(V1ErrorResponse::internal_error("Failed to get user")),
+            )
+                .into_response();
+        }
+    };
+
+    // Parse status filter
+    let status = query.status.as_deref().and_then(|s| match s {
+        "active" => Some(ContentStatus::Active),
+        "archived" => Some(ContentStatus::Archived),
+        "trashed" => Some(ContentStatus::Trashed),
+        _ => None,
+    });
+
+    let limit = query.limit.unwrap_or(50).clamp(1, 100);
+    let offset = query.offset.unwrap_or(0).max(0);
+
+    let params = ContentsListParams {
+        limit,
+        offset,
+        status,
+    };
+
+    match state
+        .sql_storage
+        .contents_list_for_user(user.id, params)
+        .await
+    {
+        Ok(rows) => {
+            let items: Vec<V1ContentItem> = rows.into_iter().map(V1ContentItem::from).collect();
+            let total = items.len();
+            (
+                StatusCode::OK,
+                Json(V1ContentsListResponse { items, total }),
+            )
+                .into_response()
+        }
+        Err(e) => {
+            tracing::error!("Failed to list contents: {:?}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(V1ErrorResponse::internal_error("Failed to list contents")),
+            )
+                .into_response()
+        }
+    }
+}
+
+/// Get a specific content item by ID.
+///
+/// GET /v1/contents/:id
+async fn v1_contents_get<S, U>(
+    State(state): State<AppState<S, U>>,
+    auth: RequireAuth,
+    Path(id): Path<String>,
+) -> impl IntoResponse
+where
+    S: SqlStorage,
+    U: UserStorage,
+{
+    // Get user ID from username
+    let user = match state.user_storage.get_user(auth.username()).await {
+        Ok(Some(user)) => user,
+        Ok(None) => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(V1ErrorResponse::not_found("User not found")),
+            )
+                .into_response();
+        }
+        Err(e) => {
+            tracing::error!("Failed to get user: {}", e);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(V1ErrorResponse::internal_error("Failed to get user")),
+            )
+                .into_response();
+        }
+    };
+
+    // Parse content ID
+    let content_id = match uuid::Uuid::parse_str(&id) {
+        Ok(id) => id,
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(V1ErrorResponse::bad_request("Invalid content ID format")),
+            )
+                .into_response();
+        }
+    };
+
+    match state.sql_storage.contents_get(content_id).await {
+        Ok(Some(row)) => {
+            // Verify ownership
+            if row.user_id != user.id {
+                return (
+                    StatusCode::NOT_FOUND,
+                    Json(V1ErrorResponse::not_found("Content not found")),
+                )
+                    .into_response();
+            }
+            (StatusCode::OK, Json(V1ContentItem::from(row))).into_response()
+        }
+        Ok(None) => (
+            StatusCode::NOT_FOUND,
+            Json(V1ErrorResponse::not_found("Content not found")),
+        )
+            .into_response(),
+        Err(e) => {
+            tracing::error!("Failed to get content: {:?}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(V1ErrorResponse::internal_error("Failed to get content")),
+            )
+                .into_response()
+        }
+    }
+}
+
+/// Update content metadata.
+///
+/// PATCH /v1/contents/:id
+async fn v1_contents_update<S, U>(
+    State(state): State<AppState<S, U>>,
+    auth: RequireAuth,
+    Path(id): Path<String>,
+    Json(payload): Json<V1ContentsUpdateRequest>,
+) -> impl IntoResponse
+where
+    S: SqlStorage,
+    U: UserStorage,
+{
+    // Get user ID from username
+    let user = match state.user_storage.get_user(auth.username()).await {
+        Ok(Some(user)) => user,
+        Ok(None) => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(V1ErrorResponse::not_found("User not found")),
+            )
+                .into_response();
+        }
+        Err(e) => {
+            tracing::error!("Failed to get user: {}", e);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(V1ErrorResponse::internal_error("Failed to get user")),
+            )
+                .into_response();
+        }
+    };
+
+    // Parse content ID
+    let content_id = match uuid::Uuid::parse_str(&id) {
+        Ok(id) => id,
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(V1ErrorResponse::bad_request("Invalid content ID format")),
+            )
+                .into_response();
+        }
+    };
+
+    // Parse visibility if provided
+    let visibility = match payload.visibility.as_deref() {
+        Some("private") => Some(Visibility::Private),
+        Some("public") => Some(Visibility::Public),
+        Some("restricted") => Some(Visibility::Restricted),
+        Some(v) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(V1ErrorResponse::bad_request(format!(
+                    "Invalid visibility: {}",
+                    v
+                ))),
+            )
+                .into_response();
+        }
+        None => None,
+    };
+
+    let changes = ContentsUpdate {
+        title: payload.title,
+        description: payload.description,
+        visibility,
+    };
+
+    match state
+        .sql_storage
+        .contents_update_metadata(content_id, user.id, changes)
+        .await
+    {
+        Ok(Some(row)) => (StatusCode::OK, Json(V1ContentItem::from(row))).into_response(),
+        Ok(None) => (
+            StatusCode::NOT_FOUND,
+            Json(V1ErrorResponse::not_found("Content not found")),
+        )
+            .into_response(),
+        Err(SqlStorageError::Unauthorized) => (
+            StatusCode::FORBIDDEN,
+            Json(V1ErrorResponse {
+                error: "forbidden".to_string(),
+                message: "You do not have permission to update this content".to_string(),
+            }),
+        )
+            .into_response(),
+        Err(e) => {
+            tracing::error!("Failed to update content: {:?}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(V1ErrorResponse::internal_error("Failed to update content")),
+            )
+                .into_response()
+        }
+    }
+}
+
+/// Move content to trash.
+///
+/// POST /v1/contents/:id/trash
+async fn v1_contents_trash<S, U>(
+    State(state): State<AppState<S, U>>,
+    auth: RequireAuth,
+    Path(id): Path<String>,
+) -> impl IntoResponse
+where
+    S: SqlStorage,
+    U: UserStorage,
+{
+    v1_contents_set_status::<S, U>(state, auth, id, ContentStatus::Trashed).await
+}
+
+/// Restore content from trash.
+///
+/// POST /v1/contents/:id/restore
+async fn v1_contents_restore<S, U>(
+    State(state): State<AppState<S, U>>,
+    auth: RequireAuth,
+    Path(id): Path<String>,
+) -> impl IntoResponse
+where
+    S: SqlStorage,
+    U: UserStorage,
+{
+    v1_contents_set_status::<S, U>(state, auth, id, ContentStatus::Active).await
+}
+
+/// Archive content.
+///
+/// POST /v1/contents/:id/archive
+async fn v1_contents_archive<S, U>(
+    State(state): State<AppState<S, U>>,
+    auth: RequireAuth,
+    Path(id): Path<String>,
+) -> impl IntoResponse
+where
+    S: SqlStorage,
+    U: UserStorage,
+{
+    v1_contents_set_status::<S, U>(state, auth, id, ContentStatus::Archived).await
+}
+
+/// Unarchive content (restore to active).
+///
+/// POST /v1/contents/:id/unarchive
+async fn v1_contents_unarchive<S, U>(
+    State(state): State<AppState<S, U>>,
+    auth: RequireAuth,
+    Path(id): Path<String>,
+) -> impl IntoResponse
+where
+    S: SqlStorage,
+    U: UserStorage,
+{
+    v1_contents_set_status::<S, U>(state, auth, id, ContentStatus::Active).await
+}
+
+/// Helper function to set content status.
+async fn v1_contents_set_status<S, U>(
+    state: AppState<S, U>,
+    auth: RequireAuth,
+    id: String,
+    new_status: ContentStatus,
+) -> impl IntoResponse
+where
+    S: SqlStorage,
+    U: UserStorage,
+{
+    // Get user ID from username
+    let user = match state.user_storage.get_user(auth.username()).await {
+        Ok(Some(user)) => user,
+        Ok(None) => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(V1ErrorResponse::not_found("User not found")),
+            )
+                .into_response();
+        }
+        Err(e) => {
+            tracing::error!("Failed to get user: {}", e);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(V1ErrorResponse::internal_error("Failed to get user")),
+            )
+                .into_response();
+        }
+    };
+
+    // Parse content ID
+    let content_id = match uuid::Uuid::parse_str(&id) {
+        Ok(id) => id,
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(V1ErrorResponse::bad_request("Invalid content ID format")),
+            )
+                .into_response();
+        }
+    };
+
+    let now = chrono::Utc::now();
+
+    match state
+        .sql_storage
+        .contents_set_status(content_id, user.id, new_status, now)
+        .await
+    {
+        Ok(Some(row)) => (StatusCode::OK, Json(V1ContentItem::from(row))).into_response(),
+        Ok(None) => (
+            StatusCode::NOT_FOUND,
+            Json(V1ErrorResponse::not_found("Content not found")),
+        )
+            .into_response(),
+        Err(SqlStorageError::Unauthorized) => (
+            StatusCode::FORBIDDEN,
+            Json(V1ErrorResponse {
+                error: "forbidden".to_string(),
+                message: "You do not have permission to modify this content".to_string(),
+            }),
+        )
+            .into_response(),
+        Err(e) => {
+            tracing::error!("Failed to set content status: {:?}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(V1ErrorResponse::internal_error(
+                    "Failed to update content status",
+                )),
+            )
+                .into_response()
+        }
+    }
 }
 
 #[cfg(test)]
@@ -825,5 +1334,353 @@ mod tests {
         );
         assert_eq!(RuntimeEnv::from(&config::Env::Pr), RuntimeEnv::Pr);
         assert_eq!(RuntimeEnv::from(&config::Env::Nightly), RuntimeEnv::Nightly);
+    }
+
+    // =========================================================================
+    // Contents API Tests
+    // =========================================================================
+
+    #[tokio::test]
+    async fn test_v1_contents_list_without_auth_returns_401() {
+        let sql_storage = MockSqlStorage { is_connected: true };
+        let user_storage = MockUserStorage::new();
+        let config = Config::new_for_test();
+        let app = routes(sql_storage, user_storage, config).await;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/contents")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn test_v1_contents_list_with_valid_auth() {
+        let sql_storage = MockSqlStorage { is_connected: true };
+        let user_storage = MockUserStorage::with_users([("testuser", "SECRET123")]);
+        let config = Config::new_for_test();
+        let app = routes(sql_storage, user_storage, config).await;
+
+        let token = generate_test_token();
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/contents")
+                    .header("Authorization", format!("Bearer {}", token))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert!(json["items"].is_array());
+        assert_eq!(json["total"], 0);
+    }
+
+    #[tokio::test]
+    async fn test_v1_contents_list_with_query_params() {
+        let sql_storage = MockSqlStorage { is_connected: true };
+        let user_storage = MockUserStorage::with_users([("testuser", "SECRET123")]);
+        let config = Config::new_for_test();
+        let app = routes(sql_storage, user_storage, config).await;
+
+        let token = generate_test_token();
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/contents?limit=10&offset=5&status=active")
+                    .header("Authorization", format!("Bearer {}", token))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_v1_contents_get_without_auth_returns_401() {
+        let sql_storage = MockSqlStorage { is_connected: true };
+        let user_storage = MockUserStorage::new();
+        let config = Config::new_for_test();
+        let app = routes(sql_storage, user_storage, config).await;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/contents/00000000-0000-0000-0000-000000000001")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn test_v1_contents_get_not_found() {
+        let sql_storage = MockSqlStorage { is_connected: true };
+        let user_storage = MockUserStorage::with_users([("testuser", "SECRET123")]);
+        let config = Config::new_for_test();
+        let app = routes(sql_storage, user_storage, config).await;
+
+        let token = generate_test_token();
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/contents/00000000-0000-0000-0000-000000000001")
+                    .header("Authorization", format!("Bearer {}", token))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_v1_contents_get_invalid_id() {
+        let sql_storage = MockSqlStorage { is_connected: true };
+        let user_storage = MockUserStorage::with_users([("testuser", "SECRET123")]);
+        let config = Config::new_for_test();
+        let app = routes(sql_storage, user_storage, config).await;
+
+        let token = generate_test_token();
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/contents/not-a-uuid")
+                    .header("Authorization", format!("Bearer {}", token))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_v1_contents_update_without_auth_returns_401() {
+        let sql_storage = MockSqlStorage { is_connected: true };
+        let user_storage = MockUserStorage::new();
+        let config = Config::new_for_test();
+        let app = routes(sql_storage, user_storage, config).await;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("PATCH")
+                    .uri("/v1/contents/00000000-0000-0000-0000-000000000001")
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(r#"{"title": "New Title"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn test_v1_contents_update_not_found() {
+        let sql_storage = MockSqlStorage { is_connected: true };
+        let user_storage = MockUserStorage::with_users([("testuser", "SECRET123")]);
+        let config = Config::new_for_test();
+        let app = routes(sql_storage, user_storage, config).await;
+
+        let token = generate_test_token();
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("PATCH")
+                    .uri("/v1/contents/00000000-0000-0000-0000-000000000001")
+                    .header("Authorization", format!("Bearer {}", token))
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(r#"{"title": "New Title"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_v1_contents_update_invalid_visibility() {
+        let sql_storage = MockSqlStorage { is_connected: true };
+        let user_storage = MockUserStorage::with_users([("testuser", "SECRET123")]);
+        let config = Config::new_for_test();
+        let app = routes(sql_storage, user_storage, config).await;
+
+        let token = generate_test_token();
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("PATCH")
+                    .uri("/v1/contents/00000000-0000-0000-0000-000000000001")
+                    .header("Authorization", format!("Bearer {}", token))
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(r#"{"visibility": "invalid"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_v1_contents_trash_without_auth_returns_401() {
+        let sql_storage = MockSqlStorage { is_connected: true };
+        let user_storage = MockUserStorage::new();
+        let config = Config::new_for_test();
+        let app = routes(sql_storage, user_storage, config).await;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/contents/00000000-0000-0000-0000-000000000001/trash")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn test_v1_contents_trash_not_found() {
+        let sql_storage = MockSqlStorage { is_connected: true };
+        let user_storage = MockUserStorage::with_users([("testuser", "SECRET123")]);
+        let config = Config::new_for_test();
+        let app = routes(sql_storage, user_storage, config).await;
+
+        let token = generate_test_token();
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/contents/00000000-0000-0000-0000-000000000001/trash")
+                    .header("Authorization", format!("Bearer {}", token))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_v1_contents_restore_without_auth_returns_401() {
+        let sql_storage = MockSqlStorage { is_connected: true };
+        let user_storage = MockUserStorage::new();
+        let config = Config::new_for_test();
+        let app = routes(sql_storage, user_storage, config).await;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/contents/00000000-0000-0000-0000-000000000001/restore")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn test_v1_contents_archive_without_auth_returns_401() {
+        let sql_storage = MockSqlStorage { is_connected: true };
+        let user_storage = MockUserStorage::new();
+        let config = Config::new_for_test();
+        let app = routes(sql_storage, user_storage, config).await;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/contents/00000000-0000-0000-0000-000000000001/archive")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn test_v1_contents_unarchive_without_auth_returns_401() {
+        let sql_storage = MockSqlStorage { is_connected: true };
+        let user_storage = MockUserStorage::new();
+        let config = Config::new_for_test();
+        let app = routes(sql_storage, user_storage, config).await;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/contents/00000000-0000-0000-0000-000000000001/unarchive")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn test_v1_contents_list_user_not_found() {
+        let sql_storage = MockSqlStorage { is_connected: true };
+        // User storage is empty, so "testuser" from the token won't be found
+        let user_storage = MockUserStorage::new();
+        let config = Config::new_for_test();
+        let app = routes(sql_storage, user_storage, config).await;
+
+        let token = generate_test_token();
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/contents")
+                    .header("Authorization", format!("Bearer {}", token))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        // User not found in storage returns 401
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
     }
 }

@@ -27,10 +27,13 @@
 use crate::database::PgStorage;
 use chrono::{DateTime, Utc};
 use std::future::Future;
+use uuid::Uuid;
 
 /// Represents a stored user with their OTP secret.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StoredUser {
+    /// The unique user ID.
+    pub id: Uuid,
     /// The unique username.
     pub username: String,
     /// The base32-encoded OTP secret.
@@ -46,10 +49,11 @@ pub struct StoredUser {
 }
 
 impl StoredUser {
-    /// Creates a new `StoredUser` instance.
+    /// Creates a new `StoredUser` instance with a generated UUID.
     pub fn new(username: impl Into<String>, secret: impl Into<String>) -> Self {
         let now = Utc::now();
         Self {
+            id: Uuid::new_v4(),
             username: username.into(),
             secret: secret.into(),
             nickname: None,
@@ -59,8 +63,23 @@ impl StoredUser {
         }
     }
 
-    /// Creates a new `StoredUser` instance with all fields.
+    /// Creates a new `StoredUser` instance with a specific UUID.
+    pub fn with_id(id: Uuid, username: impl Into<String>, secret: impl Into<String>) -> Self {
+        let now = Utc::now();
+        Self {
+            id,
+            username: username.into(),
+            secret: secret.into(),
+            nickname: None,
+            avatar_url: None,
+            created_at: now,
+            updated_at: now,
+        }
+    }
+
+    /// Creates a `StoredUser` with all profile fields.
     pub fn with_profile(
+        id: Uuid,
         username: impl Into<String>,
         secret: impl Into<String>,
         nickname: Option<String>,
@@ -69,6 +88,7 @@ impl StoredUser {
         updated_at: DateTime<Utc>,
     ) -> Self {
         Self {
+            id,
             username: username.into(),
             secret: secret.into(),
             nickname,
@@ -408,6 +428,7 @@ impl UserStorage for MockUserStorage {
         // Remove old entry and insert new one, preserving profile data
         users.remove(old_username);
         let updated_user = StoredUser::with_profile(
+            old_user.id,
             new_username,
             &old_user.secret,
             old_user.nickname,
@@ -441,6 +462,7 @@ impl UserStorage for MockUserStorage {
 
         // Update the secret, preserving profile data
         let updated_user = StoredUser::with_profile(
+            old_user.id,
             username,
             new_secret,
             old_user.nickname,
@@ -478,6 +500,7 @@ impl UserStorage for MockUserStorage {
         };
 
         let updated_user = StoredUser::with_profile(
+            old_user.id,
             username,
             &old_user.secret,
             new_nickname,
@@ -529,6 +552,7 @@ pub struct PgUserStorage {
 /// Row type for user queries with all fields.
 #[derive(sqlx::FromRow)]
 struct UserRow {
+    id: Uuid,
     username: String,
     otp_secret: String,
     nickname: Option<String>,
@@ -566,22 +590,24 @@ impl UserStorage for PgUserStorage {
         }
 
         // Insert the user into the database and return all fields
-        let result: Option<UserRow> = sqlx::query_as(
+        let result = sqlx::query_as!(
+            UserRow,
             r#"
             INSERT INTO users (username, otp_secret)
             VALUES ($1, $2)
             ON CONFLICT (username) DO NOTHING
-            RETURNING username, otp_secret, nickname, avatar_url, created_at, updated_at
+            RETURNING id, username, otp_secret, nickname, avatar_url, created_at, updated_at
             "#,
+            username,
+            secret,
         )
-        .bind(username)
-        .bind(secret)
         .fetch_optional(&self.storage.pool)
         .await
         .map_err(|e| UserStorageError::StorageError(e.to_string()))?;
 
         match result {
             Some(row) => Ok(StoredUser::with_profile(
+                row.id,
                 row.username,
                 row.otp_secret,
                 row.nickname,
@@ -636,9 +662,10 @@ impl UserStorage for PgUserStorage {
     }
 
     async fn list_users(&self) -> Result<Vec<StoredUser>, Self::Error> {
-        let rows: Vec<UserRow> = sqlx::query_as(
+        let rows = sqlx::query_as!(
+            UserRow,
             r#"
-            SELECT username, otp_secret, nickname, avatar_url, created_at, updated_at
+            SELECT id, username, otp_secret, nickname, avatar_url, created_at, updated_at
             FROM users
             WHERE status = 'active'
             ORDER BY created_at DESC
@@ -652,6 +679,7 @@ impl UserStorage for PgUserStorage {
             .into_iter()
             .map(|row| {
                 StoredUser::with_profile(
+                    row.id,
                     row.username,
                     row.otp_secret,
                     row.nickname,
@@ -664,20 +692,22 @@ impl UserStorage for PgUserStorage {
     }
 
     async fn get_user(&self, username: &str) -> Result<Option<StoredUser>, Self::Error> {
-        let result: Option<UserRow> = sqlx::query_as(
+        let result = sqlx::query_as!(
+            UserRow,
             r#"
-            SELECT username, otp_secret, nickname, avatar_url, created_at, updated_at
+            SELECT id, username, otp_secret, nickname, avatar_url, created_at, updated_at
             FROM users
             WHERE username = $1 AND status = 'active'
             "#,
+            username,
         )
-        .bind(username)
         .fetch_optional(&self.storage.pool)
         .await
         .map_err(|e| UserStorageError::StorageError(e.to_string()))?;
 
         Ok(result.map(|row| {
             StoredUser::with_profile(
+                row.id,
                 row.username,
                 row.otp_secret,
                 row.nickname,
@@ -700,16 +730,17 @@ impl UserStorage for PgUserStorage {
         }
 
         // Update the username and return the updated user
-        let result: Option<UserRow> = sqlx::query_as(
+        let result = sqlx::query_as!(
+            UserRow,
             r#"
             UPDATE users
             SET username = $2
             WHERE username = $1 AND status = 'active'
-            RETURNING username, otp_secret, nickname, avatar_url, created_at, updated_at
+            RETURNING id, username, otp_secret, nickname, avatar_url, created_at, updated_at
             "#,
+            old_username,
+            new_username,
         )
-        .bind(old_username)
-        .bind(new_username)
         .fetch_optional(&self.storage.pool)
         .await
         .map_err(|e| {
@@ -724,6 +755,7 @@ impl UserStorage for PgUserStorage {
         result
             .map(|row| {
                 StoredUser::with_profile(
+                    row.id,
                     row.username,
                     row.otp_secret,
                     row.nickname,
@@ -747,16 +779,17 @@ impl UserStorage for PgUserStorage {
         }
 
         // Update the OTP secret and return the updated user
-        let result: Option<UserRow> = sqlx::query_as(
+        let result = sqlx::query_as!(
+            UserRow,
             r#"
             UPDATE users
             SET otp_secret = $2
             WHERE username = $1 AND status = 'active'
-            RETURNING username, otp_secret, nickname, avatar_url, created_at, updated_at
+            RETURNING id, username, otp_secret, nickname, avatar_url, created_at, updated_at
             "#,
+            username,
+            new_secret,
         )
-        .bind(username)
-        .bind(new_secret)
         .fetch_optional(&self.storage.pool)
         .await
         .map_err(|e| UserStorageError::StorageError(e.to_string()))?;
@@ -764,6 +797,7 @@ impl UserStorage for PgUserStorage {
         result
             .map(|row| {
                 StoredUser::with_profile(
+                    row.id,
                     row.username,
                     row.otp_secret,
                     row.nickname,
@@ -782,44 +816,47 @@ impl UserStorage for PgUserStorage {
         avatar_url: Option<Option<String>>,
     ) -> Result<StoredUser, Self::Error> {
         // Build the query dynamically based on which fields are being updated
-        let result: Option<UserRow> = match (nickname, avatar_url) {
-            (Some(nick), Some(avatar)) => sqlx::query_as(
+        let result = match (nickname, avatar_url) {
+            (Some(nick), Some(avatar)) => sqlx::query_as!(
+                UserRow,
                 r#"
-                    UPDATE users
-                    SET nickname = $2, avatar_url = $3
-                    WHERE username = $1 AND status = 'active'
-                    RETURNING username, otp_secret, nickname, avatar_url, created_at, updated_at
-                    "#,
+                UPDATE users
+                SET nickname = $2, avatar_url = $3
+                WHERE username = $1 AND status = 'active'
+                RETURNING id, username, otp_secret, nickname, avatar_url, created_at, updated_at
+                "#,
+                username,
+                nick,
+                avatar,
             )
-            .bind(username)
-            .bind(nick)
-            .bind(avatar)
             .fetch_optional(&self.storage.pool)
             .await
             .map_err(|e| UserStorageError::StorageError(e.to_string()))?,
-            (Some(nick), None) => sqlx::query_as(
+            (Some(nick), None) => sqlx::query_as!(
+                UserRow,
                 r#"
-                    UPDATE users
-                    SET nickname = $2
-                    WHERE username = $1 AND status = 'active'
-                    RETURNING username, otp_secret, nickname, avatar_url, created_at, updated_at
-                    "#,
+                UPDATE users
+                SET nickname = $2
+                WHERE username = $1 AND status = 'active'
+                RETURNING id, username, otp_secret, nickname, avatar_url, created_at, updated_at
+                "#,
+                username,
+                nick,
             )
-            .bind(username)
-            .bind(nick)
             .fetch_optional(&self.storage.pool)
             .await
             .map_err(|e| UserStorageError::StorageError(e.to_string()))?,
-            (None, Some(avatar)) => sqlx::query_as(
+            (None, Some(avatar)) => sqlx::query_as!(
+                UserRow,
                 r#"
-                    UPDATE users
-                    SET avatar_url = $2
-                    WHERE username = $1 AND status = 'active'
-                    RETURNING username, otp_secret, nickname, avatar_url, created_at, updated_at
-                    "#,
+                UPDATE users
+                SET avatar_url = $2
+                WHERE username = $1 AND status = 'active'
+                RETURNING id, username, otp_secret, nickname, avatar_url, created_at, updated_at
+                "#,
+                username,
+                avatar,
             )
-            .bind(username)
-            .bind(avatar)
             .fetch_optional(&self.storage.pool)
             .await
             .map_err(|e| UserStorageError::StorageError(e.to_string()))?,
@@ -835,6 +872,7 @@ impl UserStorage for PgUserStorage {
         result
             .map(|row| {
                 StoredUser::with_profile(
+                    row.id,
                     row.username,
                     row.otp_secret,
                     row.nickname,
@@ -1242,7 +1280,9 @@ mod tests {
     #[tokio::test]
     async fn test_stored_user_with_profile() {
         let now = Utc::now();
+        let id = Uuid::new_v4();
         let user = StoredUser::with_profile(
+            id,
             "alice",
             "SECRET123",
             Some("Nickname".to_string()),
@@ -1251,6 +1291,7 @@ mod tests {
             now,
         );
 
+        assert_eq!(user.id, id);
         assert_eq!(user.username, "alice");
         assert_eq!(user.secret, "SECRET123");
         assert_eq!(user.nickname, Some("Nickname".to_string()));

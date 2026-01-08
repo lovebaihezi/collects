@@ -1672,6 +1672,24 @@ mod tests {
                 "MockSqlStorage.group_shares_create_for_link: unimplemented".to_string(),
             ))
         }
+
+        async fn otp_record_attempt(
+            &self,
+            _input: crate::database::OtpAttemptRecord,
+        ) -> Result<(), crate::database::SqlStorageError> {
+            // Mock: silently succeed
+            Ok(())
+        }
+
+        async fn otp_is_rate_limited(
+            &self,
+            _username: &str,
+            _ip_address: Option<std::net::IpAddr>,
+            _config: &crate::database::OtpRateLimitConfig,
+        ) -> Result<bool, crate::database::SqlStorageError> {
+            // Mock: never rate limited
+            Ok(false)
+        }
     }
 
     #[tokio::test]

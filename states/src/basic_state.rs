@@ -2,9 +2,9 @@ use std::any::Any;
 
 use chrono::{DateTime, Utc};
 
-use crate::{State, state_assign_impl};
+use crate::{SnapshotClone, State, state_assign_impl};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Time {
     virt: DateTime<Utc>,
 }
@@ -12,6 +12,12 @@ pub struct Time {
 impl Default for Time {
     fn default() -> Self {
         Self { virt: Utc::now() }
+    }
+}
+
+impl SnapshotClone for Time {
+    fn clone_boxed(&self) -> Option<Box<dyn Any + Send>> {
+        Some(Box::new(self.clone()))
     }
 }
 

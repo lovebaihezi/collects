@@ -14,7 +14,8 @@
 use std::any::Any;
 
 use collects_states::{
-    Command, Compute, ComputeDeps, Dep, State, Updater, assign_impl, state_assign_impl,
+    Command, CommandSnapshot, Compute, ComputeDeps, Dep, SnapshotClone, State, Updater,
+    assign_impl, state_assign_impl,
 };
 use ustr::Ustr;
 
@@ -47,6 +48,12 @@ pub enum InternalUsersListUsersResult {
 #[derive(Debug, Clone, Default)]
 pub struct InternalUsersListUsersCompute {
     pub result: InternalUsersListUsersResult,
+}
+
+impl SnapshotClone for InternalUsersListUsersCompute {
+    fn clone_boxed(&self) -> Option<Box<dyn Any + Send>> {
+        Some(Box::new(self.clone()))
+    }
 }
 
 impl InternalUsersListUsersCompute {
@@ -121,6 +128,12 @@ pub struct InternalUsersListUsersInput {
     pub api_base_url: Option<Ustr>,
 }
 
+impl SnapshotClone for InternalUsersListUsersInput {
+    fn clone_boxed(&self) -> Option<Box<dyn Any + Send>> {
+        Some(Box::new(self.clone()))
+    }
+}
+
 impl State for InternalUsersListUsersInput {
     fn as_any(&self) -> &dyn Any {
         self
@@ -142,11 +155,11 @@ impl State for InternalUsersListUsersInput {
 pub struct RefreshInternalUsersCommand;
 
 impl Command for RefreshInternalUsersCommand {
-    fn run(&self, deps: Dep, updater: Updater) {
+    fn run(&self, snap: CommandSnapshot, updater: Updater) {
         // Read inputs/config.
-        let input = deps.get_state_ref::<InternalUsersListUsersInput>();
-        let config = deps.get_state_ref::<BusinessConfig>();
-        let cf_token = deps.get_state_ref::<CFTokenCompute>();
+        let input: &InternalUsersListUsersInput = snap.state();
+        let config: &BusinessConfig = snap.state();
+        let cf_token: &CFTokenCompute = snap.compute();
 
         // Determine base URL:
         // - Prefer explicit input when set (UI/tests can override).
@@ -170,18 +183,25 @@ impl Command for RefreshInternalUsersCommand {
             result: InternalUsersListUsersResult::Loading,
         });
 
+        // Clone cf_token for async use
+        let cf_token_clone = cf_token.clone();
+
         // Kick off async request; update compute on completion.
-        internal_users_api::list_users(&api_base_url, cf_token, move |result| match result {
-            Ok(users) => {
-                updater.set(InternalUsersListUsersCompute {
-                    result: InternalUsersListUsersResult::Loaded(users),
-                });
-            }
-            Err(err) => {
-                updater.set(InternalUsersListUsersCompute {
-                    result: InternalUsersListUsersResult::Error(err.to_string()),
-                });
-            }
-        });
+        internal_users_api::list_users(
+            &api_base_url,
+            &cf_token_clone,
+            move |result| match result {
+                Ok(users) => {
+                    updater.set(InternalUsersListUsersCompute {
+                        result: InternalUsersListUsersResult::Loaded(users),
+                    });
+                }
+                Err(err) => {
+                    updater.set(InternalUsersListUsersCompute {
+                        result: InternalUsersListUsersResult::Error(err.to_string()),
+                    });
+                }
+            },
+        );
     }
 }

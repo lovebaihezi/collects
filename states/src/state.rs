@@ -5,12 +5,12 @@ use std::{
 
 use flume::{Receiver, Sender};
 
-use crate::{Compute, StateRuntime};
+use crate::{Compute, SnapshotClone, StateRuntime};
 
 /// The `State` trait represents a fundamental unit of state in the application.
 ///
 /// It provides basic identity and initialization logic for state objects.
-pub trait State: Any + Debug {
+pub trait State: Any + Debug + SnapshotClone {
     /// Returns a reference to self as `&dyn Any` for read-only downcasting.
     fn as_any(&self) -> &dyn Any;
 

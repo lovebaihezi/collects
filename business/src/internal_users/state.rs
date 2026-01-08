@@ -11,7 +11,7 @@
 //! - For identifiers that are frequently cloned/compared (usernames), we use `Ustr`.
 
 use chrono::{DateTime, Utc};
-use collects_states::State;
+use collects_states::{SnapshotClone, State};
 use egui::TextureHandle;
 use std::any::Any;
 use std::collections::HashMap;
@@ -119,6 +119,11 @@ impl std::fmt::Debug for InternalUsersState {
             .finish()
     }
 }
+
+// InternalUsersState is UI-affine (contains TextureHandle which is !Send).
+// It should not be snapshotted for command execution.
+// The default SnapshotClone implementation returns None.
+impl SnapshotClone for InternalUsersState {}
 
 impl State for InternalUsersState {
     fn as_any(&self) -> &dyn Any {

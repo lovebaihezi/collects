@@ -34,7 +34,8 @@ use crate::cf_token_compute::CFTokenCompute;
 use crate::internal::{CreateUserRequest, CreateUserResponse};
 
 use collects_states::{
-    Command, Compute, ComputeDeps, Dep, State, Updater, assign_impl, state_assign_impl,
+    Command, CommandSnapshot, Compute, ComputeDeps, Dep, SnapshotClone, State, Updater,
+    assign_impl, state_assign_impl,
 };
 use log::{error, info};
 
@@ -46,6 +47,12 @@ use log::{error, info};
 pub struct CreateUserInput {
     /// The username to create. None means "no request intended".
     pub username: Option<String>,
+}
+
+impl SnapshotClone for CreateUserInput {
+    fn clone_boxed(&self) -> Option<Box<dyn Any + Send>> {
+        Some(Box::new(self.clone()))
+    }
 }
 
 impl State for CreateUserInput {
@@ -82,10 +89,16 @@ pub enum CreateUserResult {
 /// and updated via `Updater::set(CreateUserCompute { ... })`.
 ///
 /// Note: its `compute()` implementation is a deliberate no-op. Updates come from commands.
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone)]
 pub struct CreateUserCompute {
     /// The result of the last creation attempt.
     pub result: CreateUserResult,
+}
+
+impl SnapshotClone for CreateUserCompute {
+    fn clone_boxed(&self) -> Option<Box<dyn Any + Send>> {
+        Some(Box::new(self.clone()))
+    }
 }
 
 impl CreateUserCompute {
@@ -163,10 +176,10 @@ impl State for CreateUserCompute {
 pub struct CreateUserCommand;
 
 impl Command for CreateUserCommand {
-    fn run(&self, deps: Dep, updater: Updater) {
-        let input = deps.get_state_ref::<CreateUserInput>();
-        let config = deps.get_state_ref::<BusinessConfig>();
-        let cf_token = deps.get_state_ref::<CFTokenCompute>();
+    fn run(&self, snap: CommandSnapshot, updater: Updater) {
+        let input: &CreateUserInput = snap.state();
+        let config: &BusinessConfig = snap.state();
+        let cf_token: &CFTokenCompute = snap.compute();
 
         let username = match &input.username {
             Some(name) if !name.trim().is_empty() => name.trim().to_string(),

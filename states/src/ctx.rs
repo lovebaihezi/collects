@@ -7,7 +7,7 @@ use std::{
 
 use log::{Level, log_enabled, trace};
 
-use crate::{Command, Dep, Reader, Updater, state::UpdateMessage};
+use crate::{Command, CommandSnapshot, Dep, Reader, Updater, state::UpdateMessage};
 
 use super::{Compute, Stage, State, StateRuntime};
 
@@ -185,6 +185,9 @@ impl StateCtx {
     /// Dispatches a manual-only command by its type.
     ///
     /// The command is executed immediately and synchronously in the caller's thread.
+    /// Commands receive a `CommandSnapshot` containing owned clones of states and computes,
+    /// ensuring they never hold mutable references to live state during execution.
+    ///
     /// Any async work should be spawned inside the command implementation (e.g. using tokio),
     /// and results should flow back through your chosen state update mechanism.
     pub fn dispatch<T: Command + 'static>(&mut self) {
@@ -193,24 +196,41 @@ impl StateCtx {
             panic!("No command found for id: {:?}", id);
         };
 
-        // Build deps from currently registered states + computes (commands may read both).
+        // Build snapshot from currently registered states + computes (commands may read both).
         //
         // Commands are intentionally not part of the dependency graph, so we construct
-        // the dependency access from what's available in this context at dispatch time.
-        let state_ids: Vec<TypeId> = self.states.keys().copied().collect();
-        let compute_ids: Vec<TypeId> = self.computes.keys().copied().collect();
-
-        let deps = Dep::new(
-            state_ids
-                .into_iter()
-                .map(|dep_id| (dep_id, self.get_state_ptr(&dep_id))),
-            compute_ids
-                .into_iter()
-                .map(|dep_id| (dep_id, self.get_compute_ptr(&dep_id))),
-        );
+        // the snapshot from what's available in this context at dispatch time.
+        // Only states/computes that implement SnapshotClone::clone_boxed will be included.
+        let snapshot = self.create_command_snapshot();
 
         let borrowed = cell.borrow();
-        borrowed.run(deps, self.updater());
+        borrowed.run(snapshot, self.updater());
+    }
+
+    /// Creates a `CommandSnapshot` from the current states and computes.
+    ///
+    /// Only states and computes that implement `SnapshotClone::clone_boxed` returning `Some`
+    /// will be included in the snapshot.
+    fn create_command_snapshot(&self) -> CommandSnapshot {
+        let states = self
+            .states
+            .iter()
+            .filter_map(|(id, (cell, _))| {
+                let borrowed = cell.borrow();
+                borrowed.clone_boxed().map(|boxed| (*id, boxed))
+            })
+            .collect::<Vec<_>>();
+
+        let computes = self
+            .computes
+            .iter()
+            .filter_map(|(id, (cell, _))| {
+                let borrowed = cell.borrow();
+                borrowed.clone_boxed().map(|boxed| (*id, boxed))
+            })
+            .collect::<Vec<_>>();
+
+        CommandSnapshot::from_iters(states.into_iter(), computes.into_iter())
     }
 
     /// Runs a compute by TypeId, first running any dirty dependencies in topological order.

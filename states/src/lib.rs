@@ -18,7 +18,7 @@ pub use dep::Dep;
 pub use enum_states::BasicStates;
 pub use graph::{DepRoute, Graph, TopologyError};
 pub use runtime::StateRuntime;
-pub use snapshot::{CommandSnapshot, ComputeSnapshot, StateSnapshot};
+pub use snapshot::{CommandSnapshot, ComputeSnapshot, SnapshotClone, StateSnapshot};
 pub use state::{Reader, State, Updater, state_assign_impl};
 pub use state_sync_status::Stage;
 
@@ -31,10 +31,10 @@ pub use state_sync_status::Stage;
 /// - Keep `Compute` pure/derived.
 /// - Put IO / async work / heavy CPU into `Command`.
 ///
-/// ## New rule: snapshot-based command reads + queued writes (IMPORTANT)
+/// ## Snapshot-based command reads + queued writes
 ///
-/// This repo is migrating to a model where commands:
-/// - **Read only from snapshots (owned clones)** of State/Compute values.
+/// Commands:
+/// - **Read only from snapshots (owned clones)** of State/Compute values via `CommandSnapshot`.
 /// - **Never borrow or mutate live state/compute references** during execution.
 /// - **Write only via queued updates** (e.g. `Updater::set(...)` / `Updater::set_state(...)`).
 ///
@@ -55,12 +55,11 @@ pub use state_sync_status::Stage;
 /// UI thread and must not be updated from async completion via `Updater::set_state()`.
 /// Keep that state in UI code and update it via `StateCtx::update()` / `StateCtx::state_mut()`.
 pub trait Command: std::fmt::Debug + Send + Sync + 'static {
-    /// Runs the command.
+    /// Runs the command with snapshot-based access to states and computes.
     ///
-    /// NOTE: During migration this signature still receives `Dep`, but command implementations
-    /// must treat it as **read-only**. Do not call any API that produces mutable access to live
-    /// state from here (e.g. `Dep::state_mut()`).
-    fn run(&self, dep: Dep, updater: Updater);
+    /// Commands read from `CommandSnapshot` (owned clones) and write updates via `Updater`.
+    /// This ensures commands never hold mutable references to live state during execution.
+    fn run(&self, snap: CommandSnapshot, updater: Updater);
 }
 
 #[cfg(test)]
@@ -77,9 +76,15 @@ mod state_runtime_test {
 
     use super::*;
 
-    #[derive(Default, Debug)]
+    #[derive(Default, Debug, Clone)]
     struct DummyState {
         base_value: i32,
+    }
+
+    impl SnapshotClone for DummyState {
+        fn clone_boxed(&self) -> Option<Box<dyn Any + Send>> {
+            Some(Box::new(self.clone()))
+        }
     }
 
     impl State for DummyState {
@@ -96,9 +101,15 @@ mod state_runtime_test {
         }
     }
 
-    #[derive(Default, Debug)]
+    #[derive(Default, Debug, Clone)]
     struct DummyComputeA {
         doubled: i32,
+    }
+
+    impl SnapshotClone for DummyComputeA {
+        fn clone_boxed(&self) -> Option<Box<dyn Any + Send>> {
+            Some(Box::new(self.clone()))
+        }
     }
 
     impl State for DummyComputeA {
@@ -153,9 +164,15 @@ mod state_runtime_test {
         assert_eq!(ctx.cached::<DummyComputeA>().unwrap().doubled, 2);
     }
 
-    #[derive(Default, Debug)]
+    #[derive(Default, Debug, Clone)]
     struct DummyComputeB {
         doubled: i32,
+    }
+
+    impl SnapshotClone for DummyComputeB {
+        fn clone_boxed(&self) -> Option<Box<dyn Any + Send>> {
+            Some(Box::new(self.clone()))
+        }
     }
 
     impl State for DummyComputeB {
@@ -268,9 +285,15 @@ mod state_runtime_test {
     }
 
     // Test for compute depending on another compute
-    #[derive(Default, Debug)]
+    #[derive(Default, Debug, Clone)]
     struct DummyComputeC {
         quadrupled: i32,
+    }
+
+    impl SnapshotClone for DummyComputeC {
+        fn clone_boxed(&self) -> Option<Box<dyn Any + Send>> {
+            Some(Box::new(self.clone()))
+        }
     }
 
     impl State for DummyComputeC {
@@ -342,9 +365,15 @@ mod state_runtime_test {
     }
 
     #[allow(dead_code)]
-    #[derive(Default, Debug)]
+    #[derive(Default, Debug, Clone)]
     struct SideEffectCountState {
         count: usize,
+    }
+
+    impl SnapshotClone for SideEffectCountState {
+        fn clone_boxed(&self) -> Option<Box<dyn Any + Send>> {
+            Some(Box::new(self.clone()))
+        }
     }
 
     impl State for SideEffectCountState {
@@ -367,7 +396,7 @@ mod state_runtime_test {
     }
 
     impl Command for IncrementCountCommand {
-        fn run(&self, _dep: Dep, _updater: Updater) {
+        fn run(&self, _snap: CommandSnapshot, _updater: Updater) {
             self.shared.fetch_add(1, Ordering::SeqCst);
         }
     }
@@ -395,9 +424,15 @@ mod state_runtime_test {
         assert_eq!(shared.load(Ordering::SeqCst), 1);
     }
 
-    #[derive(Default, Debug)]
+    #[derive(Default, Debug, Clone)]
     struct DummyComputeFromCommand {
         value: i32,
+    }
+
+    impl SnapshotClone for DummyComputeFromCommand {
+        fn clone_boxed(&self) -> Option<Box<dyn Any + Send>> {
+            Some(Box::new(self.clone()))
+        }
     }
 
     impl State for DummyComputeFromCommand {
@@ -440,7 +475,7 @@ mod state_runtime_test {
     }
 
     impl Command for SetComputeValueCommand {
-        fn run(&self, _dep: Dep, updater: Updater) {
+        fn run(&self, _snap: CommandSnapshot, updater: Updater) {
             updater.set(DummyComputeFromCommand { value: self.value });
         }
     }
@@ -463,9 +498,15 @@ mod state_runtime_test {
     }
 
     #[allow(dead_code)]
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     struct UnregisteredCompute {
         value: i32,
+    }
+
+    impl SnapshotClone for UnregisteredCompute {
+        fn clone_boxed(&self) -> Option<Box<dyn Any + Send>> {
+            Some(Box::new(self.clone()))
+        }
     }
 
     impl State for UnregisteredCompute {
@@ -508,7 +549,7 @@ mod state_runtime_test {
     }
 
     impl Command for SetUnregisteredComputeCommand {
-        fn run(&self, _dep: Dep, updater: Updater) {
+        fn run(&self, _snap: CommandSnapshot, updater: Updater) {
             // Intentionally send an update for a compute type that was never registered.
             updater.set(UnregisteredCompute { value: self.value });
         }
@@ -529,10 +570,16 @@ mod state_runtime_test {
     }
 
     /// A compute that tracks how many times it has been executed.
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     struct ExecutionCountingCompute {
         value: i32,
         execution_count: Arc<AtomicUsize>,
+    }
+
+    impl SnapshotClone for ExecutionCountingCompute {
+        fn clone_boxed(&self) -> Option<Box<dyn Any + Send>> {
+            Some(Box::new(self.clone()))
+        }
     }
 
     impl State for ExecutionCountingCompute {
@@ -617,5 +664,79 @@ mod state_runtime_test {
         assert_eq!(execution_count.load(Ordering::SeqCst), 2);
         // Value should be based on the last state value (5 * 10 = 50)
         assert_eq!(ctx.cached::<ExecutionCountingCompute>().unwrap().value, 50);
+    }
+
+    /// Test that verifies command receives snapshot with correct state/compute values.
+    ///
+    /// This test ensures that:
+    /// 1. Commands receive a CommandSnapshot instead of Dep
+    /// 2. CommandSnapshot provides access to state via snap.state::<T>()
+    /// 3. CommandSnapshot provides access to compute via snap.compute::<T>()
+    /// 4. Commands can update compute values via Updater::set()
+    #[derive(Debug)]
+    struct SnapshotReadingCommand {
+        expected_state_value: i32,
+        expected_compute_value: i32,
+        shared_success: Arc<AtomicUsize>,
+    }
+
+    impl Command for SnapshotReadingCommand {
+        fn run(&self, snap: CommandSnapshot, updater: Updater) {
+            // Read state from snapshot
+            let state: &DummyState = snap.state();
+            assert_eq!(state.base_value, self.expected_state_value);
+
+            // Read compute from snapshot
+            let compute: &DummyComputeA = snap.compute();
+            assert_eq!(compute.doubled, self.expected_compute_value);
+
+            // Signal success
+            self.shared_success.fetch_add(1, Ordering::SeqCst);
+
+            // Update another compute via updater
+            updater.set(DummyComputeFromCommand {
+                value: state.base_value * 100,
+            });
+        }
+    }
+
+    #[test]
+    fn test_command_reads_from_snapshot() {
+        let success = Arc::new(AtomicUsize::new(0));
+
+        let mut ctx = StateCtx::new();
+
+        // Add state with initial value 5
+        ctx.add_state(DummyState { base_value: 5 });
+
+        // Add compute (will compute doubled = 10)
+        ctx.record_compute(DummyComputeA { doubled: 0 });
+
+        // Add target compute for command to update
+        ctx.record_compute(DummyComputeFromCommand { value: 0 });
+
+        // Run initial compute
+        ctx.run_all_dirty();
+        ctx.sync_computes();
+
+        // Verify compute ran correctly
+        assert_eq!(ctx.cached::<DummyComputeA>().unwrap().doubled, 10);
+
+        // Register command expecting state.base_value=5, compute.doubled=10
+        ctx.record_command(SnapshotReadingCommand {
+            expected_state_value: 5,
+            expected_compute_value: 10,
+            shared_success: Arc::clone(&success),
+        });
+
+        // Dispatch command
+        ctx.dispatch::<SnapshotReadingCommand>();
+        ctx.sync_computes();
+
+        // Verify command ran successfully and assertions passed
+        assert_eq!(success.load(Ordering::SeqCst), 1);
+
+        // Verify command updated the compute via updater
+        assert_eq!(ctx.cached::<DummyComputeFromCommand>().unwrap().value, 500);
     }
 }

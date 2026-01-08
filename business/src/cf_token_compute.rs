@@ -33,7 +33,8 @@
 use std::any::Any;
 
 use collects_states::{
-    Command, Compute, ComputeDeps, Dep, State, Updater, assign_impl, state_assign_impl,
+    Command, CommandSnapshot, Compute, ComputeDeps, Dep, SnapshotClone, State, Updater,
+    assign_impl, state_assign_impl,
 };
 use log::info;
 
@@ -47,6 +48,12 @@ pub struct CFTokenInput {
     /// - `None` means "no change intended / unset".
     /// - `Some("")` (or whitespace) will be treated as "clear token" by the command.
     pub token: Option<String>,
+}
+
+impl SnapshotClone for CFTokenInput {
+    fn clone_boxed(&self) -> Option<Box<dyn Any + Send>> {
+        Some(Box::new(self.clone()))
+    }
 }
 
 impl State for CFTokenInput {
@@ -90,9 +97,15 @@ impl CFTokenResult {
 ///
 /// This is intentionally a `Compute` with a no-op `compute()` so it can be read through
 /// the normal caching path and updated via `Updater::set(...)` from a command.
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone)]
 pub struct CFTokenCompute {
     pub result: CFTokenResult,
+}
+
+impl SnapshotClone for CFTokenCompute {
+    fn clone_boxed(&self) -> Option<Box<dyn Any + Send>> {
+        Some(Box::new(self.clone()))
+    }
 }
 
 impl CFTokenCompute {
@@ -151,8 +164,8 @@ impl State for CFTokenCompute {
 pub struct SetCFTokenCommand;
 
 impl Command for SetCFTokenCommand {
-    fn run(&self, deps: Dep, updater: Updater) {
-        let input = deps.get_state_ref::<CFTokenInput>();
+    fn run(&self, snap: CommandSnapshot, updater: Updater) {
+        let input: &CFTokenInput = snap.state();
 
         let token = input
             .token

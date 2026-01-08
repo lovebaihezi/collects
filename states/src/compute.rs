@@ -6,14 +6,14 @@ use std::{
 use log::debug;
 use ustr::Ustr;
 
-use crate::{Dep, Updater};
+use crate::{Dep, SnapshotClone, Updater};
 
 pub type ComputeDeps = (&'static [TypeId], &'static [TypeId]);
 
 /// The `Compute` trait represents a derived state that depends on other states or computes.
 ///
 /// It encapsulates logic to calculate its value based on dependencies.
-pub trait Compute: Debug + Any {
+pub trait Compute: Debug + Any + SnapshotClone {
     /// Performs the computation logic.
     ///
     /// # Arguments

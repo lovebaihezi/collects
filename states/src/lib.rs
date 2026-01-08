@@ -914,4 +914,121 @@ mod state_runtime_test {
         // 5. Verify state was updated
         assert_eq!(ctx.cached::<DummyComputeFromCommand>().unwrap().value, 42);
     }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // ASYNC DEPENDENCY VERIFICATION TESTS
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// Verifies that tokio, tokio_util, and async-trait dependencies are
+    /// correctly integrated and functional for future async migration.
+    ///
+    /// This test confirms:
+    /// 1. CancellationToken from tokio_util::sync works correctly
+    /// 2. tokio runtime can be created and used
+    /// 3. async-trait macro is available for future async trait definitions
+    mod async_deps_tests {
+        use std::sync::{
+            Arc,
+            atomic::{AtomicBool, Ordering},
+        };
+        use tokio_util::sync::CancellationToken;
+
+        /// Tests that CancellationToken can be created and cancelled.
+        #[test]
+        fn test_cancellation_token_basic() {
+            let token = CancellationToken::new();
+            assert!(!token.is_cancelled());
+
+            token.cancel();
+            assert!(token.is_cancelled());
+        }
+
+        /// Tests that child tokens are cancelled when parent is cancelled.
+        #[test]
+        fn test_cancellation_token_hierarchy() {
+            let parent = CancellationToken::new();
+            let child = parent.child_token();
+
+            assert!(!parent.is_cancelled());
+            assert!(!child.is_cancelled());
+
+            // Cancelling parent should cancel child
+            parent.cancel();
+
+            assert!(parent.is_cancelled());
+            assert!(child.is_cancelled());
+        }
+
+        /// Tests that cancelling child does not cancel parent.
+        #[test]
+        fn test_cancellation_token_child_independence() {
+            let parent = CancellationToken::new();
+            let child = parent.child_token();
+
+            // Cancelling child should NOT cancel parent
+            child.cancel();
+
+            assert!(!parent.is_cancelled());
+            assert!(child.is_cancelled());
+        }
+
+        /// Tests async cancellation with tokio runtime.
+        #[tokio::test]
+        async fn test_cancellation_token_async() {
+            let token = CancellationToken::new();
+            let token_clone = token.clone();
+            let completed = Arc::new(AtomicBool::new(false));
+            let completed_clone = Arc::clone(&completed);
+
+            // Spawn a task that waits for cancellation
+            let handle = tokio::spawn(async move {
+                tokio::select! {
+                    () = token_clone.cancelled() => {
+                        // Task was cancelled
+                        completed_clone.store(true, Ordering::SeqCst);
+                    }
+                }
+            });
+
+            // Cancel the token
+            token.cancel();
+
+            // Wait for the task to complete
+            handle.await.expect("task should complete");
+
+            assert!(completed.load(Ordering::SeqCst));
+        }
+
+        /// Tests that async-trait macro is available and functional.
+        #[async_trait::async_trait]
+        trait AsyncTestTrait: Send + Sync {
+            async fn do_work(&self) -> i32;
+        }
+
+        struct TestImpl {
+            value: i32,
+        }
+
+        #[async_trait::async_trait]
+        impl AsyncTestTrait for TestImpl {
+            async fn do_work(&self) -> i32 {
+                self.value * 2
+            }
+        }
+
+        #[tokio::test]
+        async fn test_async_trait_works() {
+            let impl_obj = TestImpl { value: 21 };
+            let result = impl_obj.do_work().await;
+            assert_eq!(result, 42);
+        }
+
+        /// Tests that boxed async trait objects work correctly.
+        #[tokio::test]
+        async fn test_async_trait_boxed() {
+            let impl_obj: Box<dyn AsyncTestTrait> = Box::new(TestImpl { value: 10 });
+            let result = impl_obj.do_work().await;
+            assert_eq!(result, 20);
+        }
+    }
 }

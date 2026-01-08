@@ -1094,11 +1094,14 @@ dependencies = [
 name = "collects-states"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "chrono",
  "flume",
  "log",
  "serde",
  "thiserror 2.0.17",
+ "tokio",
+ "tokio-util",
  "ustr",
 ]
 
@@ -6019,6 +6022,7 @@ dependencies = [
  "bytes",
  "futures-core",
  "futures-sink",
+ "futures-util",
  "pin-project-lite",
  "tokio",
 ]

@@ -328,7 +328,7 @@ Any state intended to be updated from async completion must:
 - [x] Migrate `ToggleApiStatusCommand` to confirm pipeline
 
 ### Phase 3 — Full Async Migration
-- [ ] Add `tokio`, `tokio_util`, `async-trait` dependencies to `collects/states`
+- [x] Add `tokio`, `tokio_util`, `async-trait` dependencies to `collects/states`
 - [ ] Implement `TaskHandle` with `CancellationToken`
 - [ ] Implement `TaskId` type
 - [ ] Add `JoinSet` to `StateCtx` for task management

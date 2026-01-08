@@ -131,6 +131,13 @@ pub trait SqlStorage: Clone + Send + Sync + 'static {
         tag_id: uuid::Uuid,
     ) -> impl Future<Output = Result<bool, SqlStorageError>> + Send;
 
+    fn tags_update(
+        &self,
+        user_id: uuid::Uuid,
+        tag_id: uuid::Uuid,
+        input: TagUpdate,
+    ) -> impl Future<Output = Result<Option<TagRow>, SqlStorageError>> + Send;
+
     fn content_tags_attach(
         &self,
         content_id: uuid::Uuid,
@@ -384,6 +391,12 @@ pub struct TagCreate {
     pub user_id: uuid::Uuid,
     pub name: String,
     pub color: Option<String>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct TagUpdate {
+    pub name: Option<String>,
+    pub color: Option<Option<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1105,6 +1118,48 @@ impl SqlStorage for PgStorage {
         .map_err(|e| SqlStorageError::Db(e.to_string()))?;
 
         Ok(res.rows_affected() > 0)
+    }
+
+    async fn tags_update(
+        &self,
+        user_id: uuid::Uuid,
+        tag_id: uuid::Uuid,
+        input: TagUpdate,
+    ) -> Result<Option<TagRow>, SqlStorageError> {
+        // Build dynamic update query based on provided fields
+        let rec = sqlx::query!(
+            r#"
+            UPDATE tags
+            SET
+                name = COALESCE($3, name),
+                color = CASE WHEN $4 THEN $5 ELSE color END
+            WHERE id = $1 AND user_id = $2
+            RETURNING id, user_id, name, color, created_at
+            "#,
+            tag_id,
+            user_id,
+            input.name,
+            input.color.is_some(), // $4: whether to update color
+            input.color.flatten(), // $5: the new color value (can be NULL)
+        )
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| {
+            if let sqlx::Error::Database(db) = &e
+                && db.constraint() == Some("tags_unique_per_user")
+            {
+                return SqlStorageError::Conflict;
+            }
+            SqlStorageError::Db(e.to_string())
+        })?;
+
+        Ok(rec.map(|rec| TagRow {
+            id: rec.id,
+            user_id: rec.user_id,
+            name: rec.name,
+            color: rec.color,
+            created_at: rec.created_at,
+        }))
     }
 
     async fn content_tags_attach(

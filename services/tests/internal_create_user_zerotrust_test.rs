@@ -18,7 +18,7 @@ use collects_services::{
         ContentStatus, ContentsInsert, ContentsListParams, ContentsUpdate, GroupCreate,
         GroupShareCreateForLink, GroupShareCreateForUser, GroupStatus, GroupUpdate,
         GroupsListParams, ShareLinkCreate, ShareLinkRow, SqlStorage, SqlStorageError, TagCreate,
-        TagRow,
+        TagRow, TagUpdate,
     },
     internal,
     users::AppState,
@@ -163,6 +163,15 @@ impl SqlStorage for MockSqlStorage {
         _tag_id: uuid::Uuid,
     ) -> Result<bool, SqlStorageError> {
         Ok(false)
+    }
+
+    async fn tags_update(
+        &self,
+        _user_id: uuid::Uuid,
+        _tag_id: uuid::Uuid,
+        _input: TagUpdate,
+    ) -> Result<Option<TagRow>, SqlStorageError> {
+        Ok(None)
     }
 
     async fn content_tags_attach(

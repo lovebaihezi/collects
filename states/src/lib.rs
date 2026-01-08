@@ -982,12 +982,9 @@ mod state_runtime_test {
 
             // Spawn a task that waits for cancellation
             let handle = tokio::spawn(async move {
-                tokio::select! {
-                    () = token_clone.cancelled() => {
-                        // Task was cancelled
-                        completed_clone.store(true, Ordering::SeqCst);
-                    }
-                }
+                token_clone.cancelled().await;
+                // Task was cancelled
+                completed_clone.store(true, Ordering::SeqCst);
             });
 
             // Cancel the token

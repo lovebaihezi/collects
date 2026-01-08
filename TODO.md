@@ -1,13 +1,15 @@
-# TODO: Migration plan — async-safe command execution (eframe/egui) + snapshot deps
+# TODO: Migration plan — Full async architecture (eframe/egui) + Structured Concurrency
 
-This TODO tracks a staged refactor to make `collects/ui` + `collects/states` compatible with:
-- running async work concurrently (including WASM)
-- eliminating command access to live mutable references
-- executing commands deterministically at **end-of-frame**
-- using **snapshot/clone** inputs for Commands (and later for Computes if desired)
-- preserving UI-only mutable state for egui-affine types (e.g. `egui::TextureHandle`)
+This TODO tracks an **aggressive refactor** to make `collects/ui` + `collects/states` fully async with:
+- **Structured Concurrency** with parent-child task relationships
+- **CancellationToken** pattern for cooperative task cancellation
+- Full async Compute and Command traits
+- **reqwest** replacing ehttp for HTTP requests
+- **flume** in async mode for channels
+- WASM compatibility via `tokio` current-thread runtime
+- No backward compatibility — clean break from sync patterns
 
-> Migration starts in `collects/states` (trait changes first), then adds one command queue flush in UI.
+> Migration is aggressive: all computes/commands become async, sync APIs removed.
 
 ---
 
@@ -23,27 +25,74 @@ Additionally, `StateCtx::dispatch::<T>()` executes commands immediately in the c
 2. **Commands read only snapshots (owned clones) of state/compute.**
 3. Commands produce updates via **queued events** (existing `Updater` channel is acceptable).
 4. Commands are enqueued and executed **at end-of-frame**.
-5. Async jobs are allowed to run concurrently; completions may arrive out-of-order → apply only if the request is still current.
-6. WASM support: no assumption of threads; runtime separation is logical.
+5. **Structured Concurrency** — StateCtx owns task lifecycle, auto-cancels superseded tasks.
+6. WASM support: `tokio` current-thread runtime, no thread assumptions.
 
 ---
 
 ## Core design decisions
 
-### 1) Concurrency + request validation
-- `TypeId` alone is not a sufficient request id (multiple in-flight requests of the same compute type share the same `TypeId`).
-- Use `(TypeId, generation)` as request identity:
-  - `generation: u64` monotonically increases per compute type.
-  - Store current `generation` in the compute’s state (`Loading { generation, ... }`).
-  - Async completion sends `(TypeId, generation, result)`; UI applies only if `generation` matches.
+### 1) Structured Concurrency + CancellationToken (Recommended Pattern)
 
-### 2) Command storage
-- Use `Box<dyn Command>` in the command queue for memory friendliness.
+**Architecture:**
+- `StateCtx` acts as **parent scope**, owns a `JoinSet` of active tasks
+- Each spawned task gets a `CancellationToken` from `tokio_util::sync`
+- Spawning a new task for the same compute type **auto-cancels** the previous token
+- Clean shutdown: `StateCtx::shutdown()` cancels all tokens and awaits completion
 
-### 3) Snapshot cloning
+**How it separates concerns:**
+- **Framework (states crate)**: Manages `TaskHandle` lifecycle, abort signals, cleanup
+- **Business code**: Just calls `ctx.spawn_task::<ApiStatus>(async { ... })` — no abort logic needed
+- **Async callback**: Framework auto-checks `token.is_cancelled()` before applying results
+
+**Benefits:**
+- Business compute stays pure — no generation/abort tracking in business code
+- StateCtx can kill any task type (HTTP, IO, long computations)
+- Works for network, IO, CPU-bound work equally
+- WASM-friendly (no threads required)
+- Matches how Tokio, sqlx, sea-orm, and gRPC work
+
+### 2) Full Async Traits
+
+**Compute trait (async):**
+```rust
+#[async_trait]
+pub trait Compute: Debug + Any + SnapshotClone + Send + Sync {
+    async fn compute(&self, deps: Dep, updater: Updater, cancel: CancellationToken);
+    fn deps(&self) -> ComputeDeps;
+}
+```
+
+**Command trait (async):**
+```rust
+#[async_trait]
+pub trait Command: Debug + Any + Send + Sync {
+    async fn run(&self, snap: CommandSnapshot, updater: Updater, cancel: CancellationToken);
+}
+```
+
+### 3) TaskHandle abstraction
+
+```rust
+pub struct TaskHandle {
+    id: TaskId,
+    cancel_token: CancellationToken,
+    join_handle: JoinHandle<()>,
+}
+
+impl StateCtx {
+    /// Spawns task, auto-cancels previous task for same compute type
+    pub fn spawn_task<T: Compute>(&mut self, f: impl Future + Send + 'static) -> TaskHandle;
+    
+    /// Cancel all tasks and await completion
+    pub async fn shutdown(&mut self);
+}
+```
+
+### 4) Snapshot cloning (unchanged)
 - Commands must not borrow state by reference.
 - Business state should be made clone-friendly via `Arc<...>`, `Ustr`, small `Copy` fields, etc.
-- UI-affine state (e.g. `TextureHandle`) remains UI-owned and mutated only on UI thread via `state_ctx.update()` / `state_ctx.state_mut()`.
+- UI-affine state (e.g. `TextureHandle`) remains UI-owned and mutated only on UI thread.
 
 ---
 
@@ -119,61 +168,148 @@ Suggested first command to migrate:
 
 ---
 
-## Phase 3 — Async runtime abstraction (WASM-compatible)
+## Phase 3 — Full Async Migration (AGGRESSIVE - NO BACKWARD COMPAT)
 
-> Keep runtime design compatible with WASM: threads are not guaranteed.
+> This phase converts everything to async. No sync APIs preserved.
 
-### 3.1 Add `Spawner` abstraction
-Introduce a minimal interface exposed to commands:
-- `spawner.spawn(async move { ... })`
+### 3.1 Add `tokio` + `tokio_util` dependencies
 
-On native:
-- can be backed by tokio (current-thread or multi-thread)
-On wasm:
-- tokio current-thread + wasm-friendly spawn mechanism
+In `collects/states/Cargo.toml`:
+```toml
+tokio = { version = "1", features = ["rt", "sync", "macros"] }
+tokio_util = { version = "0.7", features = ["rt"] }
+async-trait = "0.1"
+```
 
-### 3.2 Ensure all async tasks send results through `Updater`
-Async task completion must:
-- send Compute updates via `Updater::set(...)` (preferred),
-- or send State updates via `Updater::set_state(...)` only for `Send` state.
+### 3.2 Implement TaskHandle + CancellationToken
+
+Add to `collects/states`:
+- `TaskHandle` struct with `CancellationToken` from `tokio_util::sync`
+- `TaskId` type (newtype over `u64` or `TypeId + generation`)
+- `JoinSet` for managing spawned tasks
+
+### 3.3 Update StateCtx for task management
+
+```rust
+impl StateCtx {
+    /// Spawns async task, auto-cancels previous task for same compute type
+    pub fn spawn_task<T: Compute>(&mut self, future: impl Future + Send + 'static) -> TaskHandle;
+    
+    /// Cancel specific task
+    pub fn cancel_task(&mut self, handle: &TaskHandle);
+    
+    /// Cancel all tasks and await completion (for shutdown)
+    pub async fn shutdown(&mut self);
+}
+```
+
+### 3.4 Convert `Compute` trait to async
+
+```rust
+#[async_trait]
+pub trait Compute: Debug + Any + SnapshotClone + Send + Sync {
+    async fn compute(&self, deps: Dep, updater: Updater, cancel: CancellationToken);
+    fn deps(&self) -> ComputeDeps;
+    fn as_any(&self) -> &dyn Any;
+    fn assign_box(&mut self, new_self: Box<dyn Any + Send>);
+}
+```
+
+### 3.5 Convert `Command` trait to async
+
+```rust
+#[async_trait]
+pub trait Command: Debug + Any + Send + Sync {
+    async fn run(&self, snap: CommandSnapshot, updater: Updater, cancel: CancellationToken);
+}
+```
 
 ---
 
-## Phase 4 — Request generation + out-of-order completion safety
+## Phase 4 — Replace ehttp with reqwest
 
-For each compute that can have concurrent requests:
-- Add `generation: u64` and store it in compute (`Loading { generation }`).
-- When command starts a fetch:
-  - increment generation (in compute update) and emit `Loading { generation }`
-  - spawn async capturing generation
-- On completion:
-  - emit `Loaded { generation, ... }` (or include generation in the compute payload)
-- In the UI thread apply step:
-  - ignore completion if generation != current expected generation
+> reqwest is async-native and works with tokio. ehttp uses callbacks.
 
-Notes:
-- If we keep “updates are whole compute values”, the “ignore old updates” check needs to happen either:
-  - inside the compute payload application logic, or
-  - before calling `Updater::set` (but async tasks won’t know current generation), or
-  - by encoding generation into compute and letting UI treat newer generation as authoritative.
+### 4.1 Update dependencies
 
-Preferred: encode generation into the compute; UI simply displays latest generation state.
+In `collects/business/Cargo.toml`:
+```toml
+# Remove
+ehttp = { ... }
+
+# Add
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+```
+
+### 4.2 Migrate all HTTP calls
+
+Convert all `ehttp::fetch(request, |result| { ... })` to:
+```rust
+async fn fetch_api_status(cancel: CancellationToken) -> Result<ApiResponse, Error> {
+    tokio::select! {
+        _ = cancel.cancelled() => Err(Error::Cancelled),
+        result = reqwest::get(url).await => {
+            // handle result
+        }
+    }
+}
+```
+
+### 4.3 Update affected computes/commands
+- `ApiStatus` compute
+- `InternalApiStatus` compute  
+- `LoginCommand`
+- `ValidateTokenCommand`
+- `CreateUserCommand`
+- `RefreshInternalUsersCommand`
 
 ---
 
-## Phase 5 — Rule checks / enforcement
+## Phase 5 — flume async mode
 
-### 5.1 Ban mutable-from-ref patterns for commands
+> Switch flume channels to async send/recv for better integration.
+
+### 5.1 Update Updater to use async flume
+
+```rust
+// Current (sync)
+pub fn set<T: Compute + 'static>(&self, value: T) {
+    self.sender.send(UpdateMessage::Compute(...)).unwrap();
+}
+
+// New (async)
+pub async fn set<T: Compute + 'static>(&self, value: T) {
+    self.sender.send_async(UpdateMessage::Compute(...)).await.unwrap();
+}
+```
+
+### 5.2 Update sync_computes to async
+
+```rust
+impl StateCtx {
+    pub async fn sync_computes(&mut self) {
+        while let Ok(msg) = self.receiver.try_recv() {
+            // ... apply updates
+        }
+    }
+}
+```
+
+---
+
+## Phase 6 — Rule checks / enforcement
+
+### 6.1 Ban mutable-from-ref patterns for commands
 Add CI checks (or deny-lint conventions) to prevent:
 - `Dep::state_mut`
 - any command implementation calling `state_ctx.state_mut()` (commands should not have a `StateCtx` anyway in the new signature)
 
-### 5.2 Keep UI-only mutation explicit
+### 6.2 Keep UI-only mutation explicit
 Allow `state_ctx.state_mut::<T>()` / `state_ctx.update::<T>()`:
 - only in `collects/ui/**`
 - only for UI-affine state like `TextureHandle` and text edit bindings
 
-### 5.3 Document “Send-safe state” boundary
+### 6.3 Document “Send-safe state” boundary
 Any state intended to be updated from async completion must:
 - implement `State::assign_box(...)`
 - be `Send`
@@ -181,16 +317,49 @@ Any state intended to be updated from async completion must:
 
 ---
 
-## Initial checklist (do this next)
+## Migration checklist — Full Async Architecture
 
+### Phase 1-2 (COMPLETED)
 - [x] Add snapshot types to `collects/states`
 - [x] Update `Command` trait signature to accept snapshots
-- [x] Update `StateCtx::dispatch` or replace with queue-friendly API (do not execute immediately)
+- [x] Update `StateCtx::dispatch` or replace with queue-friendly API
 - [x] Remove or restrict `Dep::state_mut`
 - [x] Implement UI command queue and flush once per frame
-- [ ] Migrate `ToggleApiStatusCommand` to confirm pipeline
-- [ ] Add generation-based request tracking on one async compute as example
-- [ ] Add automated rule checks to prevent regressions
+- [x] Migrate `ToggleApiStatusCommand` to confirm pipeline
+
+### Phase 3 — Full Async Migration
+- [ ] Add `tokio`, `tokio_util`, `async-trait` dependencies to `collects/states`
+- [ ] Implement `TaskHandle` with `CancellationToken`
+- [ ] Implement `TaskId` type
+- [ ] Add `JoinSet` to `StateCtx` for task management
+- [ ] Add `StateCtx::spawn_task<T>()` method
+- [ ] Add `StateCtx::cancel_task()` method
+- [ ] Add `StateCtx::shutdown()` async method
+- [ ] Convert `Compute` trait to async
+- [ ] Convert `Command` trait to async
+- [ ] Update all existing computes to async
+- [ ] Update all existing commands to async
+
+### Phase 4 — Replace ehttp with reqwest
+- [ ] Remove `ehttp` dependency from `collects/business`
+- [ ] Add `reqwest` dependency with async features
+- [ ] Migrate `ApiStatus` compute HTTP calls
+- [ ] Migrate `InternalApiStatus` compute HTTP calls
+- [ ] Migrate `LoginCommand` HTTP calls
+- [ ] Migrate `ValidateTokenCommand` HTTP calls
+- [ ] Migrate `CreateUserCommand` HTTP calls
+- [ ] Migrate `RefreshInternalUsersCommand` HTTP calls
+
+### Phase 5 — flume async mode
+- [ ] Update `Updater::set()` to async
+- [ ] Update `Updater::set_state()` to async
+- [ ] Update `StateCtx::sync_computes()` to async
+- [ ] Update UI frame loop to use async sync
+
+### Phase 6 — Rule checks / enforcement
+- [ ] Add CI checks to ban `Dep::state_mut`
+- [ ] Add CI checks to enforce async trait usage
+- [ ] Document Send-safe state boundary
 
 ---
 

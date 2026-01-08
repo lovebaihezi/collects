@@ -514,15 +514,16 @@ These map to `content_groups` and `content_group_items`.
 
 ---
 
-### 6) Tags
+### 6) Tags ✅
 Maps to `tags` and `content_tags`.
 
-- `GET /v1/tags`
-- `POST /v1/tags`
-- `PATCH /v1/tags/:id`
-- `DELETE /v1/tags/:id`
-- `POST /v1/contents/:id/tags` (attach)
-- `DELETE /v1/contents/:id/tags/:tag_id` (detach)
+- [x] `GET /v1/tags`
+- [x] `POST /v1/tags`
+- [x] `PATCH /v1/tags/:id`
+- [x] `DELETE /v1/tags/:id`
+- [x] `POST /v1/contents/:id/tags` (attach)
+- [x] `DELETE /v1/contents/:id/tags/:tag_id` (detach)
+- [x] `GET /v1/contents/:id/tags` (list tags for content)
 
 ---
 

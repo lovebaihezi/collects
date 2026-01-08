@@ -11,7 +11,7 @@ use axum::{
     extract::{Extension, Path, Query, Request, State},
     http::{HeaderName, HeaderValue, StatusCode},
     response::IntoResponse,
-    routing::{any, get, patch, post},
+    routing::{any, delete, get, patch, post},
 };
 use collects_utils::version_info::{RuntimeEnv, format_version_for_runtime_env};
 use opentelemetry::{global, propagation::Extractor};
@@ -73,6 +73,24 @@ where
         .route(
             "/contents/{id}/view-url",
             post(v1_contents_view_url::<S, U>),
+        )
+        // Content-Tags endpoints
+        .route(
+            "/contents/{id}/tags",
+            get(v1_content_tags_list::<S, U>).post(v1_content_tags_attach::<S, U>),
+        )
+        .route(
+            "/contents/{id}/tags/{tag_id}",
+            delete(v1_content_tags_detach::<S, U>),
+        )
+        // Tags endpoints
+        .route(
+            "/tags",
+            get(v1_tags_list::<S, U>).post(v1_tags_create::<S, U>),
+        )
+        .route(
+            "/tags/{id}",
+            patch(v1_tags_update::<S, U>).delete(v1_tags_delete::<S, U>),
         );
 
     Router::new()
@@ -344,6 +362,61 @@ struct V1ContentsUpdateRequest {
     description: Option<Option<String>>,
     #[serde(default)]
     visibility: Option<String>,
+}
+
+// =============================================================================
+// Tags API Types
+// =============================================================================
+
+/// A tag item in API responses.
+#[derive(Debug, Serialize)]
+struct V1TagItem {
+    id: String,
+    name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    color: Option<String>,
+    created_at: String,
+}
+
+impl From<database::TagRow> for V1TagItem {
+    fn from(row: database::TagRow) -> Self {
+        Self {
+            id: row.id.to_string(),
+            name: row.name,
+            color: row.color,
+            created_at: row.created_at.to_rfc3339(),
+        }
+    }
+}
+
+/// Response for listing tags.
+#[derive(Debug, Serialize)]
+struct V1TagsListResponse {
+    items: Vec<V1TagItem>,
+    total: usize,
+}
+
+/// Request body for creating a tag.
+#[derive(Debug, Deserialize)]
+struct V1TagCreateRequest {
+    name: String,
+    #[serde(default)]
+    color: Option<String>,
+}
+
+/// Request body for updating a tag.
+#[derive(Debug, Deserialize)]
+struct V1TagUpdateRequest {
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    color: Option<Option<String>>,
+}
+
+/// Request body for attaching tags to content.
+#[derive(Debug, Deserialize)]
+struct V1ContentTagsAttachRequest {
+    tag_id: String,
 }
 
 /// Generic error response.
@@ -762,6 +835,583 @@ where
     }
 }
 
+// =============================================================================
+// Tags API Handlers
+// =============================================================================
+
+/// List tags for the authenticated user.
+///
+/// GET /v1/tags
+async fn v1_tags_list<S, U>(
+    State(state): State<AppState<S, U>>,
+    auth: RequireAuth,
+) -> impl IntoResponse
+where
+    S: SqlStorage,
+    U: UserStorage,
+{
+    // Get user ID from username
+    let user = match state.user_storage.get_user(auth.username()).await {
+        Ok(Some(user)) => user,
+        Ok(None) => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(V1ErrorResponse::not_found("User not found")),
+            )
+                .into_response();
+        }
+        Err(e) => {
+            tracing::error!("Failed to get user: {}", e);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(V1ErrorResponse::internal_error("Failed to get user")),
+            )
+                .into_response();
+        }
+    };
+
+    match state.sql_storage.tags_list_for_user(user.id).await {
+        Ok(rows) => {
+            let items: Vec<V1TagItem> = rows.into_iter().map(V1TagItem::from).collect();
+            let total = items.len();
+            (StatusCode::OK, Json(V1TagsListResponse { items, total })).into_response()
+        }
+        Err(e) => {
+            tracing::error!("Failed to list tags: {:?}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(V1ErrorResponse::internal_error("Failed to list tags")),
+            )
+                .into_response()
+        }
+    }
+}
+
+/// Create a new tag.
+///
+/// POST /v1/tags
+async fn v1_tags_create<S, U>(
+    State(state): State<AppState<S, U>>,
+    auth: RequireAuth,
+    Json(request): Json<V1TagCreateRequest>,
+) -> impl IntoResponse
+where
+    S: SqlStorage,
+    U: UserStorage,
+{
+    // Get user ID from username
+    let user = match state.user_storage.get_user(auth.username()).await {
+        Ok(Some(user)) => user,
+        Ok(None) => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(V1ErrorResponse::not_found("User not found")),
+            )
+                .into_response();
+        }
+        Err(e) => {
+            tracing::error!("Failed to get user: {}", e);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(V1ErrorResponse::internal_error("Failed to get user")),
+            )
+                .into_response();
+        }
+    };
+
+    // Validate tag name
+    let name = request.name.trim();
+    if name.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(V1ErrorResponse::bad_request("Tag name cannot be empty")),
+        )
+            .into_response();
+    }
+
+    let input = database::TagCreate {
+        user_id: user.id,
+        name: name.to_string(),
+        color: request.color,
+    };
+
+    match state.sql_storage.tags_create(input).await {
+        Ok(row) => (StatusCode::CREATED, Json(V1TagItem::from(row))).into_response(),
+        Err(SqlStorageError::Conflict) => (
+            StatusCode::CONFLICT,
+            Json(V1ErrorResponse {
+                error: "conflict".to_string(),
+                message: "A tag with this name already exists".to_string(),
+            }),
+        )
+            .into_response(),
+        Err(e) => {
+            tracing::error!("Failed to create tag: {:?}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(V1ErrorResponse::internal_error("Failed to create tag")),
+            )
+                .into_response()
+        }
+    }
+}
+
+/// Update a tag.
+///
+/// PATCH /v1/tags/:id
+async fn v1_tags_update<S, U>(
+    State(state): State<AppState<S, U>>,
+    auth: RequireAuth,
+    Path(id): Path<String>,
+    Json(request): Json<V1TagUpdateRequest>,
+) -> impl IntoResponse
+where
+    S: SqlStorage,
+    U: UserStorage,
+{
+    // Get user ID from username
+    let user = match state.user_storage.get_user(auth.username()).await {
+        Ok(Some(user)) => user,
+        Ok(None) => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(V1ErrorResponse::not_found("User not found")),
+            )
+                .into_response();
+        }
+        Err(e) => {
+            tracing::error!("Failed to get user: {}", e);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(V1ErrorResponse::internal_error("Failed to get user")),
+            )
+                .into_response();
+        }
+    };
+
+    // Parse tag ID
+    let tag_id = match uuid::Uuid::parse_str(&id) {
+        Ok(id) => id,
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(V1ErrorResponse::bad_request("Invalid tag ID format")),
+            )
+                .into_response();
+        }
+    };
+
+    // Validate name if provided
+    if let Some(ref name) = request.name
+        && name.trim().is_empty()
+    {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(V1ErrorResponse::bad_request("Tag name cannot be empty")),
+        )
+            .into_response();
+    }
+
+    let input = database::TagUpdate {
+        name: request.name.map(|n| n.trim().to_string()),
+        color: request.color,
+    };
+
+    match state.sql_storage.tags_update(user.id, tag_id, input).await {
+        Ok(Some(row)) => (StatusCode::OK, Json(V1TagItem::from(row))).into_response(),
+        Ok(None) => (
+            StatusCode::NOT_FOUND,
+            Json(V1ErrorResponse::not_found("Tag not found")),
+        )
+            .into_response(),
+        Err(SqlStorageError::Conflict) => (
+            StatusCode::CONFLICT,
+            Json(V1ErrorResponse {
+                error: "conflict".to_string(),
+                message: "A tag with this name already exists".to_string(),
+            }),
+        )
+            .into_response(),
+        Err(e) => {
+            tracing::error!("Failed to update tag: {:?}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(V1ErrorResponse::internal_error("Failed to update tag")),
+            )
+                .into_response()
+        }
+    }
+}
+
+/// Delete a tag.
+///
+/// DELETE /v1/tags/:id
+async fn v1_tags_delete<S, U>(
+    State(state): State<AppState<S, U>>,
+    auth: RequireAuth,
+    Path(id): Path<String>,
+) -> impl IntoResponse
+where
+    S: SqlStorage,
+    U: UserStorage,
+{
+    // Get user ID from username
+    let user = match state.user_storage.get_user(auth.username()).await {
+        Ok(Some(user)) => user,
+        Ok(None) => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(V1ErrorResponse::not_found("User not found")),
+            )
+                .into_response();
+        }
+        Err(e) => {
+            tracing::error!("Failed to get user: {}", e);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(V1ErrorResponse::internal_error("Failed to get user")),
+            )
+                .into_response();
+        }
+    };
+
+    // Parse tag ID
+    let tag_id = match uuid::Uuid::parse_str(&id) {
+        Ok(id) => id,
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(V1ErrorResponse::bad_request("Invalid tag ID format")),
+            )
+                .into_response();
+        }
+    };
+
+    match state.sql_storage.tags_delete(user.id, tag_id).await {
+        Ok(true) => StatusCode::NO_CONTENT.into_response(),
+        Ok(false) => (
+            StatusCode::NOT_FOUND,
+            Json(V1ErrorResponse::not_found("Tag not found")),
+        )
+            .into_response(),
+        Err(e) => {
+            tracing::error!("Failed to delete tag: {:?}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(V1ErrorResponse::internal_error("Failed to delete tag")),
+            )
+                .into_response()
+        }
+    }
+}
+
+// =============================================================================
+// Content-Tags API Handlers
+// =============================================================================
+
+/// List tags attached to a content item.
+///
+/// GET /v1/contents/:id/tags
+async fn v1_content_tags_list<S, U>(
+    State(state): State<AppState<S, U>>,
+    auth: RequireAuth,
+    Path(id): Path<String>,
+) -> impl IntoResponse
+where
+    S: SqlStorage,
+    U: UserStorage,
+{
+    // Get user ID from username
+    let user = match state.user_storage.get_user(auth.username()).await {
+        Ok(Some(user)) => user,
+        Ok(None) => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(V1ErrorResponse::not_found("User not found")),
+            )
+                .into_response();
+        }
+        Err(e) => {
+            tracing::error!("Failed to get user: {}", e);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(V1ErrorResponse::internal_error("Failed to get user")),
+            )
+                .into_response();
+        }
+    };
+
+    // Parse content ID
+    let content_id = match uuid::Uuid::parse_str(&id) {
+        Ok(id) => id,
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(V1ErrorResponse::bad_request("Invalid content ID format")),
+            )
+                .into_response();
+        }
+    };
+
+    // Verify user owns the content
+    match state.sql_storage.contents_get(content_id).await {
+        Ok(Some(row)) => {
+            if row.user_id != user.id {
+                return (
+                    StatusCode::NOT_FOUND,
+                    Json(V1ErrorResponse::not_found("Content not found")),
+                )
+                    .into_response();
+            }
+        }
+        Ok(None) => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(V1ErrorResponse::not_found("Content not found")),
+            )
+                .into_response();
+        }
+        Err(e) => {
+            tracing::error!("Failed to get content: {:?}", e);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(V1ErrorResponse::internal_error("Failed to get content")),
+            )
+                .into_response();
+        }
+    }
+
+    match state
+        .sql_storage
+        .content_tags_list_for_content(content_id)
+        .await
+    {
+        Ok(rows) => {
+            let items: Vec<V1TagItem> = rows.into_iter().map(V1TagItem::from).collect();
+            let total = items.len();
+            (StatusCode::OK, Json(V1TagsListResponse { items, total })).into_response()
+        }
+        Err(e) => {
+            tracing::error!("Failed to list content tags: {:?}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(V1ErrorResponse::internal_error(
+                    "Failed to list content tags",
+                )),
+            )
+                .into_response()
+        }
+    }
+}
+
+/// Attach a tag to a content item.
+///
+/// POST /v1/contents/:id/tags
+async fn v1_content_tags_attach<S, U>(
+    State(state): State<AppState<S, U>>,
+    auth: RequireAuth,
+    Path(id): Path<String>,
+    Json(request): Json<V1ContentTagsAttachRequest>,
+) -> impl IntoResponse
+where
+    S: SqlStorage,
+    U: UserStorage,
+{
+    // Get user ID from username
+    let user = match state.user_storage.get_user(auth.username()).await {
+        Ok(Some(user)) => user,
+        Ok(None) => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(V1ErrorResponse::not_found("User not found")),
+            )
+                .into_response();
+        }
+        Err(e) => {
+            tracing::error!("Failed to get user: {}", e);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(V1ErrorResponse::internal_error("Failed to get user")),
+            )
+                .into_response();
+        }
+    };
+
+    // Parse content ID
+    let content_id = match uuid::Uuid::parse_str(&id) {
+        Ok(id) => id,
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(V1ErrorResponse::bad_request("Invalid content ID format")),
+            )
+                .into_response();
+        }
+    };
+
+    // Parse tag ID
+    let tag_id = match uuid::Uuid::parse_str(&request.tag_id) {
+        Ok(id) => id,
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(V1ErrorResponse::bad_request("Invalid tag ID format")),
+            )
+                .into_response();
+        }
+    };
+
+    // Verify user owns the content
+    match state.sql_storage.contents_get(content_id).await {
+        Ok(Some(row)) => {
+            if row.user_id != user.id {
+                return (
+                    StatusCode::NOT_FOUND,
+                    Json(V1ErrorResponse::not_found("Content not found")),
+                )
+                    .into_response();
+            }
+        }
+        Ok(None) => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(V1ErrorResponse::not_found("Content not found")),
+            )
+                .into_response();
+        }
+        Err(e) => {
+            tracing::error!("Failed to get content: {:?}", e);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(V1ErrorResponse::internal_error("Failed to get content")),
+            )
+                .into_response();
+        }
+    }
+
+    match state
+        .sql_storage
+        .content_tags_attach(content_id, tag_id)
+        .await
+    {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(e) => {
+            tracing::error!("Failed to attach tag: {:?}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(V1ErrorResponse::internal_error("Failed to attach tag")),
+            )
+                .into_response()
+        }
+    }
+}
+
+/// Detach a tag from a content item.
+///
+/// DELETE /v1/contents/:id/tags/:tag_id
+async fn v1_content_tags_detach<S, U>(
+    State(state): State<AppState<S, U>>,
+    auth: RequireAuth,
+    Path((id, tag_id_str)): Path<(String, String)>,
+) -> impl IntoResponse
+where
+    S: SqlStorage,
+    U: UserStorage,
+{
+    // Get user ID from username
+    let user = match state.user_storage.get_user(auth.username()).await {
+        Ok(Some(user)) => user,
+        Ok(None) => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(V1ErrorResponse::not_found("User not found")),
+            )
+                .into_response();
+        }
+        Err(e) => {
+            tracing::error!("Failed to get user: {}", e);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(V1ErrorResponse::internal_error("Failed to get user")),
+            )
+                .into_response();
+        }
+    };
+
+    // Parse content ID
+    let content_id = match uuid::Uuid::parse_str(&id) {
+        Ok(id) => id,
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(V1ErrorResponse::bad_request("Invalid content ID format")),
+            )
+                .into_response();
+        }
+    };
+
+    // Parse tag ID
+    let tag_id = match uuid::Uuid::parse_str(&tag_id_str) {
+        Ok(id) => id,
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(V1ErrorResponse::bad_request("Invalid tag ID format")),
+            )
+                .into_response();
+        }
+    };
+
+    // Verify user owns the content
+    match state.sql_storage.contents_get(content_id).await {
+        Ok(Some(row)) => {
+            if row.user_id != user.id {
+                return (
+                    StatusCode::NOT_FOUND,
+                    Json(V1ErrorResponse::not_found("Content not found")),
+                )
+                    .into_response();
+            }
+        }
+        Ok(None) => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(V1ErrorResponse::not_found("Content not found")),
+            )
+                .into_response();
+        }
+        Err(e) => {
+            tracing::error!("Failed to get content: {:?}", e);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(V1ErrorResponse::internal_error("Failed to get content")),
+            )
+                .into_response();
+        }
+    }
+
+    match state
+        .sql_storage
+        .content_tags_detach(content_id, tag_id)
+        .await
+    {
+        Ok(true) => StatusCode::NO_CONTENT.into_response(),
+        Ok(false) => (
+            StatusCode::NOT_FOUND,
+            Json(V1ErrorResponse::not_found("Tag not attached to content")),
+        )
+            .into_response(),
+        Err(e) => {
+            tracing::error!("Failed to detach tag: {:?}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(V1ErrorResponse::internal_error("Failed to detach tag")),
+            )
+                .into_response()
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -919,6 +1569,15 @@ mod tests {
             _tag_id: uuid::Uuid,
         ) -> Result<bool, crate::database::SqlStorageError> {
             Ok(false)
+        }
+
+        async fn tags_update(
+            &self,
+            _user_id: uuid::Uuid,
+            _tag_id: uuid::Uuid,
+            _input: crate::database::TagUpdate,
+        ) -> Result<Option<crate::database::TagRow>, crate::database::SqlStorageError> {
+            Ok(None)
         }
 
         async fn content_tags_attach(
@@ -1682,5 +2341,456 @@ mod tests {
 
         // User not found in storage returns 401
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    // =========================================================================
+    // Tags API Tests
+    // =========================================================================
+
+    #[tokio::test]
+    async fn test_v1_tags_list_without_auth_returns_401() {
+        let sql_storage = MockSqlStorage { is_connected: true };
+        let user_storage = MockUserStorage::new();
+        let config = Config::new_for_test();
+        let app = routes(sql_storage, user_storage, config).await;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/tags")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn test_v1_tags_list_with_valid_auth() {
+        let sql_storage = MockSqlStorage { is_connected: true };
+        let user_storage = MockUserStorage::with_users([("testuser", "SECRET123")]);
+        let config = Config::new_for_test();
+        let app = routes(sql_storage, user_storage, config).await;
+
+        let token = generate_test_token();
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/tags")
+                    .header("Authorization", format!("Bearer {}", token))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_v1_tags_create_without_auth_returns_401() {
+        let sql_storage = MockSqlStorage { is_connected: true };
+        let user_storage = MockUserStorage::new();
+        let config = Config::new_for_test();
+        let app = routes(sql_storage, user_storage, config).await;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/tags")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"name": "test-tag"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn test_v1_tags_create_empty_name() {
+        let sql_storage = MockSqlStorage { is_connected: true };
+        let user_storage = MockUserStorage::with_users([("testuser", "SECRET123")]);
+        let config = Config::new_for_test();
+        let app = routes(sql_storage, user_storage, config).await;
+
+        let token = generate_test_token();
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/tags")
+                    .header("Authorization", format!("Bearer {}", token))
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"name": "   "}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_v1_tags_update_without_auth_returns_401() {
+        let sql_storage = MockSqlStorage { is_connected: true };
+        let user_storage = MockUserStorage::new();
+        let config = Config::new_for_test();
+        let app = routes(sql_storage, user_storage, config).await;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("PATCH")
+                    .uri("/v1/tags/00000000-0000-0000-0000-000000000001")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"name": "updated-tag"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn test_v1_tags_update_not_found() {
+        let sql_storage = MockSqlStorage { is_connected: true };
+        let user_storage = MockUserStorage::with_users([("testuser", "SECRET123")]);
+        let config = Config::new_for_test();
+        let app = routes(sql_storage, user_storage, config).await;
+
+        let token = generate_test_token();
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("PATCH")
+                    .uri("/v1/tags/00000000-0000-0000-0000-000000000001")
+                    .header("Authorization", format!("Bearer {}", token))
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"name": "updated-tag"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_v1_tags_update_invalid_id() {
+        let sql_storage = MockSqlStorage { is_connected: true };
+        let user_storage = MockUserStorage::with_users([("testuser", "SECRET123")]);
+        let config = Config::new_for_test();
+        let app = routes(sql_storage, user_storage, config).await;
+
+        let token = generate_test_token();
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("PATCH")
+                    .uri("/v1/tags/not-a-uuid")
+                    .header("Authorization", format!("Bearer {}", token))
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"name": "updated-tag"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_v1_tags_delete_without_auth_returns_401() {
+        let sql_storage = MockSqlStorage { is_connected: true };
+        let user_storage = MockUserStorage::new();
+        let config = Config::new_for_test();
+        let app = routes(sql_storage, user_storage, config).await;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri("/v1/tags/00000000-0000-0000-0000-000000000001")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn test_v1_tags_delete_not_found() {
+        let sql_storage = MockSqlStorage { is_connected: true };
+        let user_storage = MockUserStorage::with_users([("testuser", "SECRET123")]);
+        let config = Config::new_for_test();
+        let app = routes(sql_storage, user_storage, config).await;
+
+        let token = generate_test_token();
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri("/v1/tags/00000000-0000-0000-0000-000000000001")
+                    .header("Authorization", format!("Bearer {}", token))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_v1_tags_delete_invalid_id() {
+        let sql_storage = MockSqlStorage { is_connected: true };
+        let user_storage = MockUserStorage::with_users([("testuser", "SECRET123")]);
+        let config = Config::new_for_test();
+        let app = routes(sql_storage, user_storage, config).await;
+
+        let token = generate_test_token();
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri("/v1/tags/not-a-uuid")
+                    .header("Authorization", format!("Bearer {}", token))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    // =========================================================================
+    // Content-Tags API Tests
+    // =========================================================================
+
+    #[tokio::test]
+    async fn test_v1_content_tags_list_without_auth_returns_401() {
+        let sql_storage = MockSqlStorage { is_connected: true };
+        let user_storage = MockUserStorage::new();
+        let config = Config::new_for_test();
+        let app = routes(sql_storage, user_storage, config).await;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/contents/00000000-0000-0000-0000-000000000001/tags")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn test_v1_content_tags_list_content_not_found() {
+        let sql_storage = MockSqlStorage { is_connected: true };
+        let user_storage = MockUserStorage::with_users([("testuser", "SECRET123")]);
+        let config = Config::new_for_test();
+        let app = routes(sql_storage, user_storage, config).await;
+
+        let token = generate_test_token();
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/contents/00000000-0000-0000-0000-000000000001/tags")
+                    .header("Authorization", format!("Bearer {}", token))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_v1_content_tags_attach_without_auth_returns_401() {
+        let sql_storage = MockSqlStorage { is_connected: true };
+        let user_storage = MockUserStorage::new();
+        let config = Config::new_for_test();
+        let app = routes(sql_storage, user_storage, config).await;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/contents/00000000-0000-0000-0000-000000000001/tags")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"tag_id": "00000000-0000-0000-0000-000000000002"}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn test_v1_content_tags_attach_content_not_found() {
+        let sql_storage = MockSqlStorage { is_connected: true };
+        let user_storage = MockUserStorage::with_users([("testuser", "SECRET123")]);
+        let config = Config::new_for_test();
+        let app = routes(sql_storage, user_storage, config).await;
+
+        let token = generate_test_token();
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/contents/00000000-0000-0000-0000-000000000001/tags")
+                    .header("Authorization", format!("Bearer {}", token))
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"tag_id": "00000000-0000-0000-0000-000000000002"}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_v1_content_tags_attach_invalid_tag_id() {
+        let sql_storage = MockSqlStorage { is_connected: true };
+        let user_storage = MockUserStorage::with_users([("testuser", "SECRET123")]);
+        let config = Config::new_for_test();
+        let app = routes(sql_storage, user_storage, config).await;
+
+        let token = generate_test_token();
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/contents/00000000-0000-0000-0000-000000000001/tags")
+                    .header("Authorization", format!("Bearer {}", token))
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"tag_id": "not-a-uuid"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_v1_content_tags_detach_without_auth_returns_401() {
+        let sql_storage = MockSqlStorage { is_connected: true };
+        let user_storage = MockUserStorage::new();
+        let config = Config::new_for_test();
+        let app = routes(sql_storage, user_storage, config).await;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri("/v1/contents/00000000-0000-0000-0000-000000000001/tags/00000000-0000-0000-0000-000000000002")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn test_v1_content_tags_detach_content_not_found() {
+        let sql_storage = MockSqlStorage { is_connected: true };
+        let user_storage = MockUserStorage::with_users([("testuser", "SECRET123")]);
+        let config = Config::new_for_test();
+        let app = routes(sql_storage, user_storage, config).await;
+
+        let token = generate_test_token();
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri("/v1/contents/00000000-0000-0000-0000-000000000001/tags/00000000-0000-0000-0000-000000000002")
+                    .header("Authorization", format!("Bearer {}", token))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_v1_content_tags_detach_invalid_content_id() {
+        let sql_storage = MockSqlStorage { is_connected: true };
+        let user_storage = MockUserStorage::with_users([("testuser", "SECRET123")]);
+        let config = Config::new_for_test();
+        let app = routes(sql_storage, user_storage, config).await;
+
+        let token = generate_test_token();
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri("/v1/contents/not-a-uuid/tags/00000000-0000-0000-0000-000000000002")
+                    .header("Authorization", format!("Bearer {}", token))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_v1_content_tags_detach_invalid_tag_id() {
+        let sql_storage = MockSqlStorage { is_connected: true };
+        let user_storage = MockUserStorage::with_users([("testuser", "SECRET123")]);
+        let config = Config::new_for_test();
+        let app = routes(sql_storage, user_storage, config).await;
+
+        let token = generate_test_token();
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri("/v1/contents/00000000-0000-0000-0000-000000000001/tags/not-a-uuid")
+                    .header("Authorization", format!("Bearer {}", token))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     }
 }

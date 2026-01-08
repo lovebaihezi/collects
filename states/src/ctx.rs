@@ -196,26 +196,6 @@ impl StateCtx {
         self.run_by_id_with_deps(&target_id);
     }
 
-    /// Dispatches a manual-only command by its type.
-    ///
-    /// **Deprecated**: Prefer using `enqueue_command::<T>()` followed by `flush_commands()`
-    /// at end-of-frame to ensure commands execute deterministically after all UI updates.
-    ///
-    /// The command is executed immediately and synchronously in the caller's thread.
-    /// Commands receive a `CommandSnapshot` containing owned clones of states and computes,
-    /// ensuring they never hold mutable references to live state during execution.
-    ///
-    /// Any async work should be spawned inside the command implementation (e.g. using tokio),
-    /// and results should flow back through your chosen state update mechanism.
-    #[deprecated(
-        since = "0.2.0",
-        note = "Use `enqueue_command::<T>()` and `flush_commands()` for end-of-frame execution"
-    )]
-    pub fn dispatch<T: Command + 'static>(&mut self) {
-        let id = TypeId::of::<T>();
-        self.execute_command_by_id(&id);
-    }
-
     /// Enqueues a command for execution at end-of-frame.
     ///
     /// Commands are stored in a queue and executed sequentially during `flush_commands()`.

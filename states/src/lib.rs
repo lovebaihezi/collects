@@ -418,9 +418,9 @@ mod state_runtime_test {
 
         assert_eq!(shared.load(Ordering::SeqCst), 0);
 
-        // Only runs when explicitly invoked.
-        #[allow(deprecated)]
-        ctx.dispatch::<IncrementCountCommand>();
+        // Only runs when explicitly invoked via enqueue + flush.
+        ctx.enqueue_command::<IncrementCountCommand>();
+        ctx.flush_commands();
 
         assert_eq!(shared.load(Ordering::SeqCst), 1);
     }
@@ -488,10 +488,10 @@ mod state_runtime_test {
         // Register the compute so it can receive updates via `Updater`.
         ctx.record_compute(DummyComputeFromCommand { value: 0 });
 
-        // Register the command and dispatch it.
+        // Register the command and execute it via enqueue + flush.
         ctx.record_command(SetComputeValueCommand { value: 123 });
-        #[allow(deprecated)]
-        ctx.dispatch::<SetComputeValueCommand>();
+        ctx.enqueue_command::<SetComputeValueCommand>();
+        ctx.flush_commands();
 
         // Command updates are delivered via the same runtime channel as computes.
         ctx.sync_computes();
@@ -565,10 +565,10 @@ mod state_runtime_test {
         // Register the command (but NOT the compute type `UnregisteredCompute`).
         ctx.record_command(SetUnregisteredComputeCommand { value: 1 });
 
-        // Dispatch queues an update; syncing must panic strictly because the compute
+        // Enqueue + flush queues an update; syncing must panic strictly because the compute
         // receiving the update was never registered with `record_compute`.
-        #[allow(deprecated)]
-        ctx.dispatch::<SetUnregisteredComputeCommand>();
+        ctx.enqueue_command::<SetUnregisteredComputeCommand>();
+        ctx.flush_commands();
         ctx.sync_computes();
     }
 
@@ -732,9 +732,9 @@ mod state_runtime_test {
             shared_success: Arc::clone(&success),
         });
 
-        // Dispatch command
-        #[allow(deprecated)]
-        ctx.dispatch::<SnapshotReadingCommand>();
+        // Execute command via enqueue + flush
+        ctx.enqueue_command::<SnapshotReadingCommand>();
+        ctx.flush_commands();
         ctx.sync_computes();
 
         // Verify command ran successfully and assertions passed

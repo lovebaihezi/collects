@@ -1,3 +1,4 @@
+# Show the database guide and available commands for services
 default:
     @echo ""
     @echo "╔══════════════════════════════════════════════════════════════════════════════╗"
@@ -94,6 +95,7 @@ default:
     @echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     @echo ""
 
+# Build services in debug mode
 build:
     cargo b
 
@@ -105,14 +107,16 @@ dev:
         PORT=3000 \
         cargo r
 
+# Build services in release mode for production (static binary for Linux musl)
 release:
     SQLX_OFFLINE=true RUSTFLAGS="-C target-feature=+crt-static" cargo build --release --target=x86_64-unknown-linux-musl
 
+# Install sqlx-cli for database migrations
 install-sqlx:
     cargo install sqlx-cli --no-default-features --features native-tls,postgres
 
-# Run migrate of sqlx(a bounch of database migrations)
-
+# Add a new SQLx migration file
+# Usage: just services::add-migrate <migration_name>
 add-migrate *args: install-sqlx
     sqlx migrate add {{args}}
 
@@ -152,6 +156,8 @@ migrate-info env: install-sqlx
 
     sqlx migrate info
 
+# Reset database for a specific environment (drops and recreates)
+# Usage: just services::reset <env>
 reset env: install-sqlx
     #!/bin/bash
     set -euo pipefail
@@ -212,9 +218,11 @@ release-run:
         PORT=3000 \
         cargo r --release
 
+# Format Rust code in services
 fmt:
     cargo fmt
 
+# Run cargo clippy lints for services
 lint:
     cargo clippy
 

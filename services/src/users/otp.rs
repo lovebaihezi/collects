@@ -252,7 +252,7 @@ pub fn generate_current_otp_with_time(secret_base32: &str) -> Result<(String, u8
 const SESSION_TOKEN_EXPIRY_SECS: i64 = 24 * 60 * 60;
 
 /// Claims for the session JWT token.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionClaims {
     /// Subject (username).
     pub sub: String,

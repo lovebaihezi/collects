@@ -1,6 +1,7 @@
 use crate::config::Config;
 use crate::database::SqlStorage;
 use crate::users::routes::AppState;
+use crate::users::session_auth::RequireAuth;
 use crate::users::storage::UserStorage;
 use axum::{
     Json, Router,
@@ -127,18 +128,54 @@ async fn catch_all() -> impl IntoResponse {
     (StatusCode::NOT_FOUND, "nothing to see here")
 }
 
+/// Response from the `/v1/me` endpoint containing authenticated user information.
 #[derive(Debug, Serialize)]
 struct V1MeResponse {
-    // Placeholder. Real implementation should return the authenticated user/session identity.
-    ok: bool,
+    /// The authenticated user's username.
+    username: String,
+    /// Token issued-at timestamp (Unix seconds).
+    issued_at: i64,
+    /// Token expiration timestamp (Unix seconds).
+    expires_at: i64,
 }
 
-async fn v1_me<S, U>(State(_state): State<AppState<S, U>>) -> impl IntoResponse
+/// Get the current authenticated user's information.
+///
+/// This endpoint requires a valid session JWT token in the Authorization header.
+///
+/// # Request
+///
+/// ```text
+/// GET /v1/me
+/// Authorization: Bearer <session_token>
+/// ```
+///
+/// # Response
+///
+/// ```json
+/// {
+///     "username": "alice",
+///     "issued_at": 1704067200,
+///     "expires_at": 1704153600
+/// }
+/// ```
+///
+/// # Errors
+///
+/// - 401 Unauthorized: Missing or invalid token
+async fn v1_me<S, U>(State(_state): State<AppState<S, U>>, auth: RequireAuth) -> impl IntoResponse
 where
     S: SqlStorage,
     U: UserStorage,
 {
-    (StatusCode::OK, Json(V1MeResponse { ok: true }))
+    (
+        StatusCode::OK,
+        Json(V1MeResponse {
+            username: auth.username().to_string(),
+            issued_at: auth.issued_at(),
+            expires_at: auth.expires_at(),
+        }),
+    )
 }
 
 #[derive(Debug, Deserialize)]
@@ -159,6 +196,7 @@ struct V1UploadsInitResponse {
 
 async fn v1_uploads_init<S, U>(
     State(_state): State<AppState<S, U>>,
+    auth: RequireAuth,
     Json(payload): Json<V1UploadsInitRequest>,
 ) -> impl IntoResponse
 where
@@ -166,7 +204,7 @@ where
     U: UserStorage,
 {
     // Use request fields to avoid dead-code warnings while this is still a stub.
-    let _ = (&payload.content_type, payload.file_size);
+    let _ = (&payload.content_type, payload.file_size, auth.username());
 
     let storage_key = format!("uploads/{}", payload.filename);
 
@@ -195,6 +233,7 @@ struct V1ViewUrlResponse {
 
 async fn v1_contents_view_url<S, U>(
     State(_state): State<AppState<S, U>>,
+    auth: RequireAuth,
     Path(_id): Path<String>,
     Json(payload): Json<V1ViewUrlRequest>,
 ) -> impl IntoResponse
@@ -203,7 +242,7 @@ where
     U: UserStorage,
 {
     // Use request fields to avoid dead-code warnings while this is still a stub.
-    let _ = payload.disposition;
+    let _ = (payload.disposition, auth.username());
 
     (
         StatusCode::OK,
@@ -487,12 +526,19 @@ mod tests {
         assert_eq!(response.status(), StatusCode::OK);
     }
 
-    // MVP v1 API TODO: first undone endpoints should not exist yet.
-    // These tests intentionally assert the *desired* behavior (200/201),
-    // so they will fail until the endpoints are implemented and wired into the router.
+    // Helper to generate a valid test token
+    fn generate_test_token() -> String {
+        crate::users::otp::generate_session_token(
+            "testuser",
+            "test-jwt-secret-key-for-local-development",
+        )
+        .unwrap()
+    }
+
+    // MVP v1 API: Protected endpoints require Bearer token authentication.
 
     #[tokio::test]
-    async fn test_v1_me_should_exist_but_currently_missing() {
+    async fn test_v1_me_without_auth_returns_401() {
         let sql_storage = MockSqlStorage { is_connected: true };
         let user_storage = MockUserStorage::new();
         let config = Config::new_for_test();
@@ -508,13 +554,42 @@ mod tests {
             .await
             .unwrap();
 
-        // Expected (once implemented): 200 OK with current user/session info.
-        // Current behavior: 404 from fallback.
-        assert_eq!(response.status(), StatusCode::OK);
+        // Without auth token, should return 401 Unauthorized
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
     }
 
     #[tokio::test]
-    async fn test_v1_uploads_init_should_exist_but_currently_missing() {
+    async fn test_v1_me_with_valid_auth() {
+        let sql_storage = MockSqlStorage { is_connected: true };
+        let user_storage = MockUserStorage::new();
+        let config = Config::new_for_test();
+        let app = routes(sql_storage, user_storage, config).await;
+
+        let token = generate_test_token();
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/me")
+                    .header("Authorization", format!("Bearer {}", token))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        // Parse response body and verify username
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["username"], "testuser");
+    }
+
+    #[tokio::test]
+    async fn test_v1_uploads_init_without_auth_returns_401() {
         let sql_storage = MockSqlStorage { is_connected: true };
         let user_storage = MockUserStorage::new();
         let config = Config::new_for_test();
@@ -534,13 +609,39 @@ mod tests {
             .await
             .unwrap();
 
-        // Expected (once implemented): 201 Created with upload session info.
-        // Current behavior: 404 from fallback.
+        // Without auth token, should return 401 Unauthorized
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn test_v1_uploads_init_with_valid_auth() {
+        let sql_storage = MockSqlStorage { is_connected: true };
+        let user_storage = MockUserStorage::new();
+        let config = Config::new_for_test();
+        let app = routes(sql_storage, user_storage, config).await;
+
+        let token = generate_test_token();
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/uploads/init")
+                    .header("content-type", "application/json")
+                    .header("Authorization", format!("Bearer {}", token))
+                    .body(Body::from(
+                        r#"{"filename":"photo.jpg","content_type":"image/jpeg","file_size":1234}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
         assert_eq!(response.status(), StatusCode::CREATED);
     }
 
     #[tokio::test]
-    async fn test_v1_contents_view_url_should_exist_but_currently_missing() {
+    async fn test_v1_contents_view_url_without_auth_returns_401() {
         let sql_storage = MockSqlStorage { is_connected: true };
         let user_storage = MockUserStorage::new();
         let config = Config::new_for_test();
@@ -558,9 +659,100 @@ mod tests {
             .await
             .unwrap();
 
-        // Expected (once implemented): 200 OK with { url, expires_at }.
-        // Current behavior: 404 from fallback.
+        // Without auth token, should return 401 Unauthorized
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn test_v1_contents_view_url_with_valid_auth() {
+        let sql_storage = MockSqlStorage { is_connected: true };
+        let user_storage = MockUserStorage::new();
+        let config = Config::new_for_test();
+        let app = routes(sql_storage, user_storage, config).await;
+
+        let token = generate_test_token();
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/contents/00000000-0000-0000-0000-000000000000/view-url")
+                    .header("content-type", "application/json")
+                    .header("Authorization", format!("Bearer {}", token))
+                    .body(Body::from(r#"{"disposition":"inline"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
         assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_v1_me_with_invalid_token_returns_401() {
+        let sql_storage = MockSqlStorage { is_connected: true };
+        let user_storage = MockUserStorage::new();
+        let config = Config::new_for_test();
+        let app = routes(sql_storage, user_storage, config).await;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/me")
+                    .header("Authorization", "Bearer invalid-token-that-is-not-a-jwt")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        // Invalid token should return 401 Unauthorized
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+
+        // Verify the error response contains expected fields
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["error"], "invalid_token");
+    }
+
+    #[tokio::test]
+    async fn test_v1_me_with_wrong_secret_token_returns_401() {
+        let sql_storage = MockSqlStorage { is_connected: true };
+        let user_storage = MockUserStorage::new();
+        let config = Config::new_for_test();
+        let app = routes(sql_storage, user_storage, config).await;
+
+        // Generate token with a different secret
+        let token =
+            crate::users::otp::generate_session_token("testuser", "different-secret").unwrap();
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/me")
+                    .header("Authorization", format!("Bearer {}", token))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        // Token signed with wrong secret should return 401
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["error"], "invalid_token");
+        assert!(
+            json["message"]
+                .as_str()
+                .unwrap()
+                .contains("Invalid token signature")
+        );
     }
 
     #[tokio::test]

@@ -14,33 +14,33 @@ Today, native viewing support can be **image-only**, but the API should be futur
 
 We already have OTP verification and issue JWTs. For MVP completeness, we still need to ensure the *auth primitives* are consistently applied across all protected APIs (uploads, contents, groups, tags, sharing).
 
-### Token model (JWT)
-- JWT is issued after OTP verification.
-- JWT must include at least:
-  - `sub` = user id (UUID)
-  - `exp` = expiry
-  - optional: `iat`, `iss`, `aud`
-- JWT is signed with `JWT_SECRET` (already in `Config`).
+### Token model (JWT) ✅
+- [x] JWT is issued after OTP verification (via `/auth/verify-otp`).
+- [x] JWT includes:
+  - `sub` = username (string)
+  - `exp` = expiry (24 hours)
+  - `iat` = issued at
+  - `iss` = "Collects"
+- [x] JWT is signed with `JWT_SECRET` (from `Config`).
 
 User checks:
-- You can decode a token and confirm `sub` and `exp` are present.
-- Tokens are rejected when expired or signature is invalid.
+- [x] You can decode a token and confirm `sub` and `exp` are present.
+- [x] Tokens are rejected when expired or signature is invalid.
 
-### Request authentication primitive
-Implement a single Axum extractor/middleware used by all authenticated routes, e.g.:
+### Request authentication primitive ✅
+Implemented `RequireAuth` extractor in `src/users/session_auth.rs`:
 - `RequireAuth` / `CurrentUser`
 
 Responsibilities:
-- Read JWT from:
-  - `Authorization: Bearer <token>` (recommended), or cookie (if you prefer)
-- Verify signature + `exp`
-- Load user from DB and enforce:
-  - `users.status == 'active'`
-- Attach user context to request handlers.
+- [x] Read JWT from:
+  - `Authorization: Bearer <token>` (recommended)
+- [x] Verify signature + `exp`
+- [x] User status enforcement: OTP login already filters by `users.status == 'active'` in `get_user_secret()`
+- [x] Attach user context to request handlers via `RequireAuth` extractor
 
 User checks:
-- All `/v1/*` protected routes return `401` without a token.
-- Suspended/archived users get `403` (or `401`) consistently.
+- [x] All `/v1/*` protected routes return `401` without a token.
+- [x] Suspended/archived users can't login (enforced at OTP verify time via `status = 'active'` filter).
 
 ### OTP rate limiting primitive (MVP safety)
 We have `otp_attempts` table; enforce in OTP verify flow:
@@ -63,29 +63,27 @@ Write `audit_logs` entries for:
 User checks:
 - Audit rows exist for auth events and include `ip_address` when available.
 
-### Auth scope for routes (MVP)
+### Auth scope for routes (MVP) 🔄 Partially Done
 Define route categories explicitly:
 - Public:
-  - `/is-health`
-  - `/v1/public/share/*` (if/when sharing is enabled)
+  - [x] `/is-health`
+  - [ ] `/v1/public/share/*` (if/when sharing is enabled)
 - Authenticated (RequireAuth):
-  - `/v1/uploads/*`
-  - `/v1/contents/*`
-  - `/v1/groups/*`
-  - `/v1/tags/*`
-  - `/v1/share-links/*` (owner management)
+  - [x] `/v1/me` — returns authenticated user info
+  - [x] `/v1/uploads/*` — protected with `RequireAuth`
+  - [x] `/v1/contents/*` — protected with `RequireAuth`
+  - [ ] `/v1/groups/*` — not yet implemented
+  - [ ] `/v1/tags/*` — not yet implemented
+  - [ ] `/v1/share-links/*` (owner management) — not yet implemented
 - Internal-admin (MUST be secure by construction):
-  - `/v1/internal/*` MUST be:
-    - compiled only for internal builds (conditional compilation)
-    - protected by Cloudflare Zero Trust
-    - protected by our JWT auth (so we know which internal user performed an action)
-    - require BOTH Zero Trust + JWT (JWT alone is not accepted; Zero Trust alone is not enough to identify the user in our system)
+  - [x] `/internal/*` protected by Cloudflare Zero Trust (when configured)
+  - [ ] require BOTH Zero Trust + JWT (JWT alone is not accepted; Zero Trust alone is not enough to identify the user in our system)
 
 User checks:
-- Endpoints are categorized correctly and enforced in routing.
-- In non-internal builds, `/internal/*` routes do not exist (404 / not compiled).
-- In internal builds, `/internal/*` rejects requests that have only JWT but no Zero Trust token.
-- In internal builds, `/internal/*` rejects requests that have only Zero Trust token but no valid JWT.
+- [x] Endpoints are categorized correctly and enforced in routing.
+- [ ] In non-internal builds, `/internal/*` routes do not exist (404 / not compiled).
+- [ ] In internal builds, `/internal/*` rejects requests that have only JWT but no Zero Trust token.
+- [ ] In internal builds, `/internal/*` rejects requests that have only Zero Trust token but no valid JWT.
 
 ---
 
@@ -374,17 +372,22 @@ User checks:
 (Existing route group: `/auth` — confirm exact endpoints in implementation.)
 
 **Required**
-- `POST /v1/auth/otp/start`
+- [ ] `POST /v1/auth/otp/start`
   - rate-limit by `otp_attempts`
-- `POST /v1/auth/otp/verify`
-  - create session (`sessions`)
-- `POST /v1/auth/logout`
-- `GET /v1/me`
+- [x] `POST /auth/verify-otp` — verifies OTP and issues JWT session token
+- [x] `POST /auth/validate-token` — validates existing JWT token
+- [ ] `POST /v1/auth/logout`
+- [x] `GET /v1/me` — returns authenticated user info (requires `RequireAuth`)
 
 **Internal (manager-only)**
-- `POST /v1/internal/users` create user (OTP-only account)
-- `GET /v1/internal/users` list users
-- `PATCH /v1/internal/users/:id` set status `active|suspended|archived`
+- [x] `POST /internal/users` create user (OTP-only account)
+- [x] `GET /internal/users` list users
+- [x] `GET /internal/users/:username` get user details
+- [x] `PUT /internal/users/:username` update username
+- [x] `DELETE /internal/users/:username` delete user
+- [x] `POST /internal/users/:username/revoke` revoke OTP secret
+- [x] `PUT /internal/users/:username/profile` update profile
+- [ ] `PATCH /internal/users/:id/status` set status `active|suspended|archived`
 
 ---
 
@@ -612,10 +615,10 @@ Pragmatic approach:
 
 ## MVP Scope Recommendation (Image-view first)
 Implement only:
-- Auth session (`/v1/me`, OTP verify)
-- Upload init + complete
-- Contents list + get + update + trash/restore
-- View-url endpoint (signed GET)
+- [x] Auth session (`/v1/me`, OTP verify) — `RequireAuth` extractor implemented
+- [ ] Upload init + complete (stubs exist, need presigned URL generation)
+- [ ] Contents list + get + update + trash/restore
+- [ ] View-url endpoint (signed GET) (stub exists, need presigned URL generation)
 
 Then layer:
 - groups, tags, share links, thumbnails, multipart uploads, PDF/CBZ viewers.

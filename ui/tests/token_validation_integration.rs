@@ -105,7 +105,8 @@ async fn test_validate_token_success() {
         state.ctx.update::<PendingTokenValidation>(|pending| {
             pending.token = Some("valid-test-token".to_string());
         });
-        state.ctx.dispatch::<ValidateTokenCommand>();
+        state.ctx.enqueue_command::<ValidateTokenCommand>();
+        state.ctx.flush_commands();
     }
 
     harness.step();
@@ -177,7 +178,8 @@ async fn test_validate_token_invalid() {
         state.ctx.update::<PendingTokenValidation>(|pending| {
             pending.token = Some("invalid-token".to_string());
         });
-        state.ctx.dispatch::<ValidateTokenCommand>();
+        state.ctx.enqueue_command::<ValidateTokenCommand>();
+        state.ctx.flush_commands();
     }
 
     harness.step();
@@ -243,7 +245,8 @@ async fn test_validate_token_expired() {
         state.ctx.update::<PendingTokenValidation>(|pending| {
             pending.token = Some("expired-token".to_string());
         });
-        state.ctx.dispatch::<ValidateTokenCommand>();
+        state.ctx.enqueue_command::<ValidateTokenCommand>();
+        state.ctx.flush_commands();
     }
 
     harness.step();
@@ -293,7 +296,8 @@ async fn test_validate_token_no_token() {
         state.ctx.update::<PendingTokenValidation>(|pending| {
             pending.token = None;
         });
-        state.ctx.dispatch::<ValidateTokenCommand>();
+        state.ctx.enqueue_command::<ValidateTokenCommand>();
+        state.ctx.flush_commands();
     }
 
     harness.step();
@@ -350,7 +354,8 @@ async fn test_validate_token_server_error() {
         state.ctx.update::<PendingTokenValidation>(|pending| {
             pending.token = Some("some-token".to_string());
         });
-        state.ctx.dispatch::<ValidateTokenCommand>();
+        state.ctx.enqueue_command::<ValidateTokenCommand>();
+        state.ctx.flush_commands();
     }
 
     harness.step();
@@ -398,7 +403,8 @@ async fn test_pending_token_validation_initial_state() {
     // We can check by dispatching the command and seeing it sets NotAuthenticated
     {
         let state = harness.state_mut();
-        state.ctx.dispatch::<ValidateTokenCommand>();
+        state.ctx.enqueue_command::<ValidateTokenCommand>();
+        state.ctx.flush_commands();
         state.ctx.sync_computes();
     }
 

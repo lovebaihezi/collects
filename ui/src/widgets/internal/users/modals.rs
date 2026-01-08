@@ -74,8 +74,9 @@ pub fn show_edit_username_modal(
                 });
                 // Close the action and refresh.
                 state_ctx.update::<InternalUsersState>(|s| s.close_action());
-                state_ctx.dispatch::<RefreshInternalUsersCommand>();
-                state_ctx.dispatch::<ResetInternalUsersActionCommand>();
+                state_ctx.enqueue_command::<RefreshInternalUsersCommand>();
+                state_ctx.enqueue_command::<ResetInternalUsersActionCommand>();
+                state_ctx.flush_commands();
                 return;
             }
 
@@ -121,7 +122,8 @@ pub fn show_edit_username_modal(
                         input.avatar_url = None;
                     });
 
-                    state_ctx.dispatch::<UpdateUsernameCommand>();
+                    state_ctx.enqueue_command::<UpdateUsernameCommand>();
+                    state_ctx.flush_commands();
                 }
 
                 if ui.button("Cancel").clicked() {
@@ -222,8 +224,9 @@ pub fn show_edit_profile_modal(
                 });
                 // Close the action and refresh.
                 state_ctx.update::<InternalUsersState>(|s| s.close_action());
-                state_ctx.dispatch::<RefreshInternalUsersCommand>();
-                state_ctx.dispatch::<ResetInternalUsersActionCommand>();
+                state_ctx.enqueue_command::<RefreshInternalUsersCommand>();
+                state_ctx.enqueue_command::<ResetInternalUsersActionCommand>();
+                state_ctx.flush_commands();
                 return;
             }
 
@@ -289,7 +292,8 @@ pub fn show_edit_profile_modal(
                         input.avatar_url = avatar_url;
                     });
 
-                    state_ctx.dispatch::<UpdateProfileCommand>();
+                    state_ctx.enqueue_command::<UpdateProfileCommand>();
+                    state_ctx.flush_commands();
                 }
 
                 if ui.button("Cancel").clicked() {
@@ -353,8 +357,9 @@ pub fn show_delete_user_modal(
             if is_success {
                 // Close the action and refresh.
                 state_ctx.update::<InternalUsersState>(|s| s.close_action());
-                state_ctx.dispatch::<RefreshInternalUsersCommand>();
-                state_ctx.dispatch::<ResetInternalUsersActionCommand>();
+                state_ctx.enqueue_command::<RefreshInternalUsersCommand>();
+                state_ctx.enqueue_command::<ResetInternalUsersActionCommand>();
+                state_ctx.flush_commands();
                 return;
             }
 
@@ -392,7 +397,8 @@ pub fn show_delete_user_modal(
                         input.avatar_url = None;
                     });
 
-                    state_ctx.dispatch::<DeleteUserCommand>();
+                    state_ctx.enqueue_command::<DeleteUserCommand>();
+                    state_ctx.flush_commands();
                 }
 
                 if ui.button("Cancel").clicked() {
@@ -506,8 +512,9 @@ pub fn show_revoke_otp_modal(
                 if ui.button("Close").clicked() {
                     // Close the action, trigger refresh, and reset compute.
                     state_ctx.update::<InternalUsersState>(|s| s.close_action());
-                    state_ctx.dispatch::<RefreshInternalUsersCommand>();
-                    state_ctx.dispatch::<ResetInternalUsersActionCommand>();
+                    state_ctx.enqueue_command::<RefreshInternalUsersCommand>();
+                    state_ctx.enqueue_command::<ResetInternalUsersActionCommand>();
+                    state_ctx.flush_commands();
                 }
             } else {
                 ui.colored_label(Color32::from_rgb(255, 165, 0), "⚠️ Warning");
@@ -533,7 +540,8 @@ pub fn show_revoke_otp_modal(
                             input.avatar_url = None;
                         });
 
-                        state_ctx.dispatch::<RevokeOtpCommand>();
+                        state_ctx.enqueue_command::<RevokeOtpCommand>();
+                        state_ctx.flush_commands();
                     }
 
                     if ui.button("Cancel").clicked() {
@@ -646,7 +654,8 @@ pub fn show_create_user_modal(state_ctx: &mut StateCtx, ui: &mut Ui) {
                     if ui.button("Done").clicked() {
                         super::panel::reset_create_user_compute(state_ctx);
                         state_ctx.update::<InternalUsersState>(|s| s.close_create_modal());
-                        state_ctx.dispatch::<RefreshInternalUsersCommand>();
+                        state_ctx.enqueue_command::<RefreshInternalUsersCommand>();
+                        state_ctx.flush_commands();
                     }
                 }
                 CreateUserResult::Error(err) => {

@@ -56,7 +56,8 @@ async fn setup_create_user_test<'a>(
     {
         let token_input = state.ctx.state_mut::<CFTokenInput>();
         token_input.token = Some("test-cf-authorization-token".to_string());
-        state.ctx.dispatch::<SetCFTokenCommand>();
+        state.ctx.enqueue_command::<SetCFTokenCommand>();
+        state.ctx.flush_commands();
         state.ctx.sync_computes();
     }
 
@@ -221,7 +222,8 @@ async fn test_trigger_create_user_sets_pending() {
         state.ctx.update::<CreateUserInput>(|input| {
             input.username = Some("testuser".to_string());
         });
-        state.ctx.dispatch::<CreateUserCommand>();
+        state.ctx.enqueue_command::<CreateUserCommand>();
+        state.ctx.flush_commands();
     }
 
     // Sync computes to apply the pending state
@@ -282,7 +284,8 @@ async fn test_create_user_success_flow() {
         state.ctx.update::<CreateUserInput>(|input| {
             input.username = Some("newuser".to_string());
         });
-        state.ctx.dispatch::<CreateUserCommand>();
+        state.ctx.enqueue_command::<CreateUserCommand>();
+        state.ctx.flush_commands();
     }
 
     harness.step();
@@ -350,7 +353,8 @@ async fn test_create_user_duplicate_error() {
         state.ctx.update::<CreateUserInput>(|input| {
             input.username = Some("existinguser".to_string());
         });
-        state.ctx.dispatch::<CreateUserCommand>();
+        state.ctx.enqueue_command::<CreateUserCommand>();
+        state.ctx.flush_commands();
     }
 
     harness.step();
@@ -417,7 +421,8 @@ async fn test_create_user_server_error() {
         state.ctx.update::<CreateUserInput>(|input| {
             input.username = Some("anyuser".to_string());
         });
-        state.ctx.dispatch::<CreateUserCommand>();
+        state.ctx.enqueue_command::<CreateUserCommand>();
+        state.ctx.flush_commands();
     }
 
     harness.step();
@@ -476,7 +481,8 @@ async fn test_create_user_empty_username_skipped() {
         state.ctx.update::<CreateUserInput>(|input| {
             input.username = Some("".to_string());
         });
-        state.ctx.dispatch::<CreateUserCommand>();
+        state.ctx.enqueue_command::<CreateUserCommand>();
+        state.ctx.flush_commands();
     }
 
     harness.step();
@@ -513,7 +519,8 @@ async fn test_create_user_none_username_skipped() {
     // Trigger with None username (which is the default)
     {
         let state = harness.state_mut();
-        state.ctx.dispatch::<CreateUserCommand>();
+        state.ctx.enqueue_command::<CreateUserCommand>();
+        state.ctx.flush_commands();
     }
 
     harness.step();
@@ -574,7 +581,8 @@ async fn test_create_user_compute_helper_methods() {
         state.ctx.update::<CreateUserInput>(|input| {
             input.username = Some("helpertest".to_string());
         });
-        state.ctx.dispatch::<CreateUserCommand>();
+        state.ctx.enqueue_command::<CreateUserCommand>();
+        state.ctx.flush_commands();
     }
 
     harness.step();
@@ -636,7 +644,8 @@ async fn test_create_user_compute_reset() {
         state.ctx.update::<CreateUserInput>(|input| {
             input.username = Some("resettest".to_string());
         });
-        state.ctx.dispatch::<CreateUserCommand>();
+        state.ctx.enqueue_command::<CreateUserCommand>();
+        state.ctx.flush_commands();
     }
 
     harness.step();

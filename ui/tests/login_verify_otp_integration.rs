@@ -241,7 +241,8 @@ async fn test_login_success_flow() {
             input.username = "testuser".to_string();
             input.otp = "123456".to_string();
         });
-        state.ctx.dispatch::<LoginCommand>();
+        state.ctx.enqueue_command::<LoginCommand>();
+        state.ctx.flush_commands();
     }
 
     harness.step();
@@ -309,7 +310,8 @@ async fn test_login_invalid_otp_flow() {
             input.username = "testuser".to_string();
             input.otp = "000000".to_string();
         });
-        state.ctx.dispatch::<LoginCommand>();
+        state.ctx.enqueue_command::<LoginCommand>();
+        state.ctx.flush_commands();
     }
 
     harness.step();
@@ -381,7 +383,8 @@ async fn test_login_unauthorized_flow() {
             input.username = "nonexistent".to_string();
             input.otp = "123456".to_string();
         });
-        state.ctx.dispatch::<LoginCommand>();
+        state.ctx.enqueue_command::<LoginCommand>();
+        state.ctx.flush_commands();
     }
 
     harness.step();
@@ -449,7 +452,8 @@ async fn test_login_server_error_flow() {
             input.username = "anyuser".to_string();
             input.otp = "123456".to_string();
         });
-        state.ctx.dispatch::<LoginCommand>();
+        state.ctx.enqueue_command::<LoginCommand>();
+        state.ctx.flush_commands();
     }
 
     harness.step();
@@ -509,7 +513,8 @@ async fn test_login_empty_username_fails() {
             input.username = "".to_string();
             input.otp = "123456".to_string();
         });
-        state.ctx.dispatch::<LoginCommand>();
+        state.ctx.enqueue_command::<LoginCommand>();
+        state.ctx.flush_commands();
     }
 
     // Sync computes
@@ -564,7 +569,8 @@ async fn test_login_empty_otp_fails() {
             input.username = "testuser".to_string();
             input.otp = "".to_string();
         });
-        state.ctx.dispatch::<LoginCommand>();
+        state.ctx.enqueue_command::<LoginCommand>();
+        state.ctx.flush_commands();
     }
 
     // Sync computes
@@ -619,7 +625,8 @@ async fn test_login_invalid_otp_format_fails() {
             input.username = "testuser".to_string();
             input.otp = "12345".to_string(); // Only 5 digits
         });
-        state.ctx.dispatch::<LoginCommand>();
+        state.ctx.enqueue_command::<LoginCommand>();
+        state.ctx.flush_commands();
     }
 
     // Sync computes
@@ -677,7 +684,8 @@ async fn test_login_non_numeric_otp_fails() {
             input.username = "testuser".to_string();
             input.otp = "abcdef".to_string(); // Non-numeric
         });
-        state.ctx.dispatch::<LoginCommand>();
+        state.ctx.enqueue_command::<LoginCommand>();
+        state.ctx.flush_commands();
     }
 
     // Sync computes
@@ -752,7 +760,8 @@ async fn test_auth_compute_helper_methods() {
             input.username = "helpertest".to_string();
             input.otp = "123456".to_string();
         });
-        state.ctx.dispatch::<LoginCommand>();
+        state.ctx.enqueue_command::<LoginCommand>();
+        state.ctx.flush_commands();
     }
 
     harness.step();

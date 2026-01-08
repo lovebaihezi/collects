@@ -218,8 +218,12 @@ mod api_state_widget_test {
             "API status should be hidden by default"
         );
 
-        // Dispatch the toggle command
-        harness.state_mut().ctx.dispatch::<ToggleApiStatusCommand>();
+        // Enqueue and flush the toggle command
+        harness
+            .state_mut()
+            .ctx
+            .enqueue_command::<ToggleApiStatusCommand>();
+        harness.state_mut().ctx.flush_commands();
 
         // Sync computes to apply the update
         harness.state_mut().ctx.sync_computes();
@@ -238,7 +242,11 @@ mod api_state_widget_test {
         );
 
         // Toggle again
-        harness.state_mut().ctx.dispatch::<ToggleApiStatusCommand>();
+        harness
+            .state_mut()
+            .ctx
+            .enqueue_command::<ToggleApiStatusCommand>();
+        harness.state_mut().ctx.flush_commands();
         harness.state_mut().ctx.sync_computes();
         harness.step();
 
@@ -267,7 +275,11 @@ mod api_state_widget_test {
         harness.step();
 
         // Toggle to show the API status
-        harness.state_mut().ctx.dispatch::<ToggleApiStatusCommand>();
+        harness
+            .state_mut()
+            .ctx
+            .enqueue_command::<ToggleApiStatusCommand>();
+        harness.state_mut().ctx.flush_commands();
         harness.state_mut().ctx.sync_computes();
         harness.step();
 
@@ -317,7 +329,11 @@ mod api_state_widget_test {
         harness.state_mut().ctx.run_all_dirty();
 
         // Toggle while fetch might be in-flight
-        harness.state_mut().ctx.dispatch::<ToggleApiStatusCommand>();
+        harness
+            .state_mut()
+            .ctx
+            .enqueue_command::<ToggleApiStatusCommand>();
+        harness.state_mut().ctx.flush_commands();
         harness.state_mut().ctx.sync_computes();
         harness.step();
 

@@ -97,7 +97,8 @@ fn check_and_auto_refresh_otp(state_ctx: &mut StateCtx, api_base_url: &str) {
         state_ctx.update::<InternalUsersListUsersInput>(|input| {
             input.api_base_url = Some(Ustr::from(api_base_url));
         });
-        state_ctx.dispatch::<RefreshInternalUsersCommand>();
+        state_ctx.enqueue_command::<RefreshInternalUsersCommand>();
+        state_ctx.flush_commands();
     }
 }
 
@@ -106,14 +107,15 @@ fn check_and_auto_refresh_otp(state_ctx: &mut StateCtx, api_base_url: &str) {
 fn render_controls_row(state_ctx: &mut StateCtx, api_base_url: &str, ui: &mut Ui) {
     let should_open_create = ui
         .horizontal(|ui| {
-            // Refresh: dispatch business command (no egui memory temp plumbing)
+            // Refresh: enqueue business command (no egui memory temp plumbing)
             if ui.button("🔄 Refresh").clicked() {
                 // Prefer passing the base URL through the existing function parameter for now.
                 // The command will fall back to `BusinessConfig::api_url()` if input is unset.
                 state_ctx.update::<collects_business::InternalUsersListUsersInput>(|input| {
                     input.api_base_url = Some(Ustr::from(api_base_url));
                 });
-                state_ctx.dispatch::<RefreshInternalUsersCommand>();
+                state_ctx.enqueue_command::<RefreshInternalUsersCommand>();
+                state_ctx.flush_commands();
             }
 
             let should_open_create = ui.button("➕ Create User").clicked();
@@ -275,6 +277,7 @@ pub(crate) fn trigger_create_user(state_ctx: &mut StateCtx, username: &str) {
         input.username = Some(username.to_string());
     });
 
-    // Explicitly dispatch the command (manual-only; never runs implicitly)
-    state_ctx.dispatch::<CreateUserCommand>();
+    // Explicitly enqueue and execute the command (manual-only; never runs implicitly)
+    state_ctx.enqueue_command::<CreateUserCommand>();
+    state_ctx.flush_commands();
 }

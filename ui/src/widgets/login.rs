@@ -180,7 +180,8 @@ fn show_login_form(state_ctx: &mut StateCtx, ui: &mut Ui, error: Option<&str>) -
 
     // Trigger login if requested
     if should_login {
-        state_ctx.dispatch::<LoginCommand>();
+        state_ctx.enqueue_command::<LoginCommand>();
+        state_ctx.flush_commands();
     }
 
     response

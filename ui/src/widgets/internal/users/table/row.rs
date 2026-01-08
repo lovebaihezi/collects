@@ -172,7 +172,8 @@ pub fn render_qr_expansion(
                             ui.add_space(8.0);
                             if ui.button("Close").clicked() {
                                 state.close_action();
-                                state_ctx.dispatch::<ResetInternalUsersActionCommand>();
+                                state_ctx.enqueue_command::<ResetInternalUsersActionCommand>();
+                                state_ctx.flush_commands();
                             }
                             return;
                         }
@@ -249,7 +250,8 @@ pub fn render_qr_expansion(
                     ui.add_space(8.0);
                     if ui.button("Close").clicked() {
                         state.close_action();
-                        state_ctx.dispatch::<ResetInternalUsersActionCommand>();
+                        state_ctx.enqueue_command::<ResetInternalUsersActionCommand>();
+                        state_ctx.flush_commands();
                     }
                 } else {
                     // Fetch user QR code via business Command + Compute (no egui temp memory plumbing).
@@ -265,7 +267,8 @@ pub fn render_qr_expansion(
                         input.avatar_url = None;
                     });
 
-                    state_ctx.dispatch::<GetUserQrCommand>();
+                    state_ctx.enqueue_command::<GetUserQrCommand>();
+                    state_ctx.flush_commands();
                 }
             });
         });

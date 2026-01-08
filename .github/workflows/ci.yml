@@ -200,6 +200,45 @@ jobs:
           github-token: ${{ secrets.COPILOT_INVOKER_TOKEN }}
           job-name: "Lint: Typos Check"
 
+  migration-check:
+    name: "Lint: Migration Integrity"
+    runs-on: ubuntu-latest
+    needs: install-deps
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Cache Bun
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.bun/install/cache
+            scripts/node_modules
+          key: ${{ runner.os }}-bun-scripts-${{ hashFiles('scripts/bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-scripts-
+
+      - name: Setup Just
+        uses: extractions/setup-just@v2
+
+      - name: Install scripts dependencies (Bun)
+        working-directory: scripts
+        run: bun install --frozen-lockfile
+
+      - name: Check Migration Integrity
+        run: just scripts::migration-check
+
+      - name: Post CI Feedback on Failure
+        if: failure() && github.event_name == 'pull_request'
+        uses: ./.github/actions/ci-feedback
+        with:
+          github-token: ${{ secrets.COPILOT_INVOKER_TOKEN }}
+          job-name: "Lint: Migration Integrity"
+
   # ============================================
   # Stage 3: Test & Build
   # Runs after all lint checks pass
@@ -207,7 +246,7 @@ jobs:
   test-scripts:
     name: "Test: Scripts"
     runs-on: ubuntu-latest
-    needs: [format, lint, typos]
+    needs: [format, lint, typos, migration-check]
     steps:
       - uses: actions/checkout@v4
 
@@ -247,7 +286,7 @@ jobs:
   test-services:
     name: "Test: Services Unit Tests"
     runs-on: ubuntu-latest
-    needs: [format, lint, typos]
+    needs: [format, lint, typos, migration-check]
     steps:
       - uses: actions/checkout@v4
 
@@ -292,7 +331,7 @@ jobs:
   test:
     name: "Test: UI Unit Tests"
     runs-on: ubuntu-latest
-    needs: [format, lint, typos]
+    needs: [format, lint, typos, migration-check]
     steps:
       - uses: actions/checkout@v4
 
@@ -345,7 +384,7 @@ jobs:
   build:
     name: "Build: UI Native"
     runs-on: ubuntu-latest
-    needs: [format, lint, typos]
+    needs: [format, lint, typos, migration-check]
     steps:
       - uses: actions/checkout@v4
 
@@ -393,7 +432,7 @@ jobs:
   build-services:
     name: "Build: Services (SQLx Offline)"
     runs-on: ubuntu-latest
-    needs: [format, lint, typos]
+    needs: [format, lint, typos, migration-check]
     steps:
       - uses: actions/checkout@v4
 

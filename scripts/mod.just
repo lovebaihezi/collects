@@ -93,3 +93,15 @@ artifact-cleanup: install
 # Usage: just scripts::artifact-check
 artifact-check: install
     bun run main.ts artifact-check
+
+# Check that locked migration files haven't been modified
+# This verifies migration integrity - locked migrations should never change
+# Usage: just scripts::migration-check
+migration-check: install
+    bun run main.ts migration-check
+
+# Lock new migration files (add them to the checksum file)
+# Run this after migrations have been applied to production
+# Usage: just scripts::migration-lock
+migration-lock: install
+    bun run main.ts migration-lock

@@ -39,6 +39,18 @@ If you add/change features or behavior:
 If you touch version display, headers, or build metadata:
 - Read and follow: `docs/ai/versioning.md`
 
+### 6) Migration file integrity
+If you touch `services/migrations/**`:
+- **NEVER** modify or delete existing `.sql` migration files that are locked in `.checksums.json`
+- SQLx requires applied migrations to remain unchanged for database consistency
+- New migrations must be locked before merging: `just scripts::migration-lock`
+- CI and pre-commit hooks enforce this automatically
+
+Key rules:
+- Locked migrations are immutable (tracked via SHA256 checksums)
+- Only add new migrations; never edit or remove existing ones
+- Run `just scripts::migration-check` to verify integrity locally
+
 ## General engineering expectations
 
 - Don’t guess file locations or existing interfaces: search and read the relevant code first.

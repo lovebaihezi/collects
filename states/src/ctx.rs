@@ -239,11 +239,11 @@ impl StateCtx {
         let id = TypeId::of::<T>();
         if !self.commands.contains_key(&id) {
             panic!(
-                "No command found for type {:?}. Did you forget to call `record_command::<T>()`?",
+                "No command found for type {}. Did you forget to call `record_command::<T>()`?",
                 std::any::type_name::<T>()
             );
         }
-        trace!("Enqueue command: {:?}", std::any::type_name::<T>());
+        trace!("Enqueue command: {}", std::any::type_name::<T>());
         self.command_queue.push_back(id);
     }
 
@@ -298,7 +298,7 @@ impl StateCtx {
         let snapshot = self.create_command_snapshot();
 
         let borrowed = cell.borrow();
-        trace!("Executing command: {:?}", borrowed);
+        trace!("Executing command: id={:?}", id);
         borrowed.run(snapshot, self.updater());
     }
 

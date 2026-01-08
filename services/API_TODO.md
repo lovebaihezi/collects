@@ -500,18 +500,18 @@ We want: access objects stored in R2/GCS **without** routing bytes through servi
 
 ---
 
-### 5) Collections (content_groups)
+### 5) Collections (content_groups) ✅
 These map to `content_groups` and `content_group_items`.
 
-- `GET /v1/groups`
-- `POST /v1/groups`
-- `GET /v1/groups/:id`
-- `PATCH /v1/groups/:id`
-- `POST /v1/groups/:id/trash|restore|archive|unarchive`
-- `GET /v1/groups/:id/contents`
-- `POST /v1/groups/:id/contents` (add items)
-- `DELETE /v1/groups/:id/contents/:content_id`
-- `PATCH /v1/groups/:id/contents/reorder` (update sort_order)
+- [x] `GET /v1/groups`
+- [x] `POST /v1/groups`
+- [x] `GET /v1/groups/:id`
+- [x] `PATCH /v1/groups/:id`
+- [x] `POST /v1/groups/:id/trash|restore|archive|unarchive`
+- [x] `GET /v1/groups/:id/contents`
+- [x] `POST /v1/groups/:id/contents` (add items)
+- [x] `DELETE /v1/groups/:id/contents/:content_id`
+- [ ] `PATCH /v1/groups/:id/contents/reorder` (update sort_order) — TODO
 
 ---
 

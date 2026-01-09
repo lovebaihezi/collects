@@ -458,9 +458,11 @@ export async function checkWithTools(
   rootDir: string,
   useRipgrep: boolean,
   useAstGrep: boolean,
+  verbose: boolean = false,
 ): Promise<Violation[]> {
   const violations: Violation[] = [];
   const patternType = rule.type || "regex";
+  const startTime = performance.now();
 
   if (patternType === "ast") {
     // Validate language is provided for AST patterns
@@ -473,6 +475,9 @@ export async function checkWithTools(
 
     if (useAstGrep) {
       // Use ast-grep for AST-based patterns
+      if (verbose) {
+        console.log(`  Scanning with ast-grep for ${rule.language} files...`);
+      }
       const results = await searchWithAstGrep(
         rule.pattern,
         rule.language,
@@ -505,6 +510,9 @@ export async function checkWithTools(
     }
   } else if (useRipgrep) {
     // Use ripgrep for regex-based patterns
+    if (verbose) {
+      console.log(`  Scanning with ripgrep...`);
+    }
     const results = await searchWithRipgrep(
       rule.pattern,
       rule.files,
@@ -524,8 +532,24 @@ export async function checkWithTools(
     }
   } else {
     // Fallback to internal implementation
+    if (verbose) {
+      console.log(`  Finding files to check...`);
+    }
+    const fileStartTime = performance.now();
     const files = await getFilesForRule(rule, rootDir);
-    for (const file of files) {
+    const fileEndTime = performance.now();
+
+    if (verbose) {
+      console.log(
+        `  Found ${files.length} file(s) in ${(fileEndTime - fileStartTime).toFixed(0)}ms`,
+      );
+    }
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      if (verbose) {
+        console.log(`  Checking [${i + 1}/${files.length}]: ${file}`);
+      }
       const fullPath = join(rootDir, file);
       const fileViolations = await checkFileInternal(fullPath, rule);
       for (const v of fileViolations) {
@@ -533,6 +557,11 @@ export async function checkWithTools(
       }
       violations.push(...fileViolations);
     }
+  }
+
+  const endTime = performance.now();
+  if (verbose) {
+    console.log(`  Completed in ${(endTime - startTime).toFixed(0)}ms`);
   }
 
   return violations;
@@ -759,6 +788,7 @@ export async function runPatternCheck(options: {
   const configPath = options.configPath ?? CONFIG_FILE;
   const rootDir = options.rootDir ?? PROJECT_ROOT;
   const verbose = options.verbose ?? false;
+  const overallStartTime = performance.now();
 
   const violations: Violation[] = [];
   const checkedFilesSet = new Set<string>();
@@ -825,6 +855,7 @@ export async function runPatternCheck(options: {
       rootDir,
       hasRipgrep,
       hasAstGrep,
+      verbose,
     );
 
     // Track checked files
@@ -846,6 +877,13 @@ export async function runPatternCheck(options: {
   const warningCount = violations.filter(
     (v) => v.rule.severity === "warning",
   ).length;
+
+  const overallEndTime = performance.now();
+  if (verbose) {
+    console.log(
+      `\nTotal time: ${(overallEndTime - overallStartTime).toFixed(0)}ms`,
+    );
+  }
 
   return {
     success: errorCount === 0,

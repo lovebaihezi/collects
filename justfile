@@ -17,6 +17,7 @@ install-hooks: install-deps
 check-fmt: scripts::check-fmt
     cargo fmt --all -- --check
 
+# Run cargo clippy lint check on the workspace
 check-lint: scripts::check-lint
     cargo clippy --workspace --all-targets -- -D warnings
 
@@ -24,6 +25,7 @@ check-lint: scripts::check-lint
 check-typos:
     typos
 
+# Create a Docker buildx builder instance for multi-arch builds
 create-builder:
     sudo docker buildx create --name collects-builder --use
 

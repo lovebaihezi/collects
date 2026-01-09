@@ -1,12 +1,16 @@
+# Install Node.js dependencies using bun
 install:
     bun i
 
+# Format TypeScript and JSON files with prettier
 fmt:
     bun prettier --write **/*.ts package.json tsconfig.json .oxlintrc.json
 
+# Check TypeScript and JSON file formatting with prettier
 check-fmt:
     bun prettier --check **/*.ts package.json tsconfig.json .oxlintrc.json
 
+# Run oxlint with type-aware checks
 check-lint:
     bun oxlint --type-aware
 
@@ -42,6 +46,8 @@ actions-setup *args: install
 actions-migrate-repo *args: install
     bun run main.ts actions-migrate-repo {{args}}
 
+# Initialize database secrets in Google Cloud Secret Manager
+# Usage: just scripts::init-db <NEON_API_TOKEN> <NEON_PROJECT_ID>
 init-db token project_id: install
     bun run main.ts init-db-secret --token {{token}} --project-id {{project_id}}
 

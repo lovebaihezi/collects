@@ -55,19 +55,21 @@ Additionally, `StateCtx::dispatch::<T>()` executes commands immediately in the c
 ### 2) Full Async Traits
 
 **Compute trait (async):**
+
+> Note: Rust now supports async fn in traits natively (stabilized in Rust 1.75).
+> We use `impl Future<Output = ...>` syntax instead of the `async_trait` macro.
+
 ```rust
-#[async_trait]
 pub trait Compute: Debug + Any + SnapshotClone + Send + Sync {
-    async fn compute(&self, deps: Dep, updater: Updater, cancel: CancellationToken);
+    fn compute(&self, deps: Dep, updater: Updater, cancel: CancellationToken) -> impl Future<Output = ()> + Send;
     fn deps(&self) -> ComputeDeps;
 }
 ```
 
 **Command trait (async):**
 ```rust
-#[async_trait]
 pub trait Command: Debug + Any + Send + Sync {
-    async fn run(&self, snap: CommandSnapshot, updater: Updater, cancel: CancellationToken);
+    fn run(&self, snap: CommandSnapshot, updater: Updater, cancel: CancellationToken) -> impl Future<Output = ()> + Send;
 }
 ```
 
@@ -178,8 +180,10 @@ In `collects/states/Cargo.toml`:
 ```toml
 tokio = { version = "1", features = ["rt", "sync", "macros"] }
 tokio_util = { version = "0.7", features = ["rt"] }
-async-trait = "0.1"
 ```
+
+> Note: The `async-trait` crate is no longer needed since Rust 1.75+ supports async fn in traits natively.
+> We use `impl Future<Output = ...>` return type syntax instead.
 
 ### 3.2 Implement TaskHandle + CancellationToken
 
@@ -205,10 +209,11 @@ impl StateCtx {
 
 ### 3.4 Convert `Compute` trait to async
 
+> Note: Using `impl Future<Output = ...>` return type (Rust 1.75+) instead of `#[async_trait]` macro.
+
 ```rust
-#[async_trait]
 pub trait Compute: Debug + Any + SnapshotClone + Send + Sync {
-    async fn compute(&self, deps: Dep, updater: Updater, cancel: CancellationToken);
+    fn compute(&self, deps: Dep, updater: Updater, cancel: CancellationToken) -> impl Future<Output = ()> + Send;
     fn deps(&self) -> ComputeDeps;
     fn as_any(&self) -> &dyn Any;
     fn assign_box(&mut self, new_self: Box<dyn Any + Send>);
@@ -217,10 +222,11 @@ pub trait Compute: Debug + Any + SnapshotClone + Send + Sync {
 
 ### 3.5 Convert `Command` trait to async
 
+> Note: Using `impl Future<Output = ...>` return type (Rust 1.75+) instead of `#[async_trait]` macro.
+
 ```rust
-#[async_trait]
 pub trait Command: Debug + Any + Send + Sync {
-    async fn run(&self, snap: CommandSnapshot, updater: Updater, cancel: CancellationToken);
+    fn run(&self, snap: CommandSnapshot, updater: Updater, cancel: CancellationToken) -> impl Future<Output = ()> + Send;
 }
 ```
 
@@ -329,8 +335,8 @@ Any state intended to be updated from async completion must:
 
 ### Phase 3 — Full Async Migration
 - [x] Add `tokio`, `tokio_util` dependencies to `collects/states`
-- [ ] Implement `TaskHandle` with `CancellationToken`
-- [ ] Implement `TaskId` type
+- [x] Implement `TaskHandle` with `CancellationToken`
+- [x] Implement `TaskId` type
 - [ ] Add `JoinSet` to `StateCtx` for task management
 - [ ] Add `StateCtx::spawn_task<T>()` method
 - [ ] Add `StateCtx::cancel_task()` method

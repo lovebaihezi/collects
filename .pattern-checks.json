@@ -1,0 +1,16 @@
+{
+  "$schema": "./scripts/gh-actions/pattern-check.schema.json",
+  "version": 1,
+  "description": "Pattern checks to enforce coding standards. DO NOT use patterns that are forbidden - see explanations below.",
+  "rules": [
+    {
+      "id": "no-println-in-lib",
+      "pattern": "^\\s*println!\\(",
+      "files": ["**/*.rs"],
+      "exclude": ["**/main.rs", "**/bin/**", "**/build.rs", "**/build/**", "**/*_test.rs", "**/tests/**"],
+      "severity": "warning",
+      "message": "Avoid println! in library code",
+      "explanation": "Use the `tracing` crate for logging instead of println!. The println! macro writes directly to stdout and bypasses structured logging, making it difficult to control log levels, filter logs, or integrate with observability tools. Note: build.rs files are excluded as they legitimately use println! for cargo."
+    }
+  ]
+}

@@ -111,3 +111,9 @@ migration-check: install
 # Usage: just scripts::migration-lock
 migration-lock: install
     bun run main.ts migration-lock
+
+# Check for forbidden patterns in source files
+# Uses rules defined in .pattern-checks.json at the repository root
+# Usage: just scripts::pattern-check
+pattern-check: install
+    bun run main.ts pattern-check

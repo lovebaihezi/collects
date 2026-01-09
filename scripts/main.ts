@@ -22,6 +22,7 @@ import {
   runMigrationCheckCLI,
   runMigrationLockCLI,
 } from "./gh-actions/migration-check.ts";
+import { runPatternCheckCLI } from "./gh-actions/pattern-check.ts";
 import {
   getCargoFeature,
   getDatabaseSecret,
@@ -346,6 +347,15 @@ cli
     await runMigrationLockCLI();
   });
 
+cli
+  .command(
+    "pattern-check",
+    "Check for forbidden patterns in source files (configured in .pattern-checks.json)",
+  )
+  .action(async () => {
+    await runPatternCheckCLI();
+  });
+
 cli.command("", "Show help").action(() => {
   const helpText = `
 # Services Helper Script
@@ -642,6 +652,50 @@ just scripts::artifact-check
 
 # Or with bun directly
 bun run main.ts artifact-check
+\`\`\`
+
+### \`pattern-check\`
+
+Checks for forbidden patterns in source files. This tool scans the codebase for patterns
+that violate coding standards, with detailed explanations of why each pattern is forbidden.
+
+**How it works:**
+1. Reads rules from \`.pattern-checks.json\` at the repository root.
+2. For each rule, scans files matching the specified glob patterns.
+3. Reports violations with file location, matched text, and explanation.
+4. Exits with code 1 if any error-severity violations are found.
+
+**Configuration file format (\`.pattern-checks.json\`):**
+\`\`\`json
+{
+  "version": 1,
+  "description": "Pattern checks description",
+  "rules": [
+    {
+      "id": "no-println-in-lib",
+      "pattern": "println!\\\\(",
+      "files": ["**/*.rs"],
+      "exclude": ["**/main.rs", "**/build.rs"],
+      "severity": "error",
+      "message": "Avoid println! in library code",
+      "explanation": "Use tracing crate instead..."
+    }
+  ]
+}
+\`\`\`
+
+**Rule fields:**
+- \`id\`: Unique identifier for the rule
+- \`pattern\`: JavaScript regex pattern to search for
+- \`files\`: Glob patterns for files to check
+- \`exclude\`: (optional) Glob patterns for files to skip
+- \`severity\`: "error" (fails CI) or "warning" (informational)
+- \`message\`: Short description of the violation
+- \`explanation\`: Detailed explanation of why this pattern is forbidden
+
+**Example:**
+\`\`\`bash
+just scripts::pattern-check
 \`\`\`
 
 ---

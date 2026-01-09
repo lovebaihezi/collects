@@ -42,9 +42,21 @@ use super::otp::{
     VerifyOtpRequest, VerifyOtpResponse, generate_current_otp_with_time, generate_otp_secret,
     generate_session_token, validate_session_token, verify_otp,
 };
+use super::revocation_cache::RevocationCache;
+use super::session_auth::{RequireAuth, hash_token};
 use super::storage::{UserStorage, UserStorageError};
 use crate::config::Config;
 use crate::database::{OtpAttemptRecord, OtpRateLimitConfig, SqlStorage};
+
+/// Response for logout endpoint.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct LogoutResponse {
+    /// Whether logout was successful.
+    pub success: bool,
+    /// Optional message with details.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+}
 
 /// Response for listing users with their current OTP codes.
 #[derive(Debug, Serialize, Deserialize)]
@@ -195,6 +207,7 @@ impl From<UserStorageError> for (StatusCode, Json<ErrorResponse>) {
 pub struct AppState<S, U> {
     pub sql_storage: S,
     pub user_storage: U,
+    pub revocation_cache: RevocationCache,
 }
 
 impl<S, U> AppState<S, U> {
@@ -203,6 +216,20 @@ impl<S, U> AppState<S, U> {
         Self {
             sql_storage,
             user_storage,
+            revocation_cache: RevocationCache::default(),
+        }
+    }
+
+    /// Creates a new `AppState` with a custom revocation cache.
+    pub fn with_revocation_cache(
+        sql_storage: S,
+        user_storage: U,
+        revocation_cache: RevocationCache,
+    ) -> Self {
+        Self {
+            sql_storage,
+            user_storage,
+            revocation_cache,
         }
     }
 }
@@ -245,6 +272,7 @@ where
     Router::new()
         .route("/verify-otp", post(verify_otp_handler::<S, U>))
         .route("/validate-token", post(validate_token_handler))
+        .route("/logout", post(logout_handler::<S, U>))
 }
 
 /// Handler for creating a new user with OTP authentication.
@@ -750,6 +778,108 @@ async fn validate_token_handler(
                     valid: false,
                     username: None,
                     message: Some("Invalid or expired token".to_string()),
+                }),
+            )
+                .into_response()
+        }
+    }
+}
+
+/// Handler for user logout.
+///
+/// Invalidates the current session token by adding it to the revoked tokens table.
+/// The token will be rejected on subsequent requests until it naturally expires.
+///
+/// # Request
+///
+/// POST /auth/logout
+///
+/// Requires `Authorization: Bearer <token>` header.
+///
+/// # Response
+///
+/// Success:
+/// ```json
+/// {
+///     "success": true
+/// }
+/// ```
+///
+/// Error (invalid/missing token):
+/// ```json
+/// {
+///     "success": false,
+///     "message": "Invalid or missing token"
+/// }
+/// ```
+#[tracing::instrument(skip_all)]
+async fn logout_handler<S, U>(
+    State(state): State<AppState<S, U>>,
+    auth: RequireAuth,
+    headers: HeaderMap,
+) -> impl IntoResponse
+where
+    S: SqlStorage,
+    U: UserStorage,
+{
+    tracing::info!(username = %auth.username(), "Processing logout request");
+
+    // Extract the raw token from the Authorization header
+    // We need the original token to compute its hash for revocation
+    let token = match headers
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.strip_prefix("Bearer "))
+    {
+        Some(t) => t,
+        None => {
+            // This shouldn't happen since RequireAuth already validated,
+            // but handle it gracefully
+            tracing::error!("Token not found in header after RequireAuth validation");
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(LogoutResponse {
+                    success: false,
+                    message: Some("Failed to process logout".to_string()),
+                }),
+            )
+                .into_response();
+        }
+    };
+
+    // Compute token hash for storage
+    let token_hash = hash_token(token);
+
+    // Get token expiry from claims
+    let expires_at =
+        chrono::DateTime::from_timestamp(auth.expires_at(), 0).unwrap_or_else(chrono::Utc::now);
+
+    // Add token to revoked list (both cache and database)
+    match state
+        .sql_storage
+        .revoked_tokens_add(&token_hash, auth.username(), expires_at)
+        .await
+    {
+        Ok(()) => {
+            // Add to in-memory cache for fast lookups on subsequent requests
+            state.revocation_cache.add_revoked(&token_hash);
+            tracing::info!(username = %auth.username(), "Logout successful - token revoked");
+            (
+                StatusCode::OK,
+                Json(LogoutResponse {
+                    success: true,
+                    message: None,
+                }),
+            )
+                .into_response()
+        }
+        Err(e) => {
+            tracing::error!(error = %e, username = %auth.username(), "Failed to revoke token");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(LogoutResponse {
+                    success: false,
+                    message: Some("Failed to process logout".to_string()),
                 }),
             )
                 .into_response()
@@ -1447,6 +1577,24 @@ mod tests {
             _user_id: uuid::Uuid,
         ) -> Result<Option<crate::database::UploadRow>, crate::database::SqlStorageError> {
             Ok(None)
+        }
+
+        async fn revoked_tokens_add(
+            &self,
+            _token_hash: &str,
+            _username: &str,
+            _expires_at: chrono::DateTime<chrono::Utc>,
+        ) -> Result<(), crate::database::SqlStorageError> {
+            // Mock: silently succeed
+            Ok(())
+        }
+
+        async fn revoked_tokens_is_revoked(
+            &self,
+            _token_hash: &str,
+        ) -> Result<bool, crate::database::SqlStorageError> {
+            // Mock: tokens are never revoked
+            Ok(false)
         }
     }
 
@@ -2581,5 +2729,93 @@ mod tests {
 
         let ip = super::extract_client_ip(&headers);
         assert_eq!(ip, Some("192.168.1.100".parse().unwrap()));
+    }
+
+    #[tokio::test]
+    async fn test_logout_success() {
+        use crate::users::otp::generate_session_token;
+
+        let app = create_test_app_with_users(vec![("testuser", "JBSWY3DPEHPK3PXP")]);
+
+        // First, get a valid token by verifying OTP
+        // Use the same JWT secret as Config::new_for_test() for token validation to succeed
+        let token = generate_session_token("testuser", Config::new_for_test().jwt_secret())
+            .expect("Failed to generate token");
+
+        // Now test logout
+        let request = Request::builder()
+            .method("POST")
+            .uri("/auth/logout")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {}", token))
+            .body(Body::empty())
+            .expect("Failed to create request");
+
+        let response = app.oneshot(request).await.expect("Failed to get response");
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("Failed to read body");
+
+        let response: LogoutResponse =
+            serde_json::from_slice(&body).expect("Failed to parse response");
+
+        assert!(response.success, "Logout should succeed");
+        assert!(response.message.is_none(), "Should not have error message");
+    }
+
+    #[tokio::test]
+    async fn test_logout_without_token() {
+        let app = create_test_app();
+
+        let request = Request::builder()
+            .method("POST")
+            .uri("/auth/logout")
+            .header("content-type", "application/json")
+            .body(Body::empty())
+            .expect("Failed to create request");
+
+        let response = app.oneshot(request).await.expect("Failed to get response");
+
+        // Should be unauthorized without a token
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn test_logout_with_invalid_token() {
+        let app = create_test_app();
+
+        let request = Request::builder()
+            .method("POST")
+            .uri("/auth/logout")
+            .header("content-type", "application/json")
+            .header("authorization", "Bearer invalid.token.here")
+            .body(Body::empty())
+            .expect("Failed to create request");
+
+        let response = app.oneshot(request).await.expect("Failed to get response");
+
+        // Should be unauthorized with invalid token
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn test_logout_with_malformed_auth_header() {
+        let app = create_test_app();
+
+        let request = Request::builder()
+            .method("POST")
+            .uri("/auth/logout")
+            .header("content-type", "application/json")
+            .header("authorization", "NotBearer sometoken")
+            .body(Body::empty())
+            .expect("Failed to create request");
+
+        let response = app.oneshot(request).await.expect("Failed to get response");
+
+        // Should be unauthorized with malformed auth header
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
     }
 }

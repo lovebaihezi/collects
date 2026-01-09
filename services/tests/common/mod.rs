@@ -410,4 +410,19 @@ impl SqlStorage for MockSqlStorage {
     ) -> Result<Option<UploadRow>, SqlStorageError> {
         Ok(None)
     }
+
+    async fn revoked_tokens_add(
+        &self,
+        _token_hash: &str,
+        _username: &str,
+        _expires_at: chrono::DateTime<chrono::Utc>,
+    ) -> Result<(), SqlStorageError> {
+        // Mock: silently succeed
+        Ok(())
+    }
+
+    async fn revoked_tokens_is_revoked(&self, _token_hash: &str) -> Result<bool, SqlStorageError> {
+        // Mock: tokens are never revoked
+        Ok(false)
+    }
 }

@@ -34,6 +34,10 @@ where
     Router::new()
         .route("/me", get(me::v1_me::<S, U>))
         .route("/uploads/init", post(uploads::v1_uploads_init::<S, U>))
+        .route(
+            "/uploads/complete",
+            post(uploads::v1_uploads_complete::<S, U>),
+        )
         // Contents endpoints
         .route("/contents", get(contents::v1_contents_list::<S, U>))
         .route("/contents/{id}", get(contents::v1_contents_get::<S, U>))

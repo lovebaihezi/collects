@@ -144,6 +144,19 @@ The application has two main components:
 | Nightly | `https://collects-services-nightly-145756646168.us-east1.run.app` | `https://collects-nightly.lqxclqxc.com` |
 | PR | `https://collects-services-pr-145756646168.us-east1.run.app` | `https://collects-pr.lqxclqxc.com` |
 
+## OpenAPI Documentation
+
+OpenAPI documentation is **only available** in internal environments (`internal` and `test-internal`) and is protected by Cloudflare Zero Trust authentication.
+
+### Accessing OpenAPI Documentation
+
+| Environment | OpenAPI UI (Scalar) | OpenAPI JSON |
+|-------------|---------------------|--------------|
+| Internal | `https://collects-services-internal-145756646168.us-east1.run.app/docs` | `https://collects-services-internal-145756646168.us-east1.run.app/openapi.json` |
+| Test-Internal | `https://collects-services-test-internal-145756646168.us-east1.run.app/docs` | `https://collects-services-test-internal-145756646168.us-east1.run.app/openapi.json` |
+
+**Note**: You must be authenticated via Cloudflare Access to view the documentation. Contact your team administrator if you don't have access.
+
 ## Database Configuration
 
 Each environment (except nightly) uses a separate database:

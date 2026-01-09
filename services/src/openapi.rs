@@ -34,8 +34,8 @@ use crate::v1::types;
         )
     ),
     servers(
-        (url = "https://collects-internal.lqxclqxc.com", description = "Internal Production"),
-        (url = "https://collects-test-internal.lqxclqxc.com", description = "Internal Test"),
+        (url = "https://collects-services-internal-145756646168.us-east1.run.app", description = "Internal Production"),
+        (url = "https://collects-services-test-internal-145756646168.us-east1.run.app", description = "Internal Test"),
     ),
     tags(
         (name = "me", description = "Current user information"),

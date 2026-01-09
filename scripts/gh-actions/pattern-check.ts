@@ -17,6 +17,21 @@
  * - Detect security anti-patterns (e.g., hardcoded secrets patterns)
  */
 
+/**
+ * Write a message directly to stdout with immediate flush.
+ * This ensures output is visible immediately on CI systems like GitHub Actions.
+ */
+function logImmediate(message: string): void {
+  Bun.write(Bun.stdout, message + "\n");
+}
+
+/**
+ * Write an error message directly to stderr with immediate flush.
+ */
+function logError(message: string): void {
+  Bun.write(Bun.stderr, message + "\n");
+}
+
 import { readdir } from "fs/promises";
 import { join, dirname, relative } from "path";
 import { fileURLToPath } from "url";
@@ -476,7 +491,7 @@ export async function checkWithTools(
     if (useAstGrep) {
       // Use ast-grep for AST-based patterns
       if (verbose) {
-        console.log(`  Scanning with ast-grep for ${rule.language} files...`);
+        logImmediate(`  Scanning with ast-grep for ${rule.language} files...`);
       }
       const results = await searchWithAstGrep(
         rule.pattern,
@@ -511,7 +526,7 @@ export async function checkWithTools(
   } else if (useRipgrep) {
     // Use ripgrep for regex-based patterns
     if (verbose) {
-      console.log(`  Scanning with ripgrep...`);
+      logImmediate(`  Scanning with ripgrep...`);
     }
     const results = await searchWithRipgrep(
       rule.pattern,
@@ -533,14 +548,14 @@ export async function checkWithTools(
   } else {
     // Fallback to internal implementation
     if (verbose) {
-      console.log(`  Finding files to check...`);
+      logImmediate(`  Finding files to check...`);
     }
     const fileStartTime = performance.now();
     const files = await getFilesForRule(rule, rootDir);
     const fileEndTime = performance.now();
 
     if (verbose) {
-      console.log(
+      logImmediate(
         `  Found ${files.length} file(s) in ${(fileEndTime - fileStartTime).toFixed(0)}ms`,
       );
     }
@@ -548,7 +563,7 @@ export async function checkWithTools(
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       if (verbose) {
-        console.log(`  Checking [${i + 1}/${files.length}]: ${file}`);
+        logImmediate(`  Checking [${i + 1}/${files.length}]: ${file}`);
       }
       const fullPath = join(rootDir, file);
       const fileViolations = await checkFileInternal(fullPath, rule);
@@ -561,7 +576,7 @@ export async function checkWithTools(
 
   const endTime = performance.now();
   if (verbose) {
-    console.log(`  Completed in ${(endTime - startTime).toFixed(0)}ms`);
+    logImmediate(`  Completed in ${(endTime - startTime).toFixed(0)}ms`);
   }
 
   return violations;
@@ -813,7 +828,7 @@ export async function runPatternCheck(options: {
   const hasAstGrep = true; // @ast-grep/napi is always available
 
   if (verbose) {
-    console.log(
+    logImmediate(
       `Tools available: ripgrep=${hasRipgrep}, ast-grep=${hasAstGrep} (via npm packages)`,
     );
   }
@@ -823,7 +838,7 @@ export async function runPatternCheck(options: {
 
   if (config.rules.length === 0) {
     if (verbose) {
-      console.log("No pattern check rules configured");
+      logImmediate("No pattern check rules configured");
     }
     return {
       success: true,
@@ -835,7 +850,7 @@ export async function runPatternCheck(options: {
   }
 
   if (verbose) {
-    console.log(`Loaded ${config.rules.length} pattern check rule(s)`);
+    logImmediate(`Loaded ${config.rules.length} pattern check rule(s)`);
   }
 
   // Check each rule using appropriate tool
@@ -847,7 +862,7 @@ export async function runPatternCheck(options: {
           : hasRipgrep
             ? "ripgrep-js"
             : "internal";
-      console.log(`\nChecking rule: ${rule.id} (using ${toolName})`);
+      logImmediate(`\nChecking rule: ${rule.id} (using ${toolName})`);
     }
 
     const ruleViolations = await checkWithTools(
@@ -866,7 +881,7 @@ export async function runPatternCheck(options: {
     violations.push(...ruleViolations);
 
     if (verbose) {
-      console.log(`  Found ${ruleViolations.length} violation(s)`);
+      logImmediate(`  Found ${ruleViolations.length} violation(s)`);
     }
   }
 
@@ -880,7 +895,7 @@ export async function runPatternCheck(options: {
 
   const overallEndTime = performance.now();
   if (verbose) {
-    console.log(
+    logImmediate(
       `\nTotal time: ${(overallEndTime - overallStartTime).toFixed(0)}ms`,
     );
   }
@@ -916,12 +931,12 @@ export function formatViolation(violation: Violation): string {
  * CLI entry point for pattern check
  */
 export async function runPatternCheckCLI(): Promise<void> {
-  console.log("Running pattern checks...\n");
+  logImmediate("Running pattern checks...\n");
 
   const result = await runPatternCheck({ verbose: true });
 
   if (result.violations.length > 0) {
-    console.log("\n--- Violations Found ---\n");
+    logImmediate("\n--- Violations Found ---\n");
 
     // Group violations by rule for better readability
     const violationsByRule = new Map<string, Violation[]>();
@@ -933,27 +948,27 @@ export async function runPatternCheckCLI(): Promise<void> {
 
     for (const [ruleId, ruleViolations] of violationsByRule) {
       const rule = ruleViolations[0].rule;
-      console.log(`\n### Rule: ${ruleId}`);
-      console.log(`    ${rule.message}`);
-      console.log(`    Explanation: ${rule.explanation}\n`);
+      logImmediate(`\n### Rule: ${ruleId}`);
+      logImmediate(`    ${rule.message}`);
+      logImmediate(`    Explanation: ${rule.explanation}\n`);
 
       for (const v of ruleViolations) {
         const severityIcon = v.rule.severity === "error" ? "❌" : "⚠️";
-        console.log(`  ${severityIcon} ${v.file}:${v.line}:${v.column}`);
-        console.log(`     ${v.lineContent.trim()}`);
+        logImmediate(`  ${severityIcon} ${v.file}:${v.line}:${v.column}`);
+        logImmediate(`     ${v.lineContent.trim()}`);
       }
     }
   }
 
-  console.log("\n--- Summary ---");
-  console.log(`Files checked: ${result.checkedFiles}`);
-  console.log(`Errors: ${result.errorCount}`);
-  console.log(`Warnings: ${result.warningCount}`);
+  logImmediate("\n--- Summary ---");
+  logImmediate(`Files checked: ${result.checkedFiles}`);
+  logImmediate(`Errors: ${result.errorCount}`);
+  logImmediate(`Warnings: ${result.warningCount}`);
 
   if (!result.success) {
-    console.error("\n❌ Pattern check failed");
+    logError("\n❌ Pattern check failed");
     process.exit(1);
   }
 
-  console.log("\n✅ Pattern check passed");
+  logImmediate("\n✅ Pattern check passed");
 }

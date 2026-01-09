@@ -76,6 +76,17 @@ jwt-setup *args: install
 jwt-list *args: install
     bun run main.ts jwt-list {{args}}
 
+# Setup Cloudflare Zero Trust secrets in Google Cloud Secret Manager
+# Required for internal environment deployment
+# Usage: just scripts::zero-trust-setup --project-id my-gcp-project-id
+zero-trust-setup *args: install
+    bun run main.ts zero-trust-setup {{args}}
+
+# List Cloudflare Zero Trust secrets status
+# Usage: just scripts::zero-trust-list --project-id my-gcp-project-id
+zero-trust-list *args: install
+    bun run main.ts zero-trust-list {{args}}
+
 # Post CI failure feedback to PR (for GitHub Actions)
 # Requires environment variables: GITHUB_TOKEN, WORKFLOW_RUN_ID, HEAD_SHA, WORKFLOW_RUN_URL
 ci-feedback: install

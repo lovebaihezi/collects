@@ -162,6 +162,30 @@ JWT secrets are used for session token signing. The following secrets must be cr
 
 Local, Test, and Test-Internal environments use a default local secret and do not require a GCP secret.
 
+## Zero Trust Secret Configuration
+
+Zero Trust secrets are used for Cloudflare Access authentication on internal routes. The following secrets must be created in Google Cloud Secret Manager:
+- `cf-access-team-domain` - Your Cloudflare Access team domain (e.g., `myteam.cloudflareaccess.com`)
+- `cf-access-aud` - Your Cloudflare Access application audience tag
+
+**Required for:** Internal and Test-Internal environments (service will fail to start without these secrets).
+
+### Automated Setup (Recommended)
+
+Run the following command to create and configure Zero Trust secrets:
+```bash
+just scripts::zero-trust-setup --project-id <your-gcp-project-id>
+```
+
+### Getting Cloudflare Access Credentials
+
+1. Go to [Cloudflare Zero Trust dashboard](https://one.dash.cloudflare.com)
+2. Navigate to **Access > Applications**
+3. Create or select a **Self-hosted Application**
+4. Note the **Team Domain** (shown at the top) and **Application Audience (AUD)** from application settings
+
+For more details, see [ZERO_TRUST.md](./services/ZERO_TRUST.md).
+
 ### Automated Setup (Recommended)
 
 Run the following command to automatically generate and create JWT secrets:

@@ -296,11 +296,11 @@ test env="local":
         echo "R2 secrets not found, running tests without R2 configuration"
     fi
 
-    cargo test --workspace
+    cargo test -p collects-services
 
 # Run tests without database (unit tests only, offline mode)
 test-unit:
-    SQLX_OFFLINE=true cargo test --workspace --lib
+    SQLX_OFFLINE=true cargo test -p collects-services --lib
 
 # Deploys the service to Cloud Run
 # Environments: prod, internal, nightly, test, test-internal, pr

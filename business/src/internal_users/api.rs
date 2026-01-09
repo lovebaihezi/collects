@@ -19,6 +19,10 @@ use crate::internal::{
     UpdateUsernameRequest, UpdateUsernameResponse,
 };
 use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE};
+use std::sync::LazyLock;
+
+/// Shared HTTP client for connection pooling across API calls.
+static CLIENT: LazyLock<reqwest::Client> = LazyLock::new(reqwest::Client::new);
 
 /// Minimal error wrapper for API calls.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -65,9 +69,8 @@ pub async fn list_users(
     cf_token: &CFTokenCompute,
 ) -> ApiResult<Vec<InternalUserItem>> {
     let url = format!("{api_base_url}/internal/users");
-    let client = reqwest::Client::new();
 
-    let response = client
+    let response = CLIENT
         .get(&url)
         .headers(build_headers(cf_token))
         .send()
@@ -94,9 +97,8 @@ pub async fn get_user(
     username: &str,
 ) -> ApiResult<GetUserResponse> {
     let url = format!("{api_base_url}/internal/users/{username}");
-    let client = reqwest::Client::new();
 
-    let response = client
+    let response = CLIENT
         .get(&url)
         .headers(build_headers(cf_token))
         .send()
@@ -123,7 +125,6 @@ pub async fn update_username(
     new_username: &str,
 ) -> ApiResult<UpdateUsernameResponse> {
     let url = format!("{api_base_url}/internal/users/{old_username}");
-    let client = reqwest::Client::new();
 
     let body = UpdateUsernameRequest {
         new_username: new_username.to_string(),
@@ -132,7 +133,7 @@ pub async fn update_username(
     let mut headers = build_headers(cf_token);
     headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
 
-    let response = client
+    let response = CLIENT
         .put(&url)
         .headers(headers)
         .json(&body)
@@ -161,7 +162,6 @@ pub async fn update_profile(
     avatar_url: Option<String>,
 ) -> ApiResult<UpdateProfileResponse> {
     let url = format!("{api_base_url}/internal/users/{username}/profile");
-    let client = reqwest::Client::new();
 
     let body = UpdateProfileRequest {
         nickname,
@@ -171,7 +171,7 @@ pub async fn update_profile(
     let mut headers = build_headers(cf_token);
     headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
 
-    let response = client
+    let response = CLIENT
         .put(&url)
         .headers(headers)
         .json(&body)
@@ -197,9 +197,8 @@ pub async fn delete_user(
     username: &str,
 ) -> ApiResult<DeleteUserResponse> {
     let url = format!("{api_base_url}/internal/users/{username}");
-    let client = reqwest::Client::new();
 
-    let response = client
+    let response = CLIENT
         .delete(&url)
         .headers(build_headers(cf_token))
         .send()
@@ -225,9 +224,8 @@ pub async fn revoke_otp(
     username: &str,
 ) -> ApiResult<RevokeOtpResponse> {
     let url = format!("{api_base_url}/internal/users/{username}/revoke");
-    let client = reqwest::Client::new();
 
-    let response = client
+    let response = CLIENT
         .post(&url)
         .headers(build_headers(cf_token))
         .send()
@@ -255,7 +253,6 @@ pub async fn create_user(
     username: &str,
 ) -> ApiResult<CreateUserResponse> {
     let url = format!("{api_base_url}/internal/users");
-    let client = reqwest::Client::new();
 
     let body = CreateUserRequest {
         username: username.to_string(),
@@ -264,7 +261,7 @@ pub async fn create_user(
     let mut headers = build_headers(cf_token);
     headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
 
-    let response = client
+    let response = CLIENT
         .post(&url)
         .headers(headers)
         .json(&body)

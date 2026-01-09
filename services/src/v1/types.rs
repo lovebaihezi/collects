@@ -149,8 +149,7 @@ pub struct V1ContentsUpdateRequest {
 }
 
 /// Request body for creating text content directly (without upload).
-#[derive(Debug, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct V1ContentCreateRequest {
     /// Content title.
     pub title: String,
@@ -172,8 +171,7 @@ fn default_text_content_type() -> String {
 }
 
 /// Response for creating text content.
-#[derive(Debug, Serialize)]
-#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct V1ContentCreateResponse {
     /// The created content item.
     pub content: V1ContentItem,

@@ -17,6 +17,8 @@ CF_ACCESS_AUD=your-application-audience-tag
 When Zero Trust is configured, the following routes require authentication:
 
 - `/internal/*` - All internal endpoints (e.g., `/internal/users`)
+- `/docs` - OpenAPI documentation (Scalar UI) - only available in `internal` and `test-internal` environments
+- `/openapi.json` - OpenAPI specification JSON - only available in `internal` and `test-internal` environments
 
 ## Public Routes
 

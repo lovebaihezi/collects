@@ -15,6 +15,10 @@ This repo must be tested in a way that covers both **non-internal** and **intern
 - If you add new endpoints or change request/response behavior:
   - add/adjust **service integration tests** under `services/tests/`
   - ensure both success and failure cases are covered
+  - **update OpenAPI documentation** by adding `#[utoipa::path(...)]` annotations to new endpoints
+    - See existing examples in `services/src/v1/*.rs`
+    - Register new types in `services/src/openapi.rs` if needed
+    - API docs are available at `/api/docs` (internal environments only, requires Zero Trust)
 
 ## Feature-gated test coverage (IMPORTANT)
 

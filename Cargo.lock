@@ -1094,7 +1094,6 @@ dependencies = [
 name = "collects-states"
 version = "0.1.0"
 dependencies = [
- "async-trait",
  "chrono",
  "flume",
  "log",

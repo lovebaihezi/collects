@@ -6,7 +6,6 @@ edition = "2024"
 license = "MIT"
 
 [dependencies]
-async-trait = { workspace = true }
 chrono = { workspace = true }
 flume = { workspace = true }
 log = { workspace = true }

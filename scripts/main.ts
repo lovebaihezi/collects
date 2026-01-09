@@ -35,6 +35,11 @@ import {
   setupR2Secrets,
 } from "./services/r2-setup.ts";
 import { setupJwtSecrets, listJwtSecrets } from "./services/jwt-setup.ts";
+import {
+  listZeroTrustSecrets,
+  promptForZeroTrustCredentials,
+  setupZeroTrustSecrets,
+} from "./services/zero-trust-setup.ts";
 
 const cli = cac("services");
 
@@ -284,6 +289,63 @@ cli
     }
 
     await listJwtSecrets(projectId as string);
+  });
+
+cli
+  .command(
+    "zero-trust-setup",
+    "Setup Cloudflare Zero Trust secrets in Google Cloud Secret Manager",
+  )
+  .option("--project-id <projectId>", "Google Cloud Project ID")
+  .action(async (options) => {
+    p.intro("Cloudflare Zero Trust Setup");
+
+    const projectId = options.projectId
+      ? options.projectId
+      : await p.text({
+          message: "Enter your Google Cloud Project ID:",
+          placeholder: "my-gcp-project-id",
+          validate: (value) => {
+            if (!value) return "Project ID is required";
+          },
+        });
+
+    if (p.isCancel(projectId)) {
+      p.cancel("Operation cancelled.");
+      process.exit(0);
+    }
+
+    const credentials = await promptForZeroTrustCredentials();
+    if (!credentials) {
+      process.exit(0);
+    }
+
+    await setupZeroTrustSecrets(projectId as string, credentials);
+    p.outro("Zero Trust setup complete!");
+  });
+
+cli
+  .command("zero-trust-list", "List Cloudflare Zero Trust secrets status")
+  .option("--project-id <projectId>", "Google Cloud Project ID")
+  .action(async (options) => {
+    p.intro("Zero Trust Secrets Status");
+
+    const projectId = options.projectId
+      ? options.projectId
+      : await p.text({
+          message: "Enter your Google Cloud Project ID:",
+          placeholder: "my-gcp-project-id",
+          validate: (value) => {
+            if (!value) return "Project ID is required";
+          },
+        });
+
+    if (p.isCancel(projectId)) {
+      p.cancel("Operation cancelled.");
+      process.exit(0);
+    }
+
+    await listZeroTrustSecrets(projectId as string);
   });
 
 cli

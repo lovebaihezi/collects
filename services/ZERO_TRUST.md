@@ -60,6 +60,72 @@ async fn protected_handler(auth: ZeroTrustAuth) -> impl IntoResponse {
 
 When `CF_ACCESS_TEAM_DOMAIN` and `CF_ACCESS_AUD` are not set, the middleware is not applied and all routes are accessible. This makes local development easier without needing to configure Zero Trust.
 
+## Internal Environment Requirement
+
+For the `internal` and `test-internal` environments, Zero Trust configuration is **required**. The service will fail to start if `CF_ACCESS_TEAM_DOMAIN` or `CF_ACCESS_AUD` are not set:
+
+```
+Error: CF_ACCESS_TEAM_DOMAIN and CF_ACCESS_AUD must be set for internal environment.
+Internal routes require Zero Trust authentication.
+```
+
+This ensures that internal routes (`/internal/*`) are always protected in these deployment environments.
+
+## Setting Up Zero Trust Secrets
+
+Zero Trust secrets are stored in Google Cloud Secret Manager and automatically injected during Cloud Run deployment.
+
+### 1. Get Cloudflare Access Credentials
+
+1. Go to [Cloudflare Zero Trust dashboard](https://one.dash.cloudflare.com)
+2. Navigate to **Access > Applications**
+3. Create a new **Self-hosted Application** (or use existing)
+4. Configure Access policies (e.g., allow specific emails/groups)
+5. Note the following values:
+   - **Team Domain**: Shown at the top (e.g., `myteam.cloudflareaccess.com`)
+   - **Application Audience (AUD)**: Found in the application settings
+
+### 2. Store Secrets in GCP Secret Manager
+
+Use the setup script to store your Zero Trust credentials:
+
+```bash
+# Interactive setup (prompts for values)
+just scripts::zero-trust-setup --project-id YOUR_GCP_PROJECT_ID
+
+# Check secret status
+just scripts::zero-trust-list --project-id YOUR_GCP_PROJECT_ID
+```
+
+This creates two secrets:
+- `cf-access-team-domain` - Your Cloudflare Access team domain
+- `cf-access-aud` - Your application's audience tag
+
+### 3. Grant Access to Compute Service Account
+
+If you've already run `just scripts::actions-setup`, Zero Trust secrets are automatically granted access. Otherwise, run the setup again:
+
+```bash
+just scripts::actions-setup
+```
+
+### 4. Deploy to Internal Environment
+
+The deployment script automatically injects Zero Trust secrets for the `internal` environment:
+
+```bash
+just services::gcloud-deploy internal <image_tag>
+```
+
+### Accessing Secrets Locally
+
+For local testing with Zero Trust enabled:
+
+```bash
+export CF_ACCESS_TEAM_DOMAIN=$(gcloud secrets versions access latest --secret=cf-access-team-domain)
+export CF_ACCESS_AUD=$(gcloud secrets versions access latest --secret=cf-access-aud)
+```
+
 ## Testing
 
 Run the tests with:

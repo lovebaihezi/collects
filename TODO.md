@@ -354,7 +354,8 @@ Any state intended to be updated from async completion must:
 - [ ] Migrate `LoginCommand` HTTP calls
 - [ ] Migrate `ValidateTokenCommand` HTTP calls
 - [ ] Migrate `CreateUserCommand` HTTP calls
-- [ ] Migrate `RefreshInternalUsersCommand` HTTP calls
+- [x] Migrate `RefreshInternalUsersCommand` HTTP calls
+- [x] Migrate internal users action commands HTTP calls (UpdateUsername, UpdateProfile, DeleteUser, RevokeOtp, GetUserQr)
 
 ### Phase 5 — flume async mode
 - [ ] Update `Updater::set()` to async

@@ -25,10 +25,6 @@ use ustr::Ustr;
 use crate::BusinessConfig;
 use crate::CFTokenCompute;
 use crate::internal_users::api as internal_users_api;
-use crate::{
-    DeleteUserResponse, GetUserResponse, RevokeOtpResponse, UpdateProfileResponse,
-    UpdateUsernameResponse,
-};
 
 /// Strongly-typed action kind.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -251,32 +247,33 @@ impl Command for UpdateUsernameCommand {
             let user_str = user.as_str().to_string();
             let new_username_str = new_username.as_str().to_string();
 
-            internal_users_api::update_username(
+            match internal_users_api::update_username(
                 &api_base_url,
                 &cf_token,
                 &user_str,
                 &new_username_str,
-                move |result: internal_users_api::ApiResult<UpdateUsernameResponse>| match result {
-                    Ok(_resp) => {
-                        updater.set(InternalUsersActionCompute {
-                            state: InternalUsersActionState::Success {
-                                kind: InternalUsersActionKind::UpdateUsername,
-                                user,
-                                data: None,
-                            },
-                        });
-                    }
-                    Err(err) => {
-                        updater.set(InternalUsersActionCompute {
-                            state: InternalUsersActionState::Error {
-                                kind: InternalUsersActionKind::UpdateUsername,
-                                user,
-                                message: err.to_string(),
-                            },
-                        });
-                    }
-                },
-            );
+            )
+            .await
+            {
+                Ok(_resp) => {
+                    updater.set(InternalUsersActionCompute {
+                        state: InternalUsersActionState::Success {
+                            kind: InternalUsersActionKind::UpdateUsername,
+                            user,
+                            data: None,
+                        },
+                    });
+                }
+                Err(err) => {
+                    updater.set(InternalUsersActionCompute {
+                        state: InternalUsersActionState::Error {
+                            kind: InternalUsersActionKind::UpdateUsername,
+                            user,
+                            message: err.to_string(),
+                        },
+                    });
+                }
+            }
         })
     }
 }
@@ -332,33 +329,34 @@ impl Command for UpdateProfileCommand {
             let nickname = input.nickname.clone();
             let avatar_url = input.avatar_url.clone();
 
-            internal_users_api::update_profile(
+            match internal_users_api::update_profile(
                 &api_base_url,
                 &cf_token,
                 &user_str,
                 nickname,
                 avatar_url,
-                move |result: internal_users_api::ApiResult<UpdateProfileResponse>| match result {
-                    Ok(_resp) => {
-                        updater.set(InternalUsersActionCompute {
-                            state: InternalUsersActionState::Success {
-                                kind: InternalUsersActionKind::UpdateProfile,
-                                user,
-                                data: None,
-                            },
-                        });
-                    }
-                    Err(err) => {
-                        updater.set(InternalUsersActionCompute {
-                            state: InternalUsersActionState::Error {
-                                kind: InternalUsersActionKind::UpdateProfile,
-                                user,
-                                message: err.to_string(),
-                            },
-                        });
-                    }
-                },
-            );
+            )
+            .await
+            {
+                Ok(_resp) => {
+                    updater.set(InternalUsersActionCompute {
+                        state: InternalUsersActionState::Success {
+                            kind: InternalUsersActionKind::UpdateProfile,
+                            user,
+                            data: None,
+                        },
+                    });
+                }
+                Err(err) => {
+                    updater.set(InternalUsersActionCompute {
+                        state: InternalUsersActionState::Error {
+                            kind: InternalUsersActionKind::UpdateProfile,
+                            user,
+                            message: err.to_string(),
+                        },
+                    });
+                }
+            }
         })
     }
 }
@@ -412,41 +410,36 @@ impl Command for DeleteUserCommand {
 
             let user_str = user.as_str().to_string();
 
-            internal_users_api::delete_user(
-                &api_base_url,
-                &cf_token,
-                &user_str,
-                move |result: internal_users_api::ApiResult<DeleteUserResponse>| match result {
-                    Ok(resp) => {
-                        if resp.deleted {
-                            updater.set(InternalUsersActionCompute {
-                                state: InternalUsersActionState::Success {
-                                    kind: InternalUsersActionKind::DeleteUser,
-                                    user,
-                                    data: None,
-                                },
-                            });
-                        } else {
-                            updater.set(InternalUsersActionCompute {
-                                state: InternalUsersActionState::Error {
-                                    kind: InternalUsersActionKind::DeleteUser,
-                                    user,
-                                    message: "User not found".to_string(),
-                                },
-                            });
-                        }
-                    }
-                    Err(err) => {
+            match internal_users_api::delete_user(&api_base_url, &cf_token, &user_str).await {
+                Ok(resp) => {
+                    if resp.deleted {
+                        updater.set(InternalUsersActionCompute {
+                            state: InternalUsersActionState::Success {
+                                kind: InternalUsersActionKind::DeleteUser,
+                                user,
+                                data: None,
+                            },
+                        });
+                    } else {
                         updater.set(InternalUsersActionCompute {
                             state: InternalUsersActionState::Error {
                                 kind: InternalUsersActionKind::DeleteUser,
                                 user,
-                                message: err.to_string(),
+                                message: "User not found".to_string(),
                             },
                         });
                     }
-                },
-            );
+                }
+                Err(err) => {
+                    updater.set(InternalUsersActionCompute {
+                        state: InternalUsersActionState::Error {
+                            kind: InternalUsersActionKind::DeleteUser,
+                            user,
+                            message: err.to_string(),
+                        },
+                    });
+                }
+            }
         })
     }
 }
@@ -500,31 +493,26 @@ impl Command for RevokeOtpCommand {
 
             let user_str = user.as_str().to_string();
 
-            internal_users_api::revoke_otp(
-                &api_base_url,
-                &cf_token,
-                &user_str,
-                move |result: internal_users_api::ApiResult<RevokeOtpResponse>| match result {
-                    Ok(resp) => {
-                        updater.set(InternalUsersActionCompute {
-                            state: InternalUsersActionState::Success {
-                                kind: InternalUsersActionKind::RevokeOtp,
-                                user,
-                                data: Some(resp.otpauth_url),
-                            },
-                        });
-                    }
-                    Err(err) => {
-                        updater.set(InternalUsersActionCompute {
-                            state: InternalUsersActionState::Error {
-                                kind: InternalUsersActionKind::RevokeOtp,
-                                user,
-                                message: err.to_string(),
-                            },
-                        });
-                    }
-                },
-            );
+            match internal_users_api::revoke_otp(&api_base_url, &cf_token, &user_str).await {
+                Ok(resp) => {
+                    updater.set(InternalUsersActionCompute {
+                        state: InternalUsersActionState::Success {
+                            kind: InternalUsersActionKind::RevokeOtp,
+                            user,
+                            data: Some(resp.otpauth_url),
+                        },
+                    });
+                }
+                Err(err) => {
+                    updater.set(InternalUsersActionCompute {
+                        state: InternalUsersActionState::Error {
+                            kind: InternalUsersActionKind::RevokeOtp,
+                            user,
+                            message: err.to_string(),
+                        },
+                    });
+                }
+            }
         })
     }
 }
@@ -600,31 +588,26 @@ impl Command for GetUserQrCommand {
 
             let user_str = user.as_str().to_string();
 
-            internal_users_api::get_user(
-                &api_base_url,
-                &cf_token,
-                &user_str,
-                move |result: internal_users_api::ApiResult<GetUserResponse>| match result {
-                    Ok(resp) => {
-                        updater.set(InternalUsersActionCompute {
-                            state: InternalUsersActionState::Success {
-                                kind: InternalUsersActionKind::GetUserQr,
-                                user,
-                                data: Some(resp.otpauth_url),
-                            },
-                        });
-                    }
-                    Err(err) => {
-                        updater.set(InternalUsersActionCompute {
-                            state: InternalUsersActionState::Error {
-                                kind: InternalUsersActionKind::GetUserQr,
-                                user,
-                                message: err.to_string(),
-                            },
-                        });
-                    }
-                },
-            );
+            match internal_users_api::get_user(&api_base_url, &cf_token, &user_str).await {
+                Ok(resp) => {
+                    updater.set(InternalUsersActionCompute {
+                        state: InternalUsersActionState::Success {
+                            kind: InternalUsersActionKind::GetUserQr,
+                            user,
+                            data: Some(resp.otpauth_url),
+                        },
+                    });
+                }
+                Err(err) => {
+                    updater.set(InternalUsersActionCompute {
+                        state: InternalUsersActionState::Error {
+                            kind: InternalUsersActionKind::GetUserQr,
+                            user,
+                            message: err.to_string(),
+                        },
+                    });
+                }
+            }
         })
     }
 }

@@ -189,26 +189,19 @@ impl Command for RefreshInternalUsersCommand {
                 result: InternalUsersListUsersResult::Loading,
             });
 
-            // Clone cf_token for async use
-            let cf_token_clone = cf_token.clone();
-
             // Kick off async request; update compute on completion.
-            internal_users_api::list_users(
-                &api_base_url,
-                &cf_token_clone,
-                move |result| match result {
-                    Ok(users) => {
-                        updater.set(InternalUsersListUsersCompute {
-                            result: InternalUsersListUsersResult::Loaded(users),
-                        });
-                    }
-                    Err(err) => {
-                        updater.set(InternalUsersListUsersCompute {
-                            result: InternalUsersListUsersResult::Error(err.to_string()),
-                        });
-                    }
-                },
-            );
+            match internal_users_api::list_users(&api_base_url, &cf_token).await {
+                Ok(users) => {
+                    updater.set(InternalUsersListUsersCompute {
+                        result: InternalUsersListUsersResult::Loaded(users),
+                    });
+                }
+                Err(err) => {
+                    updater.set(InternalUsersListUsersCompute {
+                        result: InternalUsersListUsersResult::Error(err.to_string()),
+                    });
+                }
+            }
         })
     }
 }

@@ -552,6 +552,24 @@ mod tests {
         ) -> Result<Option<crate::database::UploadRow>, crate::database::SqlStorageError> {
             Ok(None)
         }
+
+        async fn revoked_tokens_add(
+            &self,
+            _token_hash: &str,
+            _username: &str,
+            _expires_at: chrono::DateTime<chrono::Utc>,
+        ) -> Result<(), crate::database::SqlStorageError> {
+            // Mock: silently succeed
+            Ok(())
+        }
+
+        async fn revoked_tokens_is_revoked(
+            &self,
+            _token_hash: &str,
+        ) -> Result<bool, crate::database::SqlStorageError> {
+            // Mock: tokens are never revoked
+            Ok(false)
+        }
     }
 
     #[tokio::test]

@@ -70,6 +70,10 @@ async fn test_f1_key_shows_api_status() {
     harness.step();
     harness.step();
 
+    // Wait for async command to complete
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    harness.step();
+
     // Should now be visible - query for the "API Status" label
     assert!(
         is_api_status_visible(harness),
@@ -104,6 +108,10 @@ async fn test_f1_key_hides_api_status() {
     harness.step();
     harness.step();
 
+    // Wait for async command to complete
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    harness.step();
+
     // Verify visible
     assert!(
         is_api_status_visible(harness),
@@ -113,6 +121,10 @@ async fn test_f1_key_hides_api_status() {
     // Press Shift+F1 again to hide
     harness.key_press_modifiers(egui::Modifiers::SHIFT, egui::Key::F1);
     harness.step();
+    harness.step();
+
+    // Wait for async command to complete
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
     harness.step();
 
     // Should now be hidden
@@ -148,6 +160,10 @@ async fn test_multiple_f1_toggles() {
     for i in 0..10 {
         harness.key_press_modifiers(egui::Modifiers::SHIFT, egui::Key::F1);
         harness.step();
+        harness.step();
+
+        // Wait for async command to complete
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
         harness.step();
 
         let expected_visible = (i + 1) % 2 == 1; // odd iterations: visible, even: hidden

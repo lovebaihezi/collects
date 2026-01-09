@@ -51,17 +51,60 @@ pub use task::{TaskHandle, TaskId, TaskIdGenerator};
 /// increments per compute type, and carry `generation` through async completion so stale results
 /// can be ignored.
 ///
+/// ### Cooperative cancellation
+///
+/// Commands receive a `CancellationToken` to support cooperative cancellation. Long-running
+/// commands should periodically check `cancel.is_cancelled()` or use `tokio::select!` with
+/// `cancel.cancelled()` to respond to cancellation requests gracefully.
+///
 /// ### UI-affine state boundary
 ///
 /// States containing non-Send UI types (e.g. `egui::TextureHandle`) must be mutated only on the
 /// UI thread and must not be updated from async completion via `Updater::set_state()`.
 /// Keep that state in UI code and update it via `StateCtx::update()` / `StateCtx::state_mut()`.
 pub trait Command: std::fmt::Debug + Send + Sync + 'static {
-    /// Runs the command with snapshot-based access to states and computes.
+    /// Runs the command asynchronously with snapshot-based access to states and computes.
     ///
     /// Commands read from `CommandSnapshot` (owned clones) and write updates via `Updater`.
     /// This ensures commands never hold mutable references to live state during execution.
-    fn run(&self, snap: CommandSnapshot, updater: Updater);
+    ///
+    /// The `cancel` token enables cooperative cancellation. Commands should check
+    /// `cancel.is_cancelled()` or await `cancel.cancelled()` to respond to cancellation.
+    ///
+    /// Returns a boxed future that must be `'static` (no references to `self`). Clone any
+    /// needed data from `self` into the async block.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// impl Command for MyCommand {
+    ///     fn run(
+    ///         &self,
+    ///         snap: CommandSnapshot,
+    ///         updater: Updater,
+    ///         cancel: CancellationToken,
+    ///     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> {
+    ///         // Clone any data from self that you need in the async block
+    ///         let my_data = self.data.clone();
+    ///         Box::pin(async move {
+    ///             tokio::select! {
+    ///                 _ = cancel.cancelled() => {
+    ///                     // Cancelled
+    ///                 }
+    ///                 result = do_async_work(my_data) => {
+    ///                     updater.set(MyCompute { data: result });
+    ///                 }
+    ///             }
+    ///         })
+    ///     }
+    /// }
+    /// ```
+    fn run(
+        &self,
+        snap: CommandSnapshot,
+        updater: Updater,
+        cancel: tokio_util::sync::CancellationToken,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>>;
 }
 
 #[cfg(test)]
@@ -398,13 +441,21 @@ mod state_runtime_test {
     }
 
     impl Command for IncrementCountCommand {
-        fn run(&self, _snap: CommandSnapshot, _updater: Updater) {
-            self.shared.fetch_add(1, Ordering::SeqCst);
+        fn run(
+            &self,
+            _snap: CommandSnapshot,
+            _updater: Updater,
+            _cancel: tokio_util::sync::CancellationToken,
+        ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> {
+            let shared = Arc::clone(&self.shared);
+            Box::pin(async move {
+                shared.fetch_add(1, Ordering::SeqCst);
+            })
         }
     }
 
-    #[test]
-    fn test_command_dispatch_is_manual_only() {
+    #[tokio::test]
+    async fn test_command_dispatch_is_manual_only() {
         let shared = Arc::new(AtomicUsize::new(0));
 
         let mut ctx = StateCtx::new();
@@ -423,6 +474,9 @@ mod state_runtime_test {
         // Only runs when explicitly invoked via enqueue + flush.
         ctx.enqueue_command::<IncrementCountCommand>();
         ctx.flush_commands();
+
+        // Yield to let the spawned task complete
+        tokio::task::yield_now().await;
 
         assert_eq!(shared.load(Ordering::SeqCst), 1);
     }
@@ -478,13 +532,21 @@ mod state_runtime_test {
     }
 
     impl Command for SetComputeValueCommand {
-        fn run(&self, _snap: CommandSnapshot, updater: Updater) {
-            updater.set(DummyComputeFromCommand { value: self.value });
+        fn run(
+            &self,
+            _snap: CommandSnapshot,
+            updater: Updater,
+            _cancel: tokio_util::sync::CancellationToken,
+        ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> {
+            let value = self.value;
+            Box::pin(async move {
+                updater.set(DummyComputeFromCommand { value });
+            })
         }
     }
 
-    #[test]
-    fn test_command_can_update_compute_via_updater_and_sync() {
+    #[tokio::test]
+    async fn test_command_can_update_compute_via_updater_and_sync() {
         let mut ctx = StateCtx::new();
 
         // Register the compute so it can receive updates via `Updater`.
@@ -494,6 +556,9 @@ mod state_runtime_test {
         ctx.record_command(SetComputeValueCommand { value: 123 });
         ctx.enqueue_command::<SetComputeValueCommand>();
         ctx.flush_commands();
+
+        // Yield to let the spawned task complete
+        tokio::task::yield_now().await;
 
         // Command updates are delivered via the same runtime channel as computes.
         ctx.sync_computes();
@@ -553,9 +618,17 @@ mod state_runtime_test {
     }
 
     impl Command for SetUnregisteredComputeCommand {
-        fn run(&self, _snap: CommandSnapshot, updater: Updater) {
-            // Intentionally send an update for a compute type that was never registered.
-            updater.set(UnregisteredCompute { value: self.value });
+        fn run(
+            &self,
+            _snap: CommandSnapshot,
+            updater: Updater,
+            _cancel: tokio_util::sync::CancellationToken,
+        ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> {
+            let value = self.value;
+            Box::pin(async move {
+                // Intentionally send an update for a compute type that was never registered.
+                updater.set(UnregisteredCompute { value });
+            })
         }
     }
 
@@ -686,27 +759,37 @@ mod state_runtime_test {
     }
 
     impl Command for SnapshotReadingCommand {
-        fn run(&self, snap: CommandSnapshot, updater: Updater) {
-            // Read state from snapshot
-            let state: &DummyState = snap.state();
-            assert_eq!(state.base_value, self.expected_state_value);
+        fn run(
+            &self,
+            snap: CommandSnapshot,
+            updater: Updater,
+            _cancel: tokio_util::sync::CancellationToken,
+        ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> {
+            let expected_state_value = self.expected_state_value;
+            let expected_compute_value = self.expected_compute_value;
+            let shared_success = Arc::clone(&self.shared_success);
+            Box::pin(async move {
+                // Read state from snapshot
+                let state: &DummyState = snap.state();
+                assert_eq!(state.base_value, expected_state_value);
 
-            // Read compute from snapshot
-            let compute: &DummyComputeA = snap.compute();
-            assert_eq!(compute.doubled, self.expected_compute_value);
+                // Read compute from snapshot
+                let compute: &DummyComputeA = snap.compute();
+                assert_eq!(compute.doubled, expected_compute_value);
 
-            // Signal success
-            self.shared_success.fetch_add(1, Ordering::SeqCst);
+                // Signal success
+                shared_success.fetch_add(1, Ordering::SeqCst);
 
-            // Update another compute via updater
-            updater.set(DummyComputeFromCommand {
-                value: state.base_value * 100,
-            });
+                // Update another compute via updater
+                updater.set(DummyComputeFromCommand {
+                    value: state.base_value * 100,
+                });
+            })
         }
     }
 
-    #[test]
-    fn test_command_reads_from_snapshot() {
+    #[tokio::test]
+    async fn test_command_reads_from_snapshot() {
         let success = Arc::new(AtomicUsize::new(0));
 
         let mut ctx = StateCtx::new();
@@ -737,6 +820,10 @@ mod state_runtime_test {
         // Execute command via enqueue + flush
         ctx.enqueue_command::<SnapshotReadingCommand>();
         ctx.flush_commands();
+
+        // Yield to let the spawned task complete
+        tokio::task::yield_now().await;
+
         ctx.sync_computes();
 
         // Verify command ran successfully and assertions passed
@@ -769,8 +856,8 @@ mod state_runtime_test {
     }
 
     /// Tests that flush_commands executes all queued commands.
-    #[test]
-    fn test_flush_commands_executes_queued_commands() {
+    #[tokio::test]
+    async fn test_flush_commands_executes_queued_commands() {
         let shared = Arc::new(AtomicUsize::new(0));
 
         let mut ctx = StateCtx::new();
@@ -787,6 +874,10 @@ mod state_runtime_test {
 
         // Flush should execute all commands
         ctx.flush_commands();
+
+        // Yield to let the spawned tasks complete
+        tokio::task::yield_now().await;
+        tokio::task::yield_now().await;
 
         assert_eq!(shared.load(Ordering::SeqCst), 3);
         assert_eq!(ctx.command_queue_len(), 0);
@@ -810,13 +901,21 @@ mod state_runtime_test {
     }
 
     impl Command for EnqueueAnotherCommand {
-        fn run(&self, _snap: CommandSnapshot, _updater: Updater) {
-            self.counter.fetch_add(1, Ordering::SeqCst);
+        fn run(
+            &self,
+            _snap: CommandSnapshot,
+            _updater: Updater,
+            _cancel: tokio_util::sync::CancellationToken,
+        ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> {
+            let counter = Arc::clone(&self.counter);
+            Box::pin(async move {
+                counter.fetch_add(1, Ordering::SeqCst);
+            })
         }
     }
 
-    #[test]
-    fn test_flush_commands_order() {
+    #[tokio::test]
+    async fn test_flush_commands_order() {
         let counter1 = Arc::new(AtomicUsize::new(0));
         let counter2 = Arc::new(AtomicUsize::new(0));
 
@@ -836,6 +935,10 @@ mod state_runtime_test {
 
         ctx.flush_commands();
 
+        // Yield to let the spawned tasks complete
+        tokio::task::yield_now().await;
+        tokio::task::yield_now().await;
+
         // All three should have executed
         assert_eq!(counter1.load(Ordering::SeqCst), 2);
         assert_eq!(counter2.load(Ordering::SeqCst), 1);
@@ -851,8 +954,8 @@ mod state_runtime_test {
     }
 
     /// Tests that command queue works with snapshot reading.
-    #[test]
-    fn test_enqueue_command_reads_from_snapshot() {
+    #[tokio::test]
+    async fn test_enqueue_command_reads_from_snapshot() {
         let success = Arc::new(AtomicUsize::new(0));
 
         let mut ctx = StateCtx::new();
@@ -883,6 +986,10 @@ mod state_runtime_test {
         // Enqueue and flush command
         ctx.enqueue_command::<SnapshotReadingCommand>();
         ctx.flush_commands();
+
+        // Yield to let the spawned task complete
+        tokio::task::yield_now().await;
+
         ctx.sync_computes();
 
         // Verify command ran successfully and assertions passed
@@ -893,8 +1000,8 @@ mod state_runtime_test {
     }
 
     /// Tests the recommended end-of-frame pattern.
-    #[test]
-    fn test_end_of_frame_pattern() {
+    #[tokio::test]
+    async fn test_end_of_frame_pattern() {
         let mut ctx = StateCtx::new();
         ctx.add_state(DummyState { base_value: 1 });
         ctx.record_compute(DummyComputeFromCommand { value: 0 });
@@ -910,11 +1017,62 @@ mod state_runtime_test {
         // 3. End of frame: flush commands
         ctx.flush_commands();
 
+        // Yield to let the spawned task complete
+        tokio::task::yield_now().await;
+
         // 4. Sync command results
         ctx.sync_computes();
 
         // 5. Verify state was updated
         assert_eq!(ctx.cached::<DummyComputeFromCommand>().unwrap().value, 42);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // ASYNC COMMAND TRAIT TESTS
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// Tests that async Command receives a CancellationToken.
+    /// This verifies that the new Command trait signature with CancellationToken works correctly.
+    #[derive(Debug)]
+    struct CancellationAwareCommand {
+        cancel_received: Arc<AtomicUsize>,
+    }
+
+    impl Command for CancellationAwareCommand {
+        fn run(
+            &self,
+            _snap: CommandSnapshot,
+            _updater: Updater,
+            cancel: tokio_util::sync::CancellationToken,
+        ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> {
+            let cancel_received = Arc::clone(&self.cancel_received);
+            Box::pin(async move {
+                // Verify that the cancel token is valid and not initially cancelled
+                if !cancel.is_cancelled() {
+                    cancel_received.fetch_add(1, Ordering::SeqCst);
+                }
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn test_async_command_receives_cancellation_token() {
+        let cancel_received = Arc::new(AtomicUsize::new(0));
+
+        let mut ctx = StateCtx::new();
+        ctx.record_command(CancellationAwareCommand {
+            cancel_received: Arc::clone(&cancel_received),
+        });
+
+        // Execute command
+        ctx.enqueue_command::<CancellationAwareCommand>();
+        ctx.flush_commands();
+
+        // Yield to let the spawned task complete
+        tokio::task::yield_now().await;
+
+        // Verify the command received a valid (non-cancelled) token
+        assert_eq!(cancel_received.load(Ordering::SeqCst), 1);
     }
 
     // ═══════════════════════════════════════════════════════════════════════

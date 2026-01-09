@@ -342,9 +342,9 @@ Any state intended to be updated from async completion must:
 - [x] Add `StateCtx::cancel_task()` method
 - [x] Add `StateCtx::shutdown()` async method
 - [ ] Convert `Compute` trait to async
-- [ ] Convert `Command` trait to async
+- [x] Convert `Command` trait to async
 - [ ] Update all existing computes to async
-- [ ] Update all existing commands to async
+- [x] Update all existing commands to async
 
 ### Phase 4 — Replace ehttp with reqwest
 - [ ] Remove `ehttp` dependency from `collects/business`

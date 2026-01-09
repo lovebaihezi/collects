@@ -191,86 +191,93 @@ fn missing(field: &str, cmd: &str) -> String {
 pub struct UpdateUsernameCommand;
 
 impl Command for UpdateUsernameCommand {
-    fn run(&self, snap: CommandSnapshot, updater: Updater) {
-        let input: &InternalUsersActionInput = snap.state();
-        let config: &BusinessConfig = snap.state();
-        let cf_token: &CFTokenCompute = snap.compute();
+    fn run(
+        &self,
+        snap: CommandSnapshot,
+        updater: Updater,
+        _cancel: tokio_util::sync::CancellationToken,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> {
+        let input: InternalUsersActionInput = snap.state::<InternalUsersActionInput>().clone();
+        let config: BusinessConfig = snap.state::<BusinessConfig>().clone();
+        let cf_token: CFTokenCompute = snap.compute::<CFTokenCompute>().clone();
 
-        let api_base_url = resolve_api_base_url(input, config);
-        if api_base_url.trim().is_empty() {
-            updater.set(InternalUsersActionCompute {
-                state: InternalUsersActionState::Error {
-                    kind: InternalUsersActionKind::UpdateUsername,
-                    user: input.username.unwrap_or_else(|| Ustr::from("")),
-                    message:
-                        "UpdateUsernameCommand: missing api_base_url (set InternalUsersActionInput.api_base_url or BusinessConfig.api_base_url)"
-                            .to_string(),
-                },
-            });
-            return;
-        }
+        Box::pin(async move {
+            let api_base_url = resolve_api_base_url(&input, &config);
+            if api_base_url.trim().is_empty() {
+                updater.set(InternalUsersActionCompute {
+                    state: InternalUsersActionState::Error {
+                        kind: InternalUsersActionKind::UpdateUsername,
+                        user: input.username.unwrap_or_else(|| Ustr::from("")),
+                        message:
+                            "UpdateUsernameCommand: missing api_base_url (set InternalUsersActionInput.api_base_url or BusinessConfig.api_base_url)"
+                                .to_string(),
+                    },
+                });
+                return;
+            }
 
-        let Some(user) = input.username else {
-            updater.set(InternalUsersActionCompute {
-                state: InternalUsersActionState::Idle,
-            });
-            updater.set(InternalUsersActionCompute {
-                state: InternalUsersActionState::Error {
-                    kind: InternalUsersActionKind::UpdateUsername,
-                    user: Ustr::from(""),
-                    message: missing("username", "UpdateUsernameCommand"),
-                },
-            });
-            return;
-        };
+            let Some(user) = input.username else {
+                updater.set(InternalUsersActionCompute {
+                    state: InternalUsersActionState::Idle,
+                });
+                updater.set(InternalUsersActionCompute {
+                    state: InternalUsersActionState::Error {
+                        kind: InternalUsersActionKind::UpdateUsername,
+                        user: Ustr::from(""),
+                        message: missing("username", "UpdateUsernameCommand"),
+                    },
+                });
+                return;
+            };
 
-        let Some(new_username) = input.new_username else {
+            let Some(new_username) = input.new_username else {
+                updater.set(InternalUsersActionCompute {
+                    state: InternalUsersActionState::Error {
+                        kind: InternalUsersActionKind::UpdateUsername,
+                        user,
+                        message: missing("new_username", "UpdateUsernameCommand"),
+                    },
+                });
+                return;
+            };
+
             updater.set(InternalUsersActionCompute {
-                state: InternalUsersActionState::Error {
+                state: InternalUsersActionState::InFlight {
                     kind: InternalUsersActionKind::UpdateUsername,
                     user,
-                    message: missing("new_username", "UpdateUsernameCommand"),
                 },
             });
-            return;
-        };
 
-        updater.set(InternalUsersActionCompute {
-            state: InternalUsersActionState::InFlight {
-                kind: InternalUsersActionKind::UpdateUsername,
-                user,
-            },
-        });
+            let user_str = user.as_str().to_string();
+            let new_username_str = new_username.as_str().to_string();
 
-        let user_str = user.as_str().to_string();
-        let new_username_str = new_username.as_str().to_string();
-
-        internal_users_api::update_username(
-            &api_base_url,
-            cf_token,
-            &user_str,
-            &new_username_str,
-            move |result: internal_users_api::ApiResult<UpdateUsernameResponse>| match result {
-                Ok(_resp) => {
-                    updater.set(InternalUsersActionCompute {
-                        state: InternalUsersActionState::Success {
-                            kind: InternalUsersActionKind::UpdateUsername,
-                            user,
-                            data: None,
-                        },
-                    });
-                }
-                Err(err) => {
-                    updater.set(InternalUsersActionCompute {
-                        state: InternalUsersActionState::Error {
-                            kind: InternalUsersActionKind::UpdateUsername,
-                            user,
-                            message: err.to_string(),
-                        },
-                    });
-                }
-            },
-        );
+            internal_users_api::update_username(
+                &api_base_url,
+                &cf_token,
+                &user_str,
+                &new_username_str,
+                move |result: internal_users_api::ApiResult<UpdateUsernameResponse>| match result {
+                    Ok(_resp) => {
+                        updater.set(InternalUsersActionCompute {
+                            state: InternalUsersActionState::Success {
+                                kind: InternalUsersActionKind::UpdateUsername,
+                                user,
+                                data: None,
+                            },
+                        });
+                    }
+                    Err(err) => {
+                        updater.set(InternalUsersActionCompute {
+                            state: InternalUsersActionState::Error {
+                                kind: InternalUsersActionKind::UpdateUsername,
+                                user,
+                                message: err.to_string(),
+                            },
+                        });
+                    }
+                },
+            );
+        })
     }
 }
 
@@ -278,75 +285,82 @@ impl Command for UpdateUsernameCommand {
 pub struct UpdateProfileCommand;
 
 impl Command for UpdateProfileCommand {
-    fn run(&self, snap: CommandSnapshot, updater: Updater) {
-        let input: &InternalUsersActionInput = snap.state();
-        let config: &BusinessConfig = snap.state();
-        let cf_token: &CFTokenCompute = snap.compute();
+    fn run(
+        &self,
+        snap: CommandSnapshot,
+        updater: Updater,
+        _cancel: tokio_util::sync::CancellationToken,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> {
+        let input: InternalUsersActionInput = snap.state::<InternalUsersActionInput>().clone();
+        let config: BusinessConfig = snap.state::<BusinessConfig>().clone();
+        let cf_token: CFTokenCompute = snap.compute::<CFTokenCompute>().clone();
 
-        let api_base_url = resolve_api_base_url(input, config);
-        if api_base_url.trim().is_empty() {
+        Box::pin(async move {
+            let api_base_url = resolve_api_base_url(&input, &config);
+            if api_base_url.trim().is_empty() {
+                updater.set(InternalUsersActionCompute {
+                    state: InternalUsersActionState::Error {
+                        kind: InternalUsersActionKind::UpdateProfile,
+                        user: input.username.unwrap_or_else(|| Ustr::from("")),
+                        message:
+                            "UpdateProfileCommand: missing api_base_url (set InternalUsersActionInput.api_base_url or BusinessConfig.api_base_url)"
+                                .to_string(),
+                    },
+                });
+                return;
+            }
+
+            let Some(user) = input.username else {
+                updater.set(InternalUsersActionCompute {
+                    state: InternalUsersActionState::Error {
+                        kind: InternalUsersActionKind::UpdateProfile,
+                        user: Ustr::from(""),
+                        message: missing("username", "UpdateProfileCommand"),
+                    },
+                });
+                return;
+            };
+
             updater.set(InternalUsersActionCompute {
-                state: InternalUsersActionState::Error {
+                state: InternalUsersActionState::InFlight {
                     kind: InternalUsersActionKind::UpdateProfile,
-                    user: input.username.unwrap_or_else(|| Ustr::from("")),
-                    message:
-                        "UpdateProfileCommand: missing api_base_url (set InternalUsersActionInput.api_base_url or BusinessConfig.api_base_url)"
-                            .to_string(),
+                    user,
                 },
             });
-            return;
-        }
 
-        let Some(user) = input.username else {
-            updater.set(InternalUsersActionCompute {
-                state: InternalUsersActionState::Error {
-                    kind: InternalUsersActionKind::UpdateProfile,
-                    user: Ustr::from(""),
-                    message: missing("username", "UpdateProfileCommand"),
+            let user_str = user.as_str().to_string();
+            let nickname = input.nickname.clone();
+            let avatar_url = input.avatar_url.clone();
+            let cf_token_clone = cf_token.clone();
+
+            internal_users_api::update_profile(
+                &api_base_url,
+                &cf_token_clone,
+                &user_str,
+                nickname,
+                avatar_url,
+                move |result: internal_users_api::ApiResult<UpdateProfileResponse>| match result {
+                    Ok(_resp) => {
+                        updater.set(InternalUsersActionCompute {
+                            state: InternalUsersActionState::Success {
+                                kind: InternalUsersActionKind::UpdateProfile,
+                                user,
+                                data: None,
+                            },
+                        });
+                    }
+                    Err(err) => {
+                        updater.set(InternalUsersActionCompute {
+                            state: InternalUsersActionState::Error {
+                                kind: InternalUsersActionKind::UpdateProfile,
+                                user,
+                                message: err.to_string(),
+                            },
+                        });
+                    }
                 },
-            });
-            return;
-        };
-
-        updater.set(InternalUsersActionCompute {
-            state: InternalUsersActionState::InFlight {
-                kind: InternalUsersActionKind::UpdateProfile,
-                user,
-            },
-        });
-
-        let user_str = user.as_str().to_string();
-        let nickname = input.nickname.clone();
-        let avatar_url = input.avatar_url.clone();
-        let cf_token_clone = cf_token.clone();
-
-        internal_users_api::update_profile(
-            &api_base_url,
-            &cf_token_clone,
-            &user_str,
-            nickname,
-            avatar_url,
-            move |result: internal_users_api::ApiResult<UpdateProfileResponse>| match result {
-                Ok(_resp) => {
-                    updater.set(InternalUsersActionCompute {
-                        state: InternalUsersActionState::Success {
-                            kind: InternalUsersActionKind::UpdateProfile,
-                            user,
-                            data: None,
-                        },
-                    });
-                }
-                Err(err) => {
-                    updater.set(InternalUsersActionCompute {
-                        state: InternalUsersActionState::Error {
-                            kind: InternalUsersActionKind::UpdateProfile,
-                            user,
-                            message: err.to_string(),
-                        },
-                    });
-                }
-            },
-        );
+            );
+        })
     }
 }
 
@@ -354,81 +368,88 @@ impl Command for UpdateProfileCommand {
 pub struct DeleteUserCommand;
 
 impl Command for DeleteUserCommand {
-    fn run(&self, snap: CommandSnapshot, updater: Updater) {
-        let input: &InternalUsersActionInput = snap.state();
-        let config: &BusinessConfig = snap.state();
-        let cf_token: &CFTokenCompute = snap.compute();
+    fn run(
+        &self,
+        snap: CommandSnapshot,
+        updater: Updater,
+        _cancel: tokio_util::sync::CancellationToken,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> {
+        let input: InternalUsersActionInput = snap.state::<InternalUsersActionInput>().clone();
+        let config: BusinessConfig = snap.state::<BusinessConfig>().clone();
+        let cf_token: CFTokenCompute = snap.compute::<CFTokenCompute>().clone();
 
-        let api_base_url = resolve_api_base_url(input, config);
-        if api_base_url.trim().is_empty() {
+        Box::pin(async move {
+            let api_base_url = resolve_api_base_url(&input, &config);
+            if api_base_url.trim().is_empty() {
+                updater.set(InternalUsersActionCompute {
+                    state: InternalUsersActionState::Error {
+                        kind: InternalUsersActionKind::DeleteUser,
+                        user: input.username.unwrap_or_else(|| Ustr::from("")),
+                        message:
+                            "DeleteUserCommand: missing api_base_url (set InternalUsersActionInput.api_base_url or BusinessConfig.api_base_url)"
+                                .to_string(),
+                    },
+                });
+                return;
+            }
+
+            let Some(user) = input.username else {
+                updater.set(InternalUsersActionCompute {
+                    state: InternalUsersActionState::Error {
+                        kind: InternalUsersActionKind::DeleteUser,
+                        user: Ustr::from(""),
+                        message: missing("username", "DeleteUserCommand"),
+                    },
+                });
+                return;
+            };
+
             updater.set(InternalUsersActionCompute {
-                state: InternalUsersActionState::Error {
+                state: InternalUsersActionState::InFlight {
                     kind: InternalUsersActionKind::DeleteUser,
-                    user: input.username.unwrap_or_else(|| Ustr::from("")),
-                    message:
-                        "DeleteUserCommand: missing api_base_url (set InternalUsersActionInput.api_base_url or BusinessConfig.api_base_url)"
-                            .to_string(),
+                    user,
                 },
             });
-            return;
-        }
 
-        let Some(user) = input.username else {
-            updater.set(InternalUsersActionCompute {
-                state: InternalUsersActionState::Error {
-                    kind: InternalUsersActionKind::DeleteUser,
-                    user: Ustr::from(""),
-                    message: missing("username", "DeleteUserCommand"),
-                },
-            });
-            return;
-        };
+            let user_str = user.as_str().to_string();
+            let cf_token_clone = cf_token.clone();
 
-        updater.set(InternalUsersActionCompute {
-            state: InternalUsersActionState::InFlight {
-                kind: InternalUsersActionKind::DeleteUser,
-                user,
-            },
-        });
-
-        let user_str = user.as_str().to_string();
-        let cf_token_clone = cf_token.clone();
-
-        internal_users_api::delete_user(
-            &api_base_url,
-            &cf_token_clone,
-            &user_str,
-            move |result: internal_users_api::ApiResult<DeleteUserResponse>| match result {
-                Ok(resp) => {
-                    if resp.deleted {
-                        updater.set(InternalUsersActionCompute {
-                            state: InternalUsersActionState::Success {
-                                kind: InternalUsersActionKind::DeleteUser,
-                                user,
-                                data: None,
-                            },
-                        });
-                    } else {
+            internal_users_api::delete_user(
+                &api_base_url,
+                &cf_token_clone,
+                &user_str,
+                move |result: internal_users_api::ApiResult<DeleteUserResponse>| match result {
+                    Ok(resp) => {
+                        if resp.deleted {
+                            updater.set(InternalUsersActionCompute {
+                                state: InternalUsersActionState::Success {
+                                    kind: InternalUsersActionKind::DeleteUser,
+                                    user,
+                                    data: None,
+                                },
+                            });
+                        } else {
+                            updater.set(InternalUsersActionCompute {
+                                state: InternalUsersActionState::Error {
+                                    kind: InternalUsersActionKind::DeleteUser,
+                                    user,
+                                    message: "User not found".to_string(),
+                                },
+                            });
+                        }
+                    }
+                    Err(err) => {
                         updater.set(InternalUsersActionCompute {
                             state: InternalUsersActionState::Error {
                                 kind: InternalUsersActionKind::DeleteUser,
                                 user,
-                                message: "User not found".to_string(),
+                                message: err.to_string(),
                             },
                         });
                     }
-                }
-                Err(err) => {
-                    updater.set(InternalUsersActionCompute {
-                        state: InternalUsersActionState::Error {
-                            kind: InternalUsersActionKind::DeleteUser,
-                            user,
-                            message: err.to_string(),
-                        },
-                    });
-                }
-            },
-        );
+                },
+            );
+        })
     }
 }
 
@@ -436,71 +457,78 @@ impl Command for DeleteUserCommand {
 pub struct RevokeOtpCommand;
 
 impl Command for RevokeOtpCommand {
-    fn run(&self, snap: CommandSnapshot, updater: Updater) {
-        let input: &InternalUsersActionInput = snap.state();
-        let config: &BusinessConfig = snap.state();
-        let cf_token: &CFTokenCompute = snap.compute();
+    fn run(
+        &self,
+        snap: CommandSnapshot,
+        updater: Updater,
+        _cancel: tokio_util::sync::CancellationToken,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> {
+        let input: InternalUsersActionInput = snap.state::<InternalUsersActionInput>().clone();
+        let config: BusinessConfig = snap.state::<BusinessConfig>().clone();
+        let cf_token: CFTokenCompute = snap.compute::<CFTokenCompute>().clone();
 
-        let api_base_url = resolve_api_base_url(input, config);
-        if api_base_url.trim().is_empty() {
+        Box::pin(async move {
+            let api_base_url = resolve_api_base_url(&input, &config);
+            if api_base_url.trim().is_empty() {
+                updater.set(InternalUsersActionCompute {
+                    state: InternalUsersActionState::Error {
+                        kind: InternalUsersActionKind::RevokeOtp,
+                        user: input.username.unwrap_or_else(|| Ustr::from("")),
+                        message:
+                            "RevokeOtpCommand: missing api_base_url (set InternalUsersActionInput.api_base_url or BusinessConfig.api_base_url)"
+                                .to_string(),
+                    },
+                });
+                return;
+            }
+
+            let Some(user) = input.username else {
+                updater.set(InternalUsersActionCompute {
+                    state: InternalUsersActionState::Error {
+                        kind: InternalUsersActionKind::RevokeOtp,
+                        user: Ustr::from(""),
+                        message: missing("username", "RevokeOtpCommand"),
+                    },
+                });
+                return;
+            };
+
             updater.set(InternalUsersActionCompute {
-                state: InternalUsersActionState::Error {
+                state: InternalUsersActionState::InFlight {
                     kind: InternalUsersActionKind::RevokeOtp,
-                    user: input.username.unwrap_or_else(|| Ustr::from("")),
-                    message:
-                        "RevokeOtpCommand: missing api_base_url (set InternalUsersActionInput.api_base_url or BusinessConfig.api_base_url)"
-                            .to_string(),
+                    user,
                 },
             });
-            return;
-        }
 
-        let Some(user) = input.username else {
-            updater.set(InternalUsersActionCompute {
-                state: InternalUsersActionState::Error {
-                    kind: InternalUsersActionKind::RevokeOtp,
-                    user: Ustr::from(""),
-                    message: missing("username", "RevokeOtpCommand"),
+            let user_str = user.as_str().to_string();
+            let cf_token_clone = cf_token.clone();
+
+            internal_users_api::revoke_otp(
+                &api_base_url,
+                &cf_token_clone,
+                &user_str,
+                move |result: internal_users_api::ApiResult<RevokeOtpResponse>| match result {
+                    Ok(resp) => {
+                        updater.set(InternalUsersActionCompute {
+                            state: InternalUsersActionState::Success {
+                                kind: InternalUsersActionKind::RevokeOtp,
+                                user,
+                                data: Some(resp.otpauth_url),
+                            },
+                        });
+                    }
+                    Err(err) => {
+                        updater.set(InternalUsersActionCompute {
+                            state: InternalUsersActionState::Error {
+                                kind: InternalUsersActionKind::RevokeOtp,
+                                user,
+                                message: err.to_string(),
+                            },
+                        });
+                    }
                 },
-            });
-            return;
-        };
-
-        updater.set(InternalUsersActionCompute {
-            state: InternalUsersActionState::InFlight {
-                kind: InternalUsersActionKind::RevokeOtp,
-                user,
-            },
-        });
-
-        let user_str = user.as_str().to_string();
-        let cf_token_clone = cf_token.clone();
-
-        internal_users_api::revoke_otp(
-            &api_base_url,
-            &cf_token_clone,
-            &user_str,
-            move |result: internal_users_api::ApiResult<RevokeOtpResponse>| match result {
-                Ok(resp) => {
-                    updater.set(InternalUsersActionCompute {
-                        state: InternalUsersActionState::Success {
-                            kind: InternalUsersActionKind::RevokeOtp,
-                            user,
-                            data: Some(resp.otpauth_url),
-                        },
-                    });
-                }
-                Err(err) => {
-                    updater.set(InternalUsersActionCompute {
-                        state: InternalUsersActionState::Error {
-                            kind: InternalUsersActionKind::RevokeOtp,
-                            user,
-                            message: err.to_string(),
-                        },
-                    });
-                }
-            },
-        );
+            );
+        })
     }
 }
 
@@ -512,10 +540,17 @@ impl Command for RevokeOtpCommand {
 pub struct ResetInternalUsersActionCommand;
 
 impl Command for ResetInternalUsersActionCommand {
-    fn run(&self, _snap: CommandSnapshot, updater: Updater) {
-        updater.set(InternalUsersActionCompute {
-            state: InternalUsersActionState::Idle,
-        });
+    fn run(
+        &self,
+        _snap: CommandSnapshot,
+        updater: Updater,
+        _cancel: tokio_util::sync::CancellationToken,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> {
+        Box::pin(async move {
+            updater.set(InternalUsersActionCompute {
+                state: InternalUsersActionState::Idle,
+            });
+        })
     }
 }
 
@@ -523,70 +558,77 @@ impl Command for ResetInternalUsersActionCommand {
 pub struct GetUserQrCommand;
 
 impl Command for GetUserQrCommand {
-    fn run(&self, snap: CommandSnapshot, updater: Updater) {
-        let input: &InternalUsersActionInput = snap.state();
-        let config: &BusinessConfig = snap.state();
-        let cf_token: &CFTokenCompute = snap.compute();
+    fn run(
+        &self,
+        snap: CommandSnapshot,
+        updater: Updater,
+        _cancel: tokio_util::sync::CancellationToken,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> {
+        let input: InternalUsersActionInput = snap.state::<InternalUsersActionInput>().clone();
+        let config: BusinessConfig = snap.state::<BusinessConfig>().clone();
+        let cf_token: CFTokenCompute = snap.compute::<CFTokenCompute>().clone();
 
-        let api_base_url = resolve_api_base_url(input, config);
-        if api_base_url.trim().is_empty() {
+        Box::pin(async move {
+            let api_base_url = resolve_api_base_url(&input, &config);
+            if api_base_url.trim().is_empty() {
+                updater.set(InternalUsersActionCompute {
+                    state: InternalUsersActionState::Error {
+                        kind: InternalUsersActionKind::GetUserQr,
+                        user: input.username.unwrap_or_else(|| Ustr::from("")),
+                        message:
+                            "GetUserQrCommand: missing api_base_url (set InternalUsersActionInput.api_base_url or BusinessConfig.api_base_url)"
+                                .to_string(),
+                    },
+                });
+                return;
+            }
+
+            let Some(user) = input.username else {
+                updater.set(InternalUsersActionCompute {
+                    state: InternalUsersActionState::Error {
+                        kind: InternalUsersActionKind::GetUserQr,
+                        user: Ustr::from(""),
+                        message: missing("username", "GetUserQrCommand"),
+                    },
+                });
+                return;
+            };
+
             updater.set(InternalUsersActionCompute {
-                state: InternalUsersActionState::Error {
+                state: InternalUsersActionState::InFlight {
                     kind: InternalUsersActionKind::GetUserQr,
-                    user: input.username.unwrap_or_else(|| Ustr::from("")),
-                    message:
-                        "GetUserQrCommand: missing api_base_url (set InternalUsersActionInput.api_base_url or BusinessConfig.api_base_url)"
-                            .to_string(),
+                    user,
                 },
             });
-            return;
-        }
 
-        let Some(user) = input.username else {
-            updater.set(InternalUsersActionCompute {
-                state: InternalUsersActionState::Error {
-                    kind: InternalUsersActionKind::GetUserQr,
-                    user: Ustr::from(""),
-                    message: missing("username", "GetUserQrCommand"),
+            let user_str = user.as_str().to_string();
+            let cf_token_clone = cf_token.clone();
+
+            internal_users_api::get_user(
+                &api_base_url,
+                &cf_token_clone,
+                &user_str,
+                move |result: internal_users_api::ApiResult<GetUserResponse>| match result {
+                    Ok(resp) => {
+                        updater.set(InternalUsersActionCompute {
+                            state: InternalUsersActionState::Success {
+                                kind: InternalUsersActionKind::GetUserQr,
+                                user,
+                                data: Some(resp.otpauth_url),
+                            },
+                        });
+                    }
+                    Err(err) => {
+                        updater.set(InternalUsersActionCompute {
+                            state: InternalUsersActionState::Error {
+                                kind: InternalUsersActionKind::GetUserQr,
+                                user,
+                                message: err.to_string(),
+                            },
+                        });
+                    }
                 },
-            });
-            return;
-        };
-
-        updater.set(InternalUsersActionCompute {
-            state: InternalUsersActionState::InFlight {
-                kind: InternalUsersActionKind::GetUserQr,
-                user,
-            },
-        });
-
-        let user_str = user.as_str().to_string();
-        let cf_token_clone = cf_token.clone();
-
-        internal_users_api::get_user(
-            &api_base_url,
-            &cf_token_clone,
-            &user_str,
-            move |result: internal_users_api::ApiResult<GetUserResponse>| match result {
-                Ok(resp) => {
-                    updater.set(InternalUsersActionCompute {
-                        state: InternalUsersActionState::Success {
-                            kind: InternalUsersActionKind::GetUserQr,
-                            user,
-                            data: Some(resp.otpauth_url),
-                        },
-                    });
-                }
-                Err(err) => {
-                    updater.set(InternalUsersActionCompute {
-                        state: InternalUsersActionState::Error {
-                            kind: InternalUsersActionKind::GetUserQr,
-                            user,
-                            message: err.to_string(),
-                        },
-                    });
-                }
-            },
-        );
+            );
+        })
     }
 }

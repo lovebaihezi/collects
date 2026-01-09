@@ -215,18 +215,25 @@ impl State for ApiStatus {
 pub struct ToggleApiStatusCommand;
 
 impl Command for ToggleApiStatusCommand {
-    fn run(&self, snap: CommandSnapshot, updater: Updater) {
-        let current: &ApiStatus = snap.compute();
-        let new_show_status = !current.show_status;
+    fn run(
+        &self,
+        snap: CommandSnapshot,
+        updater: Updater,
+        _cancel: tokio_util::sync::CancellationToken,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> {
+        let current: ApiStatus = snap.compute::<ApiStatus>().clone();
+        Box::pin(async move {
+            let new_show_status = !current.show_status;
 
-        updater.set(ApiStatus {
-            last_update_time: current.last_update_time,
-            last_error: current.last_error.clone(),
-            service_version: current.service_version.clone(),
-            retry_count: current.retry_count,
-            show_status: new_show_status,
-            is_fetching: current.is_fetching,
-        });
+            updater.set(ApiStatus {
+                last_update_time: current.last_update_time,
+                last_error: current.last_error.clone(),
+                service_version: current.service_version.clone(),
+                retry_count: current.retry_count,
+                show_status: new_show_status,
+                is_fetching: current.is_fetching,
+            });
+        })
     }
 }
 

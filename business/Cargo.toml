@@ -17,6 +17,7 @@ chrono = { workspace = true }
 log = { workspace = true }
 ustr = { workspace = true }
 egui = { workspace = true }
+tokio-util = { workspace = true }
 
 collects-states = { path = "../states" }
 collects-utils = { path = "../utils" }

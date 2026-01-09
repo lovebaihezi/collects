@@ -1,12 +1,26 @@
 import { generateRequestId, getSafeHeaders, log } from "./logger";
 
+/**
+ * Extract CF_Authorization token from the Cookie header.
+ * Cloudflare Zero Trust sets this cookie automatically in the browser.
+ */
+function extractCfAuthorizationFromCookie(
+  cookieHeader: string | null,
+): string | null {
+  if (!cookieHeader) return null;
+  const match = cookieHeader.match(/CF_Authorization=([^;]+)/);
+  return match ? match[1] : null;
+}
+
 async function handleApi(req: Request, env: Env): Promise<Response> {
   const requestId = generateRequestId();
   const requestTimestamp = new Date().toISOString();
   const startTime = performance.now();
   const url = new URL(req.url);
   const projectNumber = "145756646168";
-  const apiBase = env.API_BASE || `https://collects-services-${projectNumber}.us-east1.run.app`;
+  const apiBase =
+    env.API_BASE ||
+    `https://collects-services-${projectNumber}.us-east1.run.app`;
   const newPath = url.pathname.substring("/api".length);
   const newUrl = new URL(apiBase + newPath);
   newUrl.search = url.search;
@@ -28,7 +42,22 @@ async function handleApi(req: Request, env: Env): Promise<Response> {
     },
   });
 
-  const newRequest = new Request(newUrl.toString(), req);
+  // Clone headers and forward CF_Authorization cookie as cf-authorization header
+  // This allows the backend to authenticate requests proxied through the Worker
+  const headers = new Headers(req.headers);
+  const cfAuthToken = extractCfAuthorizationFromCookie(
+    req.headers.get("Cookie"),
+  );
+  if (cfAuthToken && !headers.has("cf-authorization")) {
+    headers.set("cf-authorization", cfAuthToken);
+  }
+
+  const newRequest = new Request(newUrl.toString(), {
+    method: req.method,
+    headers,
+    body: req.body,
+    redirect: "manual",
+  });
 
   let response: Response;
 

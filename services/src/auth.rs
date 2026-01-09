@@ -174,10 +174,21 @@ pub async fn zero_trust_middleware_with_resolver(
     Ok(next.run(request).await)
 }
 
-/// Extract token from CF-Authorization or Authorization header
+/// Extract token from CF-Authorization header, Authorization header, or CF_Authorization cookie.
+///
+/// This supports multiple authentication flows:
+/// 1. `cf-authorization` header - Cloudflare Access standard header
+/// 2. `CF-Access-Jwt-Assertion` header - Standard CF Access JWT header (used by Workers)
+/// 3. `Authorization: Bearer <token>` header - Standard OAuth-style header
+/// 4. `CF_Authorization` cookie - Set automatically by Cloudflare Zero Trust in browsers
 fn extract_token_from_headers(headers: &axum::http::HeaderMap) -> Option<&str> {
     // Try CF-Authorization header first (Cloudflare specific)
     if let Some(header_value) = headers.get("cf-authorization") {
+        return header_value.to_str().ok();
+    }
+
+    // Try CF-Access-Jwt-Assertion header (standard CF Access header, often used by Workers)
+    if let Some(header_value) = headers.get("cf-access-jwt-assertion") {
         return header_value.to_str().ok();
     }
 
@@ -189,6 +200,18 @@ fn extract_token_from_headers(headers: &axum::http::HeaderMap) -> Option<&str> {
             return Some(stripped);
         }
         return Some(header_str);
+    }
+
+    // Finally, try CF_Authorization cookie (set by Cloudflare Zero Trust in browsers)
+    if let Some(cookie_header) = headers.get("cookie")
+        && let Ok(cookie_str) = cookie_header.to_str()
+    {
+        for cookie in cookie_str.split(';') {
+            let cookie = cookie.trim();
+            if let Some(token) = cookie.strip_prefix("CF_Authorization=") {
+                return Some(token);
+            }
+        }
     }
 
     None
@@ -349,6 +372,40 @@ mod tests {
         let headers = HeaderMap::new();
         let token = extract_token_from_headers(&headers);
         assert_eq!(token, None);
+
+        // Test CF-Access-Jwt-Assertion header (used by Workers)
+        let mut headers = HeaderMap::new();
+        headers.insert("cf-access-jwt-assertion", "worker-token".parse().unwrap());
+
+        let token = extract_token_from_headers(&headers);
+        assert_eq!(token, Some("worker-token"));
+
+        // Test CF_Authorization cookie
+        let mut headers = HeaderMap::new();
+        headers.insert("cookie", "CF_Authorization=cookie-token".parse().unwrap());
+
+        let token = extract_token_from_headers(&headers);
+        assert_eq!(token, Some("cookie-token"));
+
+        // Test CF_Authorization cookie with multiple cookies
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "cookie",
+            "other=value; CF_Authorization=multi-cookie-token; another=thing"
+                .parse()
+                .unwrap(),
+        );
+
+        let token = extract_token_from_headers(&headers);
+        assert_eq!(token, Some("multi-cookie-token"));
+
+        // Test header takes precedence over cookie
+        let mut headers = HeaderMap::new();
+        headers.insert("cf-authorization", "header-token".parse().unwrap());
+        headers.insert("cookie", "CF_Authorization=cookie-token".parse().unwrap());
+
+        let token = extract_token_from_headers(&headers);
+        assert_eq!(token, Some("header-token"));
     }
 
     #[test]

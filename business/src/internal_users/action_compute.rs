@@ -331,11 +331,10 @@ impl Command for UpdateProfileCommand {
             let user_str = user.as_str().to_string();
             let nickname = input.nickname.clone();
             let avatar_url = input.avatar_url.clone();
-            let cf_token_clone = cf_token.clone();
 
             internal_users_api::update_profile(
                 &api_base_url,
-                &cf_token_clone,
+                &cf_token,
                 &user_str,
                 nickname,
                 avatar_url,
@@ -412,11 +411,10 @@ impl Command for DeleteUserCommand {
             });
 
             let user_str = user.as_str().to_string();
-            let cf_token_clone = cf_token.clone();
 
             internal_users_api::delete_user(
                 &api_base_url,
-                &cf_token_clone,
+                &cf_token,
                 &user_str,
                 move |result: internal_users_api::ApiResult<DeleteUserResponse>| match result {
                     Ok(resp) => {
@@ -501,11 +499,10 @@ impl Command for RevokeOtpCommand {
             });
 
             let user_str = user.as_str().to_string();
-            let cf_token_clone = cf_token.clone();
 
             internal_users_api::revoke_otp(
                 &api_base_url,
-                &cf_token_clone,
+                &cf_token,
                 &user_str,
                 move |result: internal_users_api::ApiResult<RevokeOtpResponse>| match result {
                     Ok(resp) => {
@@ -602,11 +599,10 @@ impl Command for GetUserQrCommand {
             });
 
             let user_str = user.as_str().to_string();
-            let cf_token_clone = cf_token.clone();
 
             internal_users_api::get_user(
                 &api_base_url,
-                &cf_token_clone,
+                &cf_token,
                 &user_str,
                 move |result: internal_users_api::ApiResult<GetUserResponse>| match result {
                     Ok(resp) => {

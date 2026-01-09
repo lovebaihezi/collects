@@ -225,6 +225,9 @@ mod api_state_widget_test {
             .enqueue_command::<ToggleApiStatusCommand>();
         harness.state_mut().ctx.flush_commands();
 
+        // Wait for async command to complete before syncing
+        tokio::time::sleep(Duration::from_millis(10)).await;
+
         // Sync computes to apply the update
         harness.state_mut().ctx.sync_computes();
         harness.step();
@@ -247,6 +250,10 @@ mod api_state_widget_test {
             .ctx
             .enqueue_command::<ToggleApiStatusCommand>();
         harness.state_mut().ctx.flush_commands();
+
+        // Wait for async command to complete before syncing
+        tokio::time::sleep(Duration::from_millis(10)).await;
+
         harness.state_mut().ctx.sync_computes();
         harness.step();
 
@@ -280,6 +287,10 @@ mod api_state_widget_test {
             .ctx
             .enqueue_command::<ToggleApiStatusCommand>();
         harness.state_mut().ctx.flush_commands();
+
+        // Wait for async command to complete before syncing
+        tokio::time::sleep(Duration::from_millis(10)).await;
+
         harness.state_mut().ctx.sync_computes();
         harness.step();
 
@@ -328,12 +339,20 @@ mod api_state_widget_test {
         // Run compute to trigger initial fetch (sets is_fetching = true)
         harness.state_mut().ctx.run_all_dirty();
 
+        // Wait a bit for any async compute to potentially complete, then sync
+        tokio::time::sleep(Duration::from_millis(10)).await;
+        harness.state_mut().ctx.sync_computes();
+
         // Toggle while fetch might be in-flight
         harness
             .state_mut()
             .ctx
             .enqueue_command::<ToggleApiStatusCommand>();
         harness.state_mut().ctx.flush_commands();
+
+        // Wait for async command to complete before syncing
+        tokio::time::sleep(Duration::from_millis(10)).await;
+
         harness.state_mut().ctx.sync_computes();
         harness.step();
 

@@ -10,6 +10,7 @@ import {
   migrateRepoBindings,
   type BuildMigrateRepoOptions,
 } from "./services/gcloud.ts";
+import { runGcloudDeploy } from "./services/gcloud-deploy.ts";
 import { runVersionCheck } from "./gh-actions/version-check.ts";
 import {
   runCIFeedbackCLI,
@@ -27,6 +28,7 @@ import {
   getCargoFeature,
   getDatabaseSecret,
   getJwtSecret,
+  getR2Secrets,
   listEnvironments,
 } from "./services/env-config.ts";
 import { runPrTitleCheck } from "./services/pr-title.ts";
@@ -167,6 +169,37 @@ cli
     // Output only the secret name, suitable for command substitution
     // Returns empty string if the environment uses default local secret
     console.log(getJwtSecret(env));
+  });
+
+cli
+  .command(
+    "r2-secrets <env>",
+    "Get R2 storage secrets for an environment (used by justfiles)",
+  )
+  .action((env: string) => {
+    // Output R2 secrets as comma-separated key=secret:latest pairs
+    // Returns empty string if the environment doesn't require R2
+    const r2 = getR2Secrets(env);
+    if (r2) {
+      const secrets = [
+        `CF_ACCOUNT_ID=${r2.accountId}:latest`,
+        `CF_ACCESS_KEY_ID=${r2.accessKeyId}:latest`,
+        `CF_SECRET_ACCESS_KEY=${r2.secretAccessKey}:latest`,
+        `CF_BUCKET=${r2.bucket}:latest`,
+      ].join(",");
+      console.log(secrets);
+    } else {
+      console.log("");
+    }
+  });
+
+cli
+  .command(
+    "gcloud-deploy <env> <image_tag>",
+    "Deploy services to Cloud Run with appropriate secrets",
+  )
+  .action(async (env: string, imageTag: string) => {
+    await runGcloudDeploy(env, imageTag);
   });
 
 cli.command("env-list", "List all available environment names").action(() => {
@@ -566,6 +599,35 @@ Validates PR title format against conventional commits specification.
 **Example:**
 \`\`\`bash
 just scripts::check-pr-title "feat: add user authentication"
+\`\`\`
+
+### \`r2-secrets\`
+
+Gets R2 storage secrets configuration for an environment. Used by justfiles to centralize environment configuration.
+Returns an empty string for environments that don't require R2 (local, test, test-internal).
+
+**Example:**
+\`\`\`bash
+bun run main.ts r2-secrets pr         # Output: CF_ACCOUNT_ID=cf-account-id:latest,...
+bun run main.ts r2-secrets prod       # Output: CF_ACCOUNT_ID=cf-account-id:latest,...
+bun run main.ts r2-secrets local      # Output: (empty - R2 not required)
+\`\`\`
+
+### \`gcloud-deploy\`
+
+Deploys services to Cloud Run with appropriate secrets for each environment.
+
+**What it does:**
+1. Determines the correct service name based on environment.
+2. Builds the secrets configuration (DATABASE_URL, JWT_SECRET, R2 storage).
+3. Deploys to Cloud Run with the specified image tag.
+4. Never logs secret values - only logs which categories of secrets are configured.
+
+**Example:**
+\`\`\`bash
+bun run main.ts gcloud-deploy prod v2026.1.3
+bun run main.ts gcloud-deploy pr pr-123
+bun run main.ts gcloud-deploy test main-abc123
 \`\`\`
 
 ### \`r2-setup\`

@@ -12,6 +12,48 @@
 import { type } from "arktype";
 
 /**
+ * R2 storage secrets configuration
+ */
+export interface R2SecretsConfig {
+  /** CF Account ID secret name */
+  accountId: string;
+  /** CF Access Key ID secret name */
+  accessKeyId: string;
+  /** CF Secret Access Key secret name */
+  secretAccessKey: string;
+  /** CF Bucket secret name */
+  bucket: string;
+}
+
+/**
+ * Zero Trust secrets configuration
+ */
+export interface ZeroTrustSecretsConfig {
+  /** CF Access Team Domain secret name */
+  teamDomain: string;
+  /** CF Access Audience secret name */
+  aud: string;
+}
+
+/**
+ * Default Zero Trust secrets (for internal environments)
+ */
+const DEFAULT_ZERO_TRUST_SECRETS: ZeroTrustSecretsConfig = {
+  teamDomain: "cf-access-team-domain",
+  aud: "cf-access-aud",
+};
+
+/**
+ * Default R2 secrets (shared across most environments)
+ */
+const DEFAULT_R2_SECRETS: R2SecretsConfig = {
+  accountId: "cf-account-id",
+  accessKeyId: "cf-access-key-id",
+  secretAccessKey: "cf-secret-access-key",
+  bucket: "cf-bucket",
+};
+
+/**
  * Environment configuration type
  */
 export interface EnvConfig {
@@ -23,6 +65,10 @@ export interface EnvConfig {
   databaseSecret: string;
   /** JWT secret name in Google Cloud Secret Manager (null = uses default local secret) */
   jwtSecret: string | null;
+  /** R2 storage secrets (null = not required, e.g., local/test) */
+  r2Secrets: R2SecretsConfig | null;
+  /** Zero Trust secrets (null = not required, only for internal environments) */
+  zeroTrustSecrets: ZeroTrustSecretsConfig | null;
   /** Description of the environment */
   description: string;
 }
@@ -37,6 +83,8 @@ export const ENV_CONFIGS: EnvConfig[] = [
     cargoFeature: null, // Production uses default (no feature)
     databaseSecret: "database-url",
     jwtSecret: "jwt-secret",
+    r2Secrets: DEFAULT_R2_SECRETS,
+    zeroTrustSecrets: null, // Not an internal environment
     description: "Production environment",
   },
   {
@@ -44,6 +92,8 @@ export const ENV_CONFIGS: EnvConfig[] = [
     cargoFeature: "env_internal",
     databaseSecret: "database-url-internal",
     jwtSecret: "jwt-secret", // Same secret name as production
+    r2Secrets: DEFAULT_R2_SECRETS,
+    zeroTrustSecrets: DEFAULT_ZERO_TRUST_SECRETS, // Required for internal
     description: "Internal environment (admin role, deploys with prod)",
   },
   {
@@ -51,6 +101,8 @@ export const ENV_CONFIGS: EnvConfig[] = [
     cargoFeature: "env_nightly",
     databaseSecret: "database-url", // Uses production database
     jwtSecret: "jwt-secret", // Same secret name as production
+    r2Secrets: DEFAULT_R2_SECRETS,
+    zeroTrustSecrets: null, // Not an internal environment
     description: "Nightly build environment",
   },
   {
@@ -58,6 +110,8 @@ export const ENV_CONFIGS: EnvConfig[] = [
     cargoFeature: "env_test",
     databaseSecret: "database-url-test",
     jwtSecret: null, // Uses default local secret
+    r2Secrets: null, // R2 not required for test
+    zeroTrustSecrets: null, // Not an internal environment
     description: "Test environment",
   },
   {
@@ -65,6 +119,8 @@ export const ENV_CONFIGS: EnvConfig[] = [
     cargoFeature: "env_test_internal",
     databaseSecret: "database-url-test-internal",
     jwtSecret: null, // Uses default local secret
+    r2Secrets: null, // R2 not required for test-internal
+    zeroTrustSecrets: DEFAULT_ZERO_TRUST_SECRETS, // Required for internal
     description: "Test-internal environment (admin role, deploys with main)",
   },
   {
@@ -72,6 +128,8 @@ export const ENV_CONFIGS: EnvConfig[] = [
     cargoFeature: "env_pr",
     databaseSecret: "database-url-pr",
     jwtSecret: "jwt-secret-pr",
+    r2Secrets: DEFAULT_R2_SECRETS,
+    zeroTrustSecrets: null, // Not an internal environment
     description: "Pull request environment",
   },
   {
@@ -79,6 +137,8 @@ export const ENV_CONFIGS: EnvConfig[] = [
     cargoFeature: null, // Local uses default (no feature)
     databaseSecret: "database-url-local",
     jwtSecret: null, // Uses default local secret
+    r2Secrets: null, // R2 not required for local
+    zeroTrustSecrets: null, // Not an internal environment
     description: "Local development environment",
   },
 ];
@@ -139,6 +199,29 @@ export function getJwtSecret(env: string): string {
     process.exit(1);
   }
   return config.jwtSecret ?? "";
+}
+
+/**
+ * Get R2 secrets configuration for an environment
+ * Returns the R2 secrets config or null if R2 is not required
+ */
+export function getR2Secrets(env: string): R2SecretsConfig | null {
+  const config = getEnvConfig(env);
+  if (!config) {
+    console.error(`Unknown environment: ${env}`);
+    console.error(
+      `Available environments: ${ENV_CONFIGS.map((c) => c.env).join(", ")}`,
+    );
+    process.exit(1);
+  }
+  return config.r2Secrets;
+}
+
+/**
+ * Check if an environment requires R2 secrets
+ */
+export function requiresR2Secrets(env: string): boolean {
+  return getR2Secrets(env) !== null;
 }
 
 /**

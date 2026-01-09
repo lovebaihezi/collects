@@ -33,6 +33,17 @@ env-secret env:
 jwt-secret env:
     @bun run main.ts jwt-secret {{env}}
 
+# Get R2 storage secrets for an environment (used by other modules)
+# Returns comma-separated secrets string for gcloud deploy, or empty if R2 not required
+# Usage: just scripts::r2-secrets pr
+r2-secrets env:
+    @bun run main.ts r2-secrets {{env}}
+
+# Deploy services to Cloud Run with appropriate secrets
+# Usage: just scripts::gcloud-deploy prod v2026.1.3
+gcloud-deploy env image_tag:
+    @bun run main.ts gcloud-deploy {{env}} {{image_tag}}
+
 # List all available environment names
 env-list:
     @bun run main.ts env-list

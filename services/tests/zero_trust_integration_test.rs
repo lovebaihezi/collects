@@ -362,3 +362,61 @@ fn test_zero_trust_config_creation() {
         "https://myteam.cloudflareaccess.com/cdn-cgi/access/certs"
     );
 }
+
+#[tokio::test]
+async fn test_internal_route_blocked_in_deployed_env_without_zerotrust() {
+    use collects_services::{config::Env, internal};
+    use collects_services::users::AppState;
+
+    // Simulate a deployed environment (TestInternal) without Zero Trust config
+    let config = Config::new_for_deployed_env(Env::TestInternal);
+
+    // Verify this environment requires Zero Trust
+    assert!(
+        config.requires_zero_trust_for_internal(),
+        "TestInternal should require Zero Trust"
+    );
+
+    // Verify Zero Trust is NOT configured
+    assert!(config.cf_access_team_domain().is_none());
+    assert!(config.cf_access_aud().is_none());
+
+    let sql_storage = MockSqlStorage { is_connected: true };
+    let user_storage = MockUserStorage::new();
+
+    // Build internal routes directly to test fail-secure behavior
+    let internal_routes =
+        internal::create_internal_routes::<MockSqlStorage, MockUserStorage>(&config);
+    let state = AppState::new(sql_storage, user_storage);
+
+    let app = axum::Router::new()
+        .nest("/internal", internal_routes)
+        .with_state(state);
+
+    // Try to access internal users endpoint
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/internal/users")
+                .body(Body::empty())
+                .expect("Failed to create request"),
+        )
+        .await
+        .expect("Failed to get response");
+
+    // Should be rejected with 401 Unauthorized (fail-secure)
+    assert_eq!(
+        response.status(),
+        StatusCode::UNAUTHORIZED,
+        "Internal routes should be blocked when Zero Trust is not configured in deployed env"
+    );
+
+    // Verify error response
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("Failed to read body");
+    let json: serde_json::Value = serde_json::from_slice(&body).expect("Failed to parse JSON");
+
+    assert_eq!(json["error"], "zero_trust_not_configured");
+}

@@ -58,7 +58,11 @@ async fn protected_handler(auth: ZeroTrustAuth) -> impl IntoResponse {
 
 ## Local Development
 
-When `CF_ACCESS_TEAM_DOMAIN` and `CF_ACCESS_AUD` are not set, the middleware is not applied and all routes are accessible. This makes local development easier without needing to configure Zero Trust.
+When `CF_ACCESS_TEAM_DOMAIN` and `CF_ACCESS_AUD` are not set:
+- In **Local** and **Test** environments: Routes are accessible without Zero Trust (for development convenience)
+- In **deployed environments** (Internal, TestInternal, Prod, Nightly, Pr): All internal routes return 401 Unauthorized (fail-secure)
+
+This ensures that deployed environments are always protected, even if Zero Trust configuration is accidentally missing.
 
 ## Testing
 
@@ -69,7 +73,8 @@ cargo test
 ```
 
 Integration tests verify:
-- Routes work without Zero Trust configuration
+- Routes work without Zero Trust configuration in Local/Test environments
+- Internal routes are blocked in deployed environments when Zero Trust is not configured
 - Auth routes are always accessible
 - Health check is always accessible
 - Zero Trust configuration can be created
@@ -84,6 +89,7 @@ Integration tests verify:
 
 ## Security Considerations
 
+- **Fail-secure**: Deployed environments block internal routes if Zero Trust is not configured
 - Tokens are validated on every request to protected routes
 - Public keys are fetched from Cloudflare's JWKS endpoint
 - Token signature, expiration, audience, and issuer are all verified

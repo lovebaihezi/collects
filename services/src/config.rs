@@ -69,6 +69,44 @@ mod tests {
         assert_eq!(config.server_addr(), "0.0.0.0");
         assert_eq!(config.port(), 8080);
     }
+
+    #[test]
+    fn requires_zero_trust_for_deployed_environments() {
+        // These environments require Zero Trust for internal routes
+        assert!(
+            Config::new_for_deployed_env(Env::Internal).requires_zero_trust_for_internal(),
+            "Internal env should require Zero Trust"
+        );
+        assert!(
+            Config::new_for_deployed_env(Env::TestInternal).requires_zero_trust_for_internal(),
+            "TestInternal env should require Zero Trust"
+        );
+        assert!(
+            Config::new_for_deployed_env(Env::Prod).requires_zero_trust_for_internal(),
+            "Prod env should require Zero Trust"
+        );
+        assert!(
+            Config::new_for_deployed_env(Env::Nightly).requires_zero_trust_for_internal(),
+            "Nightly env should require Zero Trust"
+        );
+        assert!(
+            Config::new_for_deployed_env(Env::Pr).requires_zero_trust_for_internal(),
+            "Pr env should require Zero Trust"
+        );
+    }
+
+    #[test]
+    fn local_and_test_do_not_require_zero_trust() {
+        // Local and Test environments do NOT require Zero Trust
+        assert!(
+            !Config::new_for_deployed_env(Env::Local).requires_zero_trust_for_internal(),
+            "Local env should not require Zero Trust"
+        );
+        assert!(
+            !Config::new_for_deployed_env(Env::Test).requires_zero_trust_for_internal(),
+            "Test env should not require Zero Trust"
+        );
+    }
 }
 
 impl Display for Env {
@@ -166,6 +204,31 @@ impl Config {
         config
     }
 
+    /// Create a test configuration that simulates a deployed environment.
+    ///
+    /// This is used for testing fail-secure behavior where Zero Trust is required
+    /// but not configured. The environment can be overridden for specific tests.
+    ///
+    /// This function is available for both unit tests and integration tests.
+    /// It should not be used in production code.
+    pub fn new_for_deployed_env(env: Env) -> Self {
+        Self {
+            env,
+            database_url: "postgres://localhost:5432/test".to_string(),
+            server_addr: "0.0.0.0".to_string(),
+            port: 8080,
+            cf_account_id: None,
+            cf_access_key_id: None,
+            cf_secret_access_key: None,
+            cf_bucket: None,
+            gcs_bucket: None,
+            gcs_credentials: None,
+            cf_access_team_domain: None,
+            cf_access_aud: None,
+            jwt_secret: "test-jwt-secret".to_string(),
+        }
+    }
+
     pub fn environment(&self) -> &Env {
         &self.env
     }
@@ -188,6 +251,18 @@ impl Config {
 
     pub fn is_prod(&self) -> bool {
         matches!(self.env, Env::Prod)
+    }
+
+    /// Returns true if this environment requires Zero Trust authentication for internal routes.
+    ///
+    /// In deployed environments (Internal, TestInternal, Prod, Nightly, Pr),
+    /// Zero Trust must be configured for internal routes to be accessible.
+    /// Only Local and Test environments allow internal routes without Zero Trust.
+    pub fn requires_zero_trust_for_internal(&self) -> bool {
+        matches!(
+            self.env,
+            Env::Internal | Env::TestInternal | Env::Prod | Env::Nightly | Env::Pr
+        )
     }
 
     // Storage configuration getters

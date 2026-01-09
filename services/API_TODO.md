@@ -4,31 +4,7 @@ Tracks remaining work for the `collects/services` API. For completed features, s
 
 ---
 
-## Text Content Storage (Decision)
 
-**Hybrid approach**: Store text inline in DB for small content, R2 for large files.
-
-| Content Kind | Storage | Threshold |
-|-------------|---------|-----------|
-| `text` (notes, markdown) | DB `body` column | < 64KB |
-| `file` (images, PDFs, videos) | R2 via `storage_key` | Always |
-| `link` (bookmarks) | DB only (URL in metadata) | N/A |
-
-**Schema addition needed** (new migration):
-```sql
-ALTER TABLE contents ADD COLUMN body TEXT;
-ALTER TABLE contents ADD COLUMN kind VARCHAR(20) NOT NULL DEFAULT 'file';
-ALTER TABLE contents ADD CONSTRAINT contents_kind_check 
-    CHECK (kind IN ('file', 'text', 'link'));
-```
-
-**Benefits**:
-- Instant load for notes (no R2 round-trip)
-- Full-text search on `body` column
-- Consistent with file uploads for large content
-- `kind` discriminator simplifies UI logic
-
----
 
 ## Code Patterns & Concepts (from recent development)
 
@@ -132,12 +108,12 @@ R2 credentials (`CF_ACCOUNT_ID`, `CF_ACCESS_KEY_ID`, `CF_SECRET_ACCESS_KEY`, `CF
 - [x] Generate presigned GET URL
 - [x] Return `{ url, expires_at }`
 
-### Text Content Support
-- [ ] Add migration for `body` and `kind` columns
-- [ ] Update `ContentsInsert` to accept `body` and `kind`
-- [ ] `POST /v1/contents` — create text content directly (no upload flow)
-- [ ] `PATCH /v1/contents/:id` — update `body` for text content
-- [ ] Return `body` in `GET /v1/contents/:id` for `kind=text`
+### Text Content Support ✅
+- [x] Add migration for `body` and `kind` columns (`20260109101346_add-text-content-support.sql`)
+- [x] Update `ContentsInsert` to accept `body` and `kind`
+- [x] `POST /v1/contents` — create text content directly (no upload flow)
+- [x] `PATCH /v1/contents/:id` — update `body` for text content
+- [x] Return `body` in `GET /v1/contents/:id` for `kind=text`
 
 ---
 
@@ -212,6 +188,13 @@ TODO:
 ---
 
 ## Completed ✅
+
+**Text Content Storage** (hybrid approach)
+- Migration: `kind` column (`file`/`text`) + `body` column for inline text
+- `POST /v1/contents` — create text content directly (stored in DB, no R2)
+- `PATCH /v1/contents/:id` — update `body` for text content
+- Threshold: < 64KB stored inline, files go to R2
+- Benefits: instant load for notes, full-text search ready, `kind` discriminator
 
 **Auth**
 - JWT token model with `RequireAuth` extractor

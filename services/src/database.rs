@@ -354,6 +354,10 @@ pub struct ContentRow {
     pub file_size: i64,
     pub status: String,
     pub visibility: String,
+    /// Content kind: "file" (uploaded to R2) or "text" (stored inline in body).
+    pub kind: String,
+    /// Inline text content (only present when kind="text").
+    pub body: Option<String>,
     pub trashed_at: Option<chrono::DateTime<chrono::Utc>>,
     pub archived_at: Option<chrono::DateTime<chrono::Utc>>,
     pub created_at: chrono::DateTime<chrono::Utc>,
@@ -371,6 +375,10 @@ pub struct ContentsInsert {
     pub content_type: String,
     pub file_size: i64,
     pub visibility: Visibility,
+    /// Content kind: "file" (default) or "text".
+    pub kind: Option<String>,
+    /// Inline text content (required when kind="text").
+    pub body: Option<String>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -386,6 +394,9 @@ pub struct ContentsUpdate {
     /// `None` => no change; `Some(None)` => clear; `Some(Some(v))` => set
     pub description: Option<Option<String>>,
     pub visibility: Option<Visibility>,
+    /// Update body content (only allowed when kind="text").
+    /// `None` => no change; `Some(value)` => set new body.
+    pub body: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -662,18 +673,20 @@ impl SqlStorage for PgStorage {
     }
 
     async fn contents_insert(&self, input: ContentsInsert) -> Result<ContentRow, SqlStorageError> {
+        let kind = input.kind.unwrap_or_else(|| "file".to_string());
         let rec = sqlx::query!(
             r#"
             INSERT INTO contents (
                 user_id, title, description,
                 storage_backend, storage_profile, storage_key,
-                content_type, file_size, visibility
+                content_type, file_size, visibility, kind, body
             )
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
             RETURNING
                 id, user_id, title, description,
                 storage_backend, storage_profile, storage_key,
                 content_type, file_size, status, visibility,
+                kind, body,
                 trashed_at, archived_at, created_at, updated_at
             "#,
             input.user_id,
@@ -685,6 +698,8 @@ impl SqlStorage for PgStorage {
             input.content_type,
             input.file_size,
             input.visibility.as_db_str(),
+            kind,
+            input.body,
         )
         .fetch_one(&self.pool)
         .await
@@ -702,6 +717,8 @@ impl SqlStorage for PgStorage {
             file_size: rec.file_size,
             status: rec.status,
             visibility: rec.visibility,
+            kind: rec.kind,
+            body: rec.body,
             trashed_at: rec.trashed_at,
             archived_at: rec.archived_at,
             created_at: rec.created_at,
@@ -716,6 +733,7 @@ impl SqlStorage for PgStorage {
                 id, user_id, title, description,
                 storage_backend, storage_profile, storage_key,
                 content_type, file_size, status, visibility,
+                kind, body,
                 trashed_at, archived_at, created_at, updated_at
             FROM contents
             WHERE id = $1
@@ -738,6 +756,8 @@ impl SqlStorage for PgStorage {
             file_size: rec.file_size,
             status: rec.status,
             visibility: rec.visibility,
+            kind: rec.kind,
+            body: rec.body,
             trashed_at: rec.trashed_at,
             archived_at: rec.archived_at,
             created_at: rec.created_at,
@@ -760,6 +780,7 @@ impl SqlStorage for PgStorage {
                 id, user_id, title, description,
                 storage_backend, storage_profile, storage_key,
                 content_type, file_size, status, visibility,
+                kind, body,
                 trashed_at, archived_at, created_at, updated_at
             FROM contents
             WHERE user_id = $1
@@ -790,6 +811,8 @@ impl SqlStorage for PgStorage {
                 file_size: rec.file_size,
                 status: rec.status,
                 visibility: rec.visibility,
+                kind: rec.kind,
+                body: rec.body,
                 trashed_at: rec.trashed_at,
                 archived_at: rec.archived_at,
                 created_at: rec.created_at,
@@ -807,11 +830,14 @@ impl SqlStorage for PgStorage {
         let visibility = changes.visibility.map(|v| v.as_db_str().to_string());
         let description_set = changes.description.is_some();
         let description_value = changes.description.unwrap_or(None);
+        let body_set = changes.body.is_some();
+        let body_value = changes.body;
 
         // We need to handle "no change" vs "clear": COALESCE can't distinguish.
         // Strategy:
         // - If description was provided, use `$4` directly (even if NULL) via CASE when.
         // - If not provided, keep existing.
+        // - Body can only be updated for kind='text' content; for kind='file' body update is ignored.
         let rec = sqlx::query!(
             r#"
             UPDATE contents
@@ -821,12 +847,21 @@ impl SqlStorage for PgStorage {
                     WHEN $4::bool THEN $5
                     ELSE description
                 END,
-                visibility = COALESCE($6, visibility)
+                visibility = COALESCE($6, visibility),
+                body = CASE
+                    WHEN $7::bool AND kind = 'text' THEN $8
+                    ELSE body
+                END,
+                file_size = CASE
+                    WHEN $7::bool AND kind = 'text' THEN COALESCE(LENGTH($8), 0)
+                    ELSE file_size
+                END
             WHERE id = $1 AND user_id = $2
             RETURNING
                 id, user_id, title, description,
                 storage_backend, storage_profile, storage_key,
                 content_type, file_size, status, visibility,
+                kind, body,
                 trashed_at, archived_at, created_at, updated_at
             "#,
             id,
@@ -835,6 +870,8 @@ impl SqlStorage for PgStorage {
             description_set,
             description_value,
             visibility,
+            body_set,
+            body_value,
         )
         .fetch_optional(&self.pool)
         .await
@@ -852,6 +889,8 @@ impl SqlStorage for PgStorage {
             file_size: rec.file_size,
             status: rec.status,
             visibility: rec.visibility,
+            kind: rec.kind,
+            body: rec.body,
             trashed_at: rec.trashed_at,
             archived_at: rec.archived_at,
             created_at: rec.created_at,
@@ -884,6 +923,7 @@ impl SqlStorage for PgStorage {
                 id, user_id, title, description,
                 storage_backend, storage_profile, storage_key,
                 content_type, file_size, status, visibility,
+                kind, body,
                 trashed_at, archived_at, created_at, updated_at
             "#,
             id,
@@ -908,6 +948,8 @@ impl SqlStorage for PgStorage {
             file_size: rec.file_size,
             status: rec.status,
             visibility: rec.visibility,
+            kind: rec.kind,
+            body: rec.body,
             trashed_at: rec.trashed_at,
             archived_at: rec.archived_at,
             created_at: rec.created_at,

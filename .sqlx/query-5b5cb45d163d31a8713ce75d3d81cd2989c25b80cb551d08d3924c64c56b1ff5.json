@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            UPDATE contents\n            SET\n                title = COALESCE($3, title),\n                description = CASE\n                    WHEN $4::bool THEN $5\n                    ELSE description\n                END,\n                visibility = COALESCE($6, visibility)\n            WHERE id = $1 AND user_id = $2\n            RETURNING\n                id, user_id, title, description,\n                storage_backend, storage_profile, storage_key,\n                content_type, file_size, status, visibility,\n                trashed_at, archived_at, created_at, updated_at\n            ",
+  "query": "\n            UPDATE contents\n            SET\n                status = $3,\n                trashed_at = $4,\n                archived_at = $5\n            WHERE id = $1 AND user_id = $2\n            RETURNING\n                id, user_id, title, description,\n                storage_backend, storage_profile, storage_key,\n                content_type, file_size, status, visibility,\n                kind, body,\n                trashed_at, archived_at, created_at, updated_at\n            ",
   "describe": {
     "columns": [
       {
@@ -60,21 +60,31 @@
       },
       {
         "ordinal": 11,
+        "name": "kind",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 12,
+        "name": "body",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 13,
         "name": "trashed_at",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 12,
+        "ordinal": 14,
         "name": "archived_at",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 13,
+        "ordinal": 15,
         "name": "created_at",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 14,
+        "ordinal": 16,
         "name": "updated_at",
         "type_info": "Timestamptz"
       }
@@ -84,9 +94,8 @@
         "Uuid",
         "Uuid",
         "Varchar",
-        "Bool",
-        "Text",
-        "Varchar"
+        "Timestamptz",
+        "Timestamptz"
       ]
     },
     "nullable": [
@@ -101,11 +110,13 @@
       false,
       false,
       false,
+      false,
+      true,
       true,
       true,
       false,
       false
     ]
   },
-  "hash": "9198b1e4dab7050f2c80ed78416bde12079e00818c1df6d7716a5b29d037861a"
+  "hash": "5b5cb45d163d31a8713ce75d3d81cd2989c25b80cb551d08d3924c64c56b1ff5"
 }

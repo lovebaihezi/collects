@@ -916,4 +916,263 @@ mod state_runtime_test {
         // 5. Verify state was updated
         assert_eq!(ctx.cached::<DummyComputeFromCommand>().unwrap().value, 42);
     }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // TASK MANAGEMENT TESTS
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// Tests that StateCtx initializes with empty task management state.
+    #[test]
+    fn test_task_management_initial_state() {
+        let ctx = StateCtx::new();
+
+        assert_eq!(ctx.task_count(), 0);
+        assert_eq!(ctx.active_task_type_count(), 0);
+        assert!(ctx.active_tasks().is_empty());
+    }
+
+    /// Tests registering a task handle for a compute type.
+    #[test]
+    fn test_register_task_handle() {
+        use tokio_util::sync::CancellationToken;
+
+        let mut ctx = StateCtx::new();
+        let task_id = ctx.task_id_generator().next::<DummyState>();
+        let token = CancellationToken::new();
+        let handle = TaskHandle::new(task_id, token);
+
+        assert!(!ctx.has_active_task::<DummyState>());
+
+        ctx.register_task_handle::<DummyState>(handle);
+
+        assert!(ctx.has_active_task::<DummyState>());
+        assert_eq!(ctx.active_task_type_count(), 1);
+    }
+
+    /// Tests getting an active task handle.
+    #[test]
+    fn test_get_active_task() {
+        use tokio_util::sync::CancellationToken;
+
+        let mut ctx = StateCtx::new();
+        let task_id = ctx.task_id_generator().next::<DummyState>();
+        let token = CancellationToken::new();
+        let handle = TaskHandle::new(task_id, token);
+
+        ctx.register_task_handle::<DummyState>(handle);
+
+        let retrieved = ctx.get_active_task::<DummyState>();
+        assert!(retrieved.is_some());
+        assert_eq!(retrieved.unwrap().id(), task_id);
+
+        // Non-existent type should return None
+        assert!(ctx.get_active_task::<DummyComputeA>().is_none());
+    }
+
+    /// Tests that registering a new task handle auto-cancels the previous one.
+    #[test]
+    fn test_register_task_handle_auto_cancels_previous() {
+        use tokio_util::sync::CancellationToken;
+
+        let mut ctx = StateCtx::new();
+
+        // Register first task
+        let task_id1 = ctx.task_id_generator().next::<DummyState>();
+        let token1 = CancellationToken::new();
+        let handle1 = TaskHandle::new(task_id1, token1.clone());
+        ctx.register_task_handle::<DummyState>(handle1);
+
+        assert!(!token1.is_cancelled());
+
+        // Register second task for same type
+        let task_id2 = ctx.task_id_generator().next::<DummyState>();
+        let token2 = CancellationToken::new();
+        let handle2 = TaskHandle::new(task_id2, token2.clone());
+        ctx.register_task_handle::<DummyState>(handle2);
+
+        // First token should be cancelled
+        assert!(token1.is_cancelled());
+        // Second token should not be cancelled
+        assert!(!token2.is_cancelled());
+
+        // Only one active task for the type
+        assert_eq!(ctx.active_task_type_count(), 1);
+
+        // Active task should be the second one
+        let active = ctx.get_active_task::<DummyState>().unwrap();
+        assert_eq!(active.id(), task_id2);
+    }
+
+    /// Tests cancelling an active task.
+    #[test]
+    fn test_cancel_active_task() {
+        use tokio_util::sync::CancellationToken;
+
+        let mut ctx = StateCtx::new();
+        let task_id = ctx.task_id_generator().next::<DummyState>();
+        let token = CancellationToken::new();
+        let handle = TaskHandle::new(task_id, token.clone());
+
+        ctx.register_task_handle::<DummyState>(handle);
+
+        assert!(!token.is_cancelled());
+        assert!(ctx.has_active_task::<DummyState>());
+
+        let cancelled = ctx.cancel_active_task::<DummyState>();
+
+        assert!(cancelled);
+        assert!(token.is_cancelled());
+        assert!(!ctx.has_active_task::<DummyState>());
+    }
+
+    /// Tests cancelling a non-existent task returns false.
+    #[test]
+    fn test_cancel_nonexistent_task() {
+        let mut ctx = StateCtx::new();
+
+        let cancelled = ctx.cancel_active_task::<DummyState>();
+
+        assert!(!cancelled);
+    }
+
+    /// Tests cancelling all tasks.
+    #[test]
+    fn test_cancel_all_tasks() {
+        use tokio_util::sync::CancellationToken;
+
+        let mut ctx = StateCtx::new();
+
+        // Register multiple tasks for different types
+        let token1 = CancellationToken::new();
+        let handle1 = TaskHandle::new(ctx.task_id_generator().next::<DummyState>(), token1.clone());
+        ctx.register_task_handle::<DummyState>(handle1);
+
+        let token2 = CancellationToken::new();
+        let handle2 = TaskHandle::new(
+            ctx.task_id_generator().next::<DummyComputeA>(),
+            token2.clone(),
+        );
+        ctx.register_task_handle::<DummyComputeA>(handle2);
+
+        assert_eq!(ctx.active_task_type_count(), 2);
+        assert!(!token1.is_cancelled());
+        assert!(!token2.is_cancelled());
+
+        ctx.cancel_all_tasks();
+
+        assert_eq!(ctx.active_task_type_count(), 0);
+        assert!(token1.is_cancelled());
+        assert!(token2.is_cancelled());
+    }
+
+    /// Tests removing a task handle without cancelling it.
+    #[test]
+    fn test_remove_task_handle() {
+        use tokio_util::sync::CancellationToken;
+
+        let mut ctx = StateCtx::new();
+        let task_id = ctx.task_id_generator().next::<DummyState>();
+        let token = CancellationToken::new();
+        let handle = TaskHandle::new(task_id, token.clone());
+
+        ctx.register_task_handle::<DummyState>(handle);
+
+        let removed = ctx.remove_task_handle::<DummyState>();
+
+        assert!(removed.is_some());
+        assert_eq!(removed.unwrap().id(), task_id);
+        // Token should NOT be cancelled (we just removed, not cancelled)
+        assert!(!token.is_cancelled());
+        assert!(!ctx.has_active_task::<DummyState>());
+    }
+
+    /// Tests that clear() clears task management state.
+    #[test]
+    fn test_clear_clears_tasks() {
+        use tokio_util::sync::CancellationToken;
+
+        let mut ctx = StateCtx::new();
+        ctx.add_state(DummyState::default());
+
+        let token = CancellationToken::new();
+        let handle = TaskHandle::new(ctx.task_id_generator().next::<DummyState>(), token.clone());
+        ctx.register_task_handle::<DummyState>(handle);
+
+        assert!(ctx.has_active_task::<DummyState>());
+
+        ctx.clear();
+
+        assert!(!ctx.has_active_task::<DummyState>());
+        assert_eq!(ctx.active_task_type_count(), 0);
+    }
+
+    /// Tests task_id_generator produces unique sequential IDs.
+    #[test]
+    fn test_task_id_generator_sequential() {
+        let ctx = StateCtx::new();
+
+        let id1 = ctx.task_id_generator().next::<DummyState>();
+        let id2 = ctx.task_id_generator().next::<DummyState>();
+        let id3 = ctx.task_id_generator().next::<DummyComputeA>();
+
+        // Same type for first two
+        assert_eq!(id1.type_id(), id2.type_id());
+        // Different type for third
+        assert_ne!(id1.type_id(), id3.type_id());
+
+        // All should have different generations (sequential)
+        assert_eq!(id1.generation(), 0);
+        assert_eq!(id2.generation(), 1);
+        assert_eq!(id3.generation(), 2);
+    }
+
+    /// Tests that task_set can be accessed mutably.
+    #[test]
+    fn test_task_set_mut_access() {
+        let mut ctx = StateCtx::new();
+
+        // Should be able to get mutable access to task_set
+        let task_set = ctx.task_set_mut();
+        assert_eq!(task_set.len(), 0);
+    }
+
+    /// Tests multiple task types can be tracked independently.
+    #[test]
+    fn test_multiple_task_types_independent() {
+        use tokio_util::sync::CancellationToken;
+
+        let mut ctx = StateCtx::new();
+
+        // Register tasks for different types
+        let handle1 = TaskHandle::new(
+            ctx.task_id_generator().next::<DummyState>(),
+            CancellationToken::new(),
+        );
+        ctx.register_task_handle::<DummyState>(handle1);
+
+        let handle2 = TaskHandle::new(
+            ctx.task_id_generator().next::<DummyComputeA>(),
+            CancellationToken::new(),
+        );
+        ctx.register_task_handle::<DummyComputeA>(handle2);
+
+        let handle3 = TaskHandle::new(
+            ctx.task_id_generator().next::<DummyComputeB>(),
+            CancellationToken::new(),
+        );
+        ctx.register_task_handle::<DummyComputeB>(handle3);
+
+        assert_eq!(ctx.active_task_type_count(), 3);
+        assert!(ctx.has_active_task::<DummyState>());
+        assert!(ctx.has_active_task::<DummyComputeA>());
+        assert!(ctx.has_active_task::<DummyComputeB>());
+
+        // Cancel one type
+        ctx.cancel_active_task::<DummyComputeA>();
+
+        assert_eq!(ctx.active_task_type_count(), 2);
+        assert!(ctx.has_active_task::<DummyState>());
+        assert!(!ctx.has_active_task::<DummyComputeA>());
+        assert!(ctx.has_active_task::<DummyComputeB>());
+    }
 }

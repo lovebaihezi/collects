@@ -126,6 +126,30 @@ describe("pattern-check", () => {
       expect(loaded.description).toBe("Test config with comments");
       expect(loaded.rules).toHaveLength(0);
     });
+
+    test("handles escaped quotes in strings", async () => {
+      const jsonc = `{
+        "version": 1,
+        "description": "String with \\"escaped\\" quotes",
+        "rules": []
+      }`;
+      await writeFile(CONFIG_FILE, jsonc, "utf-8");
+
+      const loaded = await loadConfig(CONFIG_FILE);
+      expect(loaded.description).toBe('String with "escaped" quotes');
+    });
+
+    test("handles block comment at end of file", async () => {
+      const jsonc = `{
+        "version": 1,
+        "description": "Test",
+        "rules": []
+      }/* trailing comment */`;
+      await writeFile(CONFIG_FILE, jsonc, "utf-8");
+
+      const loaded = await loadConfig(CONFIG_FILE);
+      expect(loaded.version).toBe(1);
+    });
   });
 
   describe("checkFile", () => {

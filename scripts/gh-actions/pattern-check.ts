@@ -93,15 +93,25 @@ function stripJsoncComments(content: string): string {
     const char = content[i];
     const nextChar = content[i + 1];
 
-    // Handle string start/end
-    if (
-      (char === '"' || char === "'") &&
-      (i === 0 || content[i - 1] !== "\\")
-    ) {
-      if (!inString) {
-        inString = true;
-        stringChar = char;
-      } else if (char === stringChar) {
+    // Handle string start/end - count consecutive backslashes to handle escaped backslashes
+    if ((char === '"' || char === "'") && !inString) {
+      inString = true;
+      stringChar = char;
+      result += char;
+      i++;
+      continue;
+    }
+
+    if (inString && char === stringChar) {
+      // Count preceding backslashes to determine if quote is escaped
+      let backslashCount = 0;
+      let j = i - 1;
+      while (j >= 0 && content[j] === "\\") {
+        backslashCount++;
+        j--;
+      }
+      // Quote is escaped if preceded by odd number of backslashes
+      if (backslashCount % 2 === 0) {
         inString = false;
       }
       result += char;
@@ -122,8 +132,12 @@ function stripJsoncComments(content: string): string {
       // Block comment
       if (char === "/" && nextChar === "*") {
         i += 2;
-        while (i < content.length - 1) {
-          if (content[i] === "*" && content[i + 1] === "/") {
+        while (i < content.length) {
+          if (
+            content[i] === "*" &&
+            i + 1 < content.length &&
+            content[i + 1] === "/"
+          ) {
             i += 2;
             break;
           }

@@ -410,7 +410,7 @@ pub struct V1GroupReorderItem {
 // Uploads API Types
 // =============================================================================
 
-/// Request body for initializing an upload.
+/// Request body for upload initialization.
 #[derive(Debug, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct V1UploadsInitRequest {

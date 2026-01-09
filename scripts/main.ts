@@ -656,14 +656,14 @@ bun run main.ts artifact-check
 
 ### \`pattern-check\`
 
-Checks for forbidden patterns in source files using **ripgrep** (fast regex search) and **ast-grep** (semantic AST-based search).
-This tool scans the codebase for patterns that violate coding standards, with detailed explanations of why each pattern is forbidden.
+Checks for forbidden patterns in source files using **ripgrep-js** (fast regex search) and **@ast-grep/napi** (semantic AST-based search).
+These are installed via npm packages for better integration with Bun.
 
 **How it works:**
 1. Reads rules from \`.pattern-checks.jsonc\` at the repository root (JSONC supports comments).
 2. For each rule, uses the appropriate search engine:
-   - \`type: "regex"\` (default): Uses ripgrep for fast regex-based search
-   - \`type: "ast"\`: Uses ast-grep for language-aware AST-based matching
+   - \`type: "regex"\` (default): Uses ripgrep-js (requires ripgrep binary)
+   - \`type: "ast"\`: Uses @ast-grep/napi for language-aware AST-based matching
 3. Reports violations with file location, matched text, and explanation.
 4. Exits with code 1 if any error-severity violations are found.
 
@@ -692,7 +692,7 @@ This tool scans the codebase for patterns that violate coding standards, with de
 
 **Rule fields:**
 - \`id\`: Unique identifier for the rule
-- \`type\`: "regex" (uses ripgrep) or "ast" (uses ast-grep for semantic matching)
+- \`type\`: "regex" (uses ripgrep-js) or "ast" (uses @ast-grep/napi for semantic matching)
 - \`pattern\`: Regex pattern for type="regex", or ast-grep pattern for type="ast"
 - \`language\`: Language for ast-grep (required when type="ast"): rust, typescript, python, etc.
 - \`files\`: Glob patterns for files to check

@@ -267,11 +267,8 @@ jobs:
       - name: Setup Just
         uses: extractions/setup-just@v2
 
-      - name: Install ripgrep
+      - name: Install ripgrep (for ripgrep-js)
         run: sudo apt-get update && sudo apt-get install -y ripgrep
-
-      - name: Install ast-grep
-        run: npm install -g @ast-grep/cli
 
       - name: Install scripts dependencies (Bun)
         working-directory: scripts

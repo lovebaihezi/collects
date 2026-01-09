@@ -5,8 +5,8 @@
  * with explanations for why certain patterns are not allowed.
  *
  * Uses:
- * - ripgrep (rg) for fast regex-based text search
- * - ast-grep (sg) for AST-based semantic pattern matching
+ * - @ast-grep/napi for AST-based semantic pattern matching
+ * - ripgrep-js for fast regex-based text search (requires ripgrep binary)
  *
  * Configuration is defined in `.pattern-checks.jsonc` at the repository root.
  *
@@ -19,7 +19,8 @@
 import { readFile, stat, readdir } from "fs/promises";
 import { join, dirname, relative } from "path";
 import { fileURLToPath } from "url";
-import { spawn } from "child_process";
+import { ripGrep, type Match } from "ripgrep-js";
+import { parse, findInFiles, Lang, type SgNode } from "@ast-grep/napi";
 
 // Get the project root directory (two levels up from scripts/gh-actions/)
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -274,55 +275,46 @@ export function matchesAnyGlob(patterns: string[], filePath: string): boolean {
 }
 
 /**
- * Check if a command exists on the system
+ * Map language string to ast-grep Lang enum
  */
-async function commandExists(command: string): Promise<boolean> {
-  return new Promise((resolve) => {
-    const proc = spawn("which", [command], {
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    proc.on("close", (code) => resolve(code === 0));
-    proc.on("error", () => resolve(false));
-  });
+function getLangFromString(language: string): Lang | null {
+  const langMap: Record<string, Lang> = {
+    rust: Lang.Rust,
+    typescript: Lang.TypeScript,
+    javascript: Lang.JavaScript,
+    python: Lang.Python,
+    go: Lang.Go,
+    java: Lang.Java,
+    c: Lang.C,
+    cpp: Lang.Cpp,
+    csharp: Lang.CSharp,
+    kotlin: Lang.Kotlin,
+    swift: Lang.Swift,
+    ruby: Lang.Ruby,
+    html: Lang.Html,
+    css: Lang.Css,
+    json: Lang.Json,
+    yaml: Lang.Yaml,
+    toml: Lang.Toml,
+  };
+  return langMap[language.toLowerCase()] ?? null;
 }
 
 /**
- * Run a command and capture its output
+ * Check if ripgrep binary is available
  */
-async function runCommand(
-  command: string,
-  args: string[],
-  cwd: string,
-): Promise<{ stdout: string; stderr: string; exitCode: number }> {
-  return new Promise((resolve) => {
-    const proc = spawn(command, args, {
-      cwd,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-
-    let stdout = "";
-    let stderr = "";
-
-    proc.stdout.on("data", (data: Buffer) => {
-      stdout += data.toString();
-    });
-
-    proc.stderr.on("data", (data: Buffer) => {
-      stderr += data.toString();
-    });
-
-    proc.on("close", (code) => {
-      resolve({ stdout, stderr, exitCode: code ?? 0 });
-    });
-
-    proc.on("error", (err) => {
-      resolve({ stdout, stderr: err.message, exitCode: 1 });
-    });
-  });
+async function isRipgrepAvailable(): Promise<boolean> {
+  try {
+    // ripgrep-js will throw if rg binary is not found
+    await ripGrep(process.cwd(), { regex: "^$", globs: ["*.nonexistent"] });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**
- * Search for patterns using ripgrep (fast regex-based search)
+ * Search for patterns using ripgrep-js (requires ripgrep binary)
  */
 async function searchWithRipgrep(
   pattern: string,
@@ -346,71 +338,42 @@ async function searchWithRipgrep(
     lineContent: string;
   }> = [];
 
-  // Build ripgrep arguments
-  const args = [
-    "--json", // JSON output for structured parsing
-    "--no-heading",
-    "--line-number",
-    "--column",
-    "-e",
-    pattern,
-  ];
+  try {
+    // Build glob patterns including exclusions
+    const allGlobs = [...globs, ...excludes.map((e) => `!${e}`)];
 
-  // Add glob patterns
-  for (const glob of globs) {
-    args.push("--glob", glob);
-  }
+    const matches: Match[] = await ripGrep(rootDir, {
+      regex: pattern,
+      globs: allGlobs.length > 0 ? allGlobs : undefined,
+    });
 
-  // Add exclude patterns
-  for (const exclude of excludes) {
-    args.push("--glob", `!${exclude}`);
-  }
+    for (const match of matches) {
+      const lineText = match.lines.text.replace(/\n$/, "");
 
-  // Add the search directory
-  args.push(".");
-
-  const { stdout, exitCode } = await runCommand("rg", args, rootDir);
-
-  // Exit code 1 means no matches (not an error), 0 means matches found
-  if (exitCode > 1) {
-    return results;
-  }
-
-  // Parse JSON lines output
-  const lines = stdout.trim().split("\n").filter(Boolean);
-  for (const line of lines) {
-    try {
-      const parsed = JSON.parse(line);
-      if (parsed.type === "match") {
-        const data = parsed.data;
-        const filePath = data.path.text;
-        const lineNum = data.line_number;
-        const lineText = data.lines.text.replace(/\n$/, "");
-
-        // Extract each submatch
-        for (const submatch of data.submatches) {
-          results.push({
-            file: filePath,
-            line: lineNum,
-            column: submatch.start + 1, // 1-indexed
-            match: submatch.match.text,
-            lineContent: lineText,
-          });
-        }
+      // Extract each submatch
+      for (const submatch of match.submatches) {
+        results.push({
+          file: match.path.text,
+          line: match.line_number,
+          column: submatch.start + 1, // 1-indexed
+          match: submatch.match.text,
+          lineContent: lineText,
+        });
       }
-    } catch {
-      // Skip malformed JSON lines
     }
+  } catch (error) {
+    // ripgrep-js throws when no matches or binary not found
+    // Return empty results
   }
 
   return results;
 }
 
 /**
- * Search for patterns using ast-grep (AST-based semantic search)
+ * Search for patterns using @ast-grep/napi
  */
 async function searchWithAstGrep(
-  pattern: string,
+  patternStr: string,
   language: string,
   globs: string[],
   rootDir: string,
@@ -431,46 +394,48 @@ async function searchWithAstGrep(
     lineContent: string;
   }> = [];
 
-  // Build ast-grep arguments
-  const args = ["scan", "--json", "-p", pattern, "-l", language];
-
-  const { stdout, exitCode } = await runCommand("sg", args, rootDir);
-
-  if (exitCode !== 0) {
+  const lang = getLangFromString(language);
+  if (!lang) {
+    console.warn(`Unsupported language for ast-grep: ${language}`);
     return results;
   }
 
-  // Parse JSON output
   try {
-    const parsed = JSON.parse(stdout);
-    if (Array.isArray(parsed)) {
-      for (const match of parsed) {
-        results.push({
-          file: match.file || match.path || "",
-          line: match.range?.start?.line || match.start?.line || 1,
-          column: match.range?.start?.column || match.start?.column || 1,
-          match: match.text || match.matched || "",
-          lineContent: match.lines || match.text || "",
-        });
-      }
-    }
-  } catch {
-    // Try parsing as JSON lines
-    const lines = stdout.trim().split("\n").filter(Boolean);
-    for (const line of lines) {
+    // Get all files matching the globs
+    const files = await getAllFilesRecursive(rootDir);
+    const matchingFiles = files.filter((f) => matchesAnyGlob(globs, f));
+
+    for (const file of matchingFiles) {
+      const fullPath = join(rootDir, file);
       try {
-        const match = JSON.parse(line);
-        results.push({
-          file: match.file || match.path || "",
-          line: match.range?.start?.line || match.start?.line || 1,
-          column: match.range?.start?.column || match.start?.column || 1,
-          match: match.text || match.matched || "",
-          lineContent: match.lines || match.text || "",
-        });
+        const content = await readFile(fullPath, "utf-8");
+        const root = parse(lang, content);
+        const pattern = root.root().find(patternStr);
+
+        if (pattern) {
+          // Find all matches
+          const matches = root.root().findAll(patternStr);
+          for (const match of matches) {
+            const range = match.range();
+            const text = match.text();
+            const lines = content.split("\n");
+            const lineContent = lines[range.start.line] || "";
+
+            results.push({
+              file,
+              line: range.start.line + 1, // 1-indexed
+              column: range.start.column + 1, // 1-indexed
+              match: text,
+              lineContent,
+            });
+          }
+        }
       } catch {
-        // Skip malformed lines
+        // Skip files that can't be parsed
       }
     }
+  } catch (error) {
+    console.warn(`ast-grep search error: ${error}`);
   }
 
   return results;
@@ -602,27 +567,7 @@ export async function getFilesForRule(
   rule: PatternRule,
   rootDir: string,
 ): Promise<string[]> {
-  // Try to use ripgrep first (much faster for large repos)
-  const hasRipgrep = await commandExists("rg");
-
-  if (hasRipgrep) {
-    const args = ["--files"];
-
-    for (const glob of rule.files) {
-      args.push("--glob", glob);
-    }
-
-    for (const exclude of rule.exclude || []) {
-      args.push("--glob", `!${exclude}`);
-    }
-
-    args.push(".");
-
-    const { stdout } = await runCommand("rg", args, rootDir);
-    return stdout.trim().split("\n").filter(Boolean);
-  }
-
-  // Fallback to Node.js implementation
+  // Use Node.js implementation for file listing
   const allFiles = await getAllFilesRecursive(rootDir);
 
   return allFiles.filter((file) => {
@@ -714,12 +659,14 @@ export async function runPatternCheck(options: {
   }
 
   // Check if external tools are available
-  const hasRipgrep = await commandExists("rg");
-  const hasAstGrep = await commandExists("sg");
+  // ast-grep is always available via @ast-grep/napi
+  // ripgrep requires the binary to be installed
+  const hasRipgrep = await isRipgrepAvailable();
+  const hasAstGrep = true; // @ast-grep/napi is always available
 
   if (verbose) {
     console.log(
-      `Tools available: ripgrep=${hasRipgrep}, ast-grep=${hasAstGrep}`,
+      `Tools available: ripgrep=${hasRipgrep}, ast-grep=${hasAstGrep} (via npm packages)`,
     );
   }
 
@@ -747,7 +694,11 @@ export async function runPatternCheck(options: {
   for (const rule of config.rules) {
     if (verbose) {
       const toolName =
-        rule.type === "ast" ? "ast-grep" : hasRipgrep ? "ripgrep" : "internal";
+        rule.type === "ast"
+          ? "@ast-grep/napi"
+          : hasRipgrep
+            ? "ripgrep-js"
+            : "internal";
       console.log(`\nChecking rule: ${rule.id} (using ${toolName})`);
     }
 

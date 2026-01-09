@@ -2,13 +2,17 @@
 //!
 //! This module provides OpenAPI/Swagger documentation for the Collects API.
 //! It is only compiled when the `openapi` feature is enabled, and routes are
-//! only accessible in internal environments (internal, test-internal).
+//! only accessible in internal environments (internal, test-internal) and
+//! protected by Cloudflare Zero Trust authentication.
 
-use axum::{Router, routing::get};
+use std::sync::Arc;
+
+use axum::{Router, middleware, routing::get};
 use utoipa::OpenApi;
 use utoipa_scalar::{Scalar, Servable};
 
-use crate::config::Env;
+use crate::auth::{self, JwksKeyResolver};
+use crate::config::Config;
 use crate::database::SqlStorage;
 use crate::users::routes::AppState;
 use crate::users::storage::UserStorage;
@@ -100,78 +104,119 @@ impl utoipa::Modify for SecurityAddon {
     }
 }
 
-/// Check if OpenAPI documentation should be enabled for the given environment.
+/// Check if OpenAPI documentation should be enabled for the given config.
 ///
 /// Returns true only for internal environments:
 /// - `internal` (collects-internal.lqxclqxc.com)
 /// - `test-internal` (collects-test-internal.lqxclqxc.com)
-pub fn is_openapi_enabled(env: &Env) -> bool {
-    matches!(env, Env::Internal | Env::TestInternal)
+pub fn is_openapi_enabled(config: &Config) -> bool {
+    use crate::config::Env;
+    matches!(config.environment(), Env::Internal | Env::TestInternal)
 }
 
 /// Create OpenAPI documentation routes if enabled for the environment.
 ///
+/// Routes are protected by Cloudflare Zero Trust authentication when configured.
 /// Returns `Some(Router)` with `/docs` and `/openapi.json` routes if OpenAPI is enabled,
 /// otherwise returns `None`.
-pub fn create_openapi_routes<S, U>(env: &Env) -> Option<Router<AppState<S, U>>>
+pub fn create_openapi_routes<S, U>(config: &Config) -> Option<Router<AppState<S, U>>>
 where
     S: SqlStorage + Clone + Send + Sync + 'static,
     U: UserStorage + Clone + Send + Sync + 'static,
 {
-    if !is_openapi_enabled(env) {
+    create_openapi_routes_with_resolver(config, Arc::new(auth::ReqwestJwksKeyResolver))
+}
+
+/// Create OpenAPI documentation routes with a custom JWKS resolver.
+///
+/// This exists primarily for deterministic tests without making external network calls.
+pub fn create_openapi_routes_with_resolver<S, U>(
+    config: &Config,
+    resolver: Arc<dyn JwksKeyResolver>,
+) -> Option<Router<AppState<S, U>>>
+where
+    S: SqlStorage + Clone + Send + Sync + 'static,
+    U: UserStorage + Clone + Send + Sync + 'static,
+{
+    if !is_openapi_enabled(config) {
         return None;
     }
 
     let api = ApiDoc::openapi();
     let api_clone = api.clone();
 
-    Some(
-        Router::new()
-            .route(
-                "/openapi.json",
-                get(move || async move { axum::Json(api_clone) }),
-            )
-            .merge(Scalar::with_url("/docs", api)),
-    )
+    let routes = Router::new()
+        .route(
+            "/openapi.json",
+            get(move || async move { axum::Json(api_clone) }),
+        )
+        .merge(Scalar::with_url("/docs", api));
+
+    // Apply Zero Trust middleware if configured
+    let protected_routes = match (config.cf_access_team_domain(), config.cf_access_aud()) {
+        (Some(team_domain), Some(audience)) => {
+            let zero_trust_config = Arc::new(auth::ZeroTrustConfig::new(
+                team_domain.to_string(),
+                audience.to_string(),
+            ));
+
+            routes.layer(middleware::from_fn(move |req, next| {
+                let zt_config = Arc::clone(&zero_trust_config);
+                let zt_resolver = Arc::clone(&resolver);
+                auth::zero_trust_middleware_with_resolver(zt_resolver, zt_config, req, next)
+            }))
+        }
+        _ => routes,
+    };
+
+    Some(protected_routes)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::Env;
 
     #[test]
     fn test_openapi_enabled_internal() {
-        assert!(is_openapi_enabled(&Env::Internal));
+        let config = Config::new_for_test_with_env(Env::Internal);
+        assert!(is_openapi_enabled(&config));
     }
 
     #[test]
     fn test_openapi_enabled_test_internal() {
-        assert!(is_openapi_enabled(&Env::TestInternal));
+        let config = Config::new_for_test_with_env(Env::TestInternal);
+        assert!(is_openapi_enabled(&config));
     }
 
     #[test]
     fn test_openapi_disabled_prod() {
-        assert!(!is_openapi_enabled(&Env::Prod));
+        let config = Config::new_for_test_with_env(Env::Prod);
+        assert!(!is_openapi_enabled(&config));
     }
 
     #[test]
     fn test_openapi_disabled_test() {
-        assert!(!is_openapi_enabled(&Env::Test));
+        let config = Config::new_for_test_with_env(Env::Test);
+        assert!(!is_openapi_enabled(&config));
     }
 
     #[test]
     fn test_openapi_disabled_local() {
-        assert!(!is_openapi_enabled(&Env::Local));
+        let config = Config::new_for_test_with_env(Env::Local);
+        assert!(!is_openapi_enabled(&config));
     }
 
     #[test]
     fn test_openapi_disabled_pr() {
-        assert!(!is_openapi_enabled(&Env::Pr));
+        let config = Config::new_for_test_with_env(Env::Pr);
+        assert!(!is_openapi_enabled(&config));
     }
 
     #[test]
     fn test_openapi_disabled_nightly() {
-        assert!(!is_openapi_enabled(&Env::Nightly));
+        let config = Config::new_for_test_with_env(Env::Nightly);
+        assert!(!is_openapi_enabled(&config));
     }
 
     #[test]

@@ -63,9 +63,9 @@ where
         .nest("/internal", internal_routes)
         .nest("/auth", users::auth_routes::<S, U>());
 
-    // Add OpenAPI documentation routes for internal environments
+    // Add OpenAPI documentation routes for internal environments (protected by Zero Trust)
     #[cfg(feature = "openapi")]
-    if let Some(openapi_routes) = openapi::create_openapi_routes::<S, U>(config.environment()) {
+    if let Some(openapi_routes) = openapi::create_openapi_routes::<S, U>(&config) {
         router = router.merge(openapi_routes);
     }
 

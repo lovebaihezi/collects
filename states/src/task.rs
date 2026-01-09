@@ -6,16 +6,18 @@
 //! # Overview
 //!
 //! - `TaskId`: A unique identifier for spawned tasks, combining `TypeId` and generation counter
+//! - `TaskIdGenerator`: Thread-safe generator for `TaskId`s using atomics, cache-line aligned
 //! - `TaskHandle`: Wraps a task with its `CancellationToken` for cooperative cancellation
 //!
 //! # Usage
 //!
 //! ```ignore
-//! use collects_states::{TaskId, TaskHandle};
+//! use collects_states::{TaskId, TaskIdGenerator, TaskHandle};
 //! use tokio_util::sync::CancellationToken;
 //!
+//! let generator = TaskIdGenerator::new();
+//! let task_id = generator.next::<MyCompute>();
 //! let token = CancellationToken::new();
-//! let task_id = TaskId::new(TypeId::of::<MyCompute>(), 1);
 //! let handle = TaskHandle::new(task_id, token);
 //!
 //! // Later, cancel the task
@@ -23,8 +25,12 @@
 //! ```
 
 use std::any::TypeId;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use tokio_util::sync::CancellationToken;
+
+/// Cache line size for most modern CPUs (64 bytes).
+const CACHE_LINE_SIZE: usize = 64;
 
 /// Unique identifier for a spawned task.
 ///
@@ -66,6 +72,86 @@ impl TaskId {
     /// Higher generation values indicate more recently spawned tasks.
     pub fn generation(&self) -> u64 {
         self.generation
+    }
+}
+
+/// Thread-safe generator for `TaskId`s using atomic operations.
+///
+/// The generation counter is cache-line aligned to prevent false sharing
+/// when multiple threads are generating task IDs concurrently.
+///
+/// # Memory Ordering
+///
+/// This generator uses `Ordering::Relaxed` for the atomic counter. This provides
+/// unique IDs but does not guarantee that threads will observe generation values
+/// in any particular order. This is acceptable for task IDs because:
+/// - Each ID is unique (atomicity guarantees no duplicates)
+/// - The ordering of task spawns across threads is inherently non-deterministic
+/// - Task cancellation and completion don't depend on generation ordering
+///
+/// # Example
+///
+/// ```ignore
+/// let generator = TaskIdGenerator::new();
+/// let id1 = generator.next::<MyCompute>();
+/// let id2 = generator.next::<MyCompute>();
+///
+/// assert_eq!(id1.type_id(), id2.type_id());
+/// assert_ne!(id1.generation(), id2.generation()); // Different generations
+/// ```
+#[repr(align(64))] // Align to cache line size to prevent false sharing
+#[derive(Debug)]
+pub struct TaskIdGenerator {
+    /// Atomic generation counter, padded to fill the cache line.
+    generation: AtomicU64,
+    /// Padding to ensure the struct fills a full cache line.
+    _padding: [u8; CACHE_LINE_SIZE - std::mem::size_of::<AtomicU64>()],
+}
+
+// Compile-time assertion: AtomicU64 must fit within cache line
+const _: () = assert!(
+    std::mem::size_of::<AtomicU64>() <= CACHE_LINE_SIZE,
+    "AtomicU64 size exceeds cache line size"
+);
+
+impl Default for TaskIdGenerator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl TaskIdGenerator {
+    /// Creates a new `TaskIdGenerator` starting at generation 0.
+    pub const fn new() -> Self {
+        Self {
+            generation: AtomicU64::new(0),
+            _padding: [0; CACHE_LINE_SIZE - std::mem::size_of::<AtomicU64>()],
+        }
+    }
+
+    /// Generates the next `TaskId` for the given type.
+    ///
+    /// Each call atomically increments the generation counter, ensuring
+    /// unique IDs across concurrent calls. Uses `Ordering::Relaxed` since
+    /// strict cross-thread ordering is not required for task ID uniqueness.
+    pub fn next<T: 'static>(&self) -> TaskId {
+        let generation = self.generation.fetch_add(1, Ordering::Relaxed);
+        TaskId::new(TypeId::of::<T>(), generation)
+    }
+
+    /// Generates the next `TaskId` for a given `TypeId`.
+    ///
+    /// Use this when the type is determined at runtime.
+    /// Uses `Ordering::Relaxed` since strict cross-thread ordering is not
+    /// required for task ID uniqueness.
+    pub fn next_for(&self, type_id: TypeId) -> TaskId {
+        let generation = self.generation.fetch_add(1, Ordering::Relaxed);
+        TaskId::new(type_id, generation)
+    }
+
+    /// Returns the current generation value without incrementing.
+    pub fn current_generation(&self) -> u64 {
+        self.generation.load(Ordering::Relaxed)
     }
 }
 
@@ -255,5 +341,55 @@ mod tests {
         assert_eq!(set.len(), 2);
         assert!(set.contains(&id1));
         assert!(set.contains(&id2));
+    }
+
+    #[test]
+    fn task_id_generator_new() {
+        let generator = TaskIdGenerator::new();
+        assert_eq!(generator.current_generation(), 0);
+    }
+
+    #[test]
+    fn task_id_generator_next() {
+        let generator = TaskIdGenerator::new();
+
+        let id1 = generator.next::<String>();
+        let id2 = generator.next::<String>();
+        let id3 = generator.next::<i32>();
+
+        assert_eq!(id1.generation(), 0);
+        assert_eq!(id2.generation(), 1);
+        assert_eq!(id3.generation(), 2);
+
+        // Same type for id1 and id2, different for id3
+        assert_eq!(id1.type_id(), id2.type_id());
+        assert_ne!(id1.type_id(), id3.type_id());
+    }
+
+    #[test]
+    fn task_id_generator_next_for() {
+        let generator = TaskIdGenerator::new();
+        let type_id = TypeId::of::<String>();
+
+        let id1 = generator.next_for(type_id);
+        let id2 = generator.next_for(type_id);
+
+        assert_eq!(id1.type_id(), type_id);
+        assert_eq!(id2.type_id(), type_id);
+        assert_eq!(id1.generation(), 0);
+        assert_eq!(id2.generation(), 1);
+    }
+
+    #[test]
+    fn task_id_generator_cache_line_aligned() {
+        // Verify the generator is cache-line aligned (64 bytes)
+        assert_eq!(std::mem::align_of::<TaskIdGenerator>(), 64);
+        assert_eq!(std::mem::size_of::<TaskIdGenerator>(), 64);
+    }
+
+    #[test]
+    fn task_id_generator_default() {
+        let generator = TaskIdGenerator::default();
+        assert_eq!(generator.current_generation(), 0);
     }
 }

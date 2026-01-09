@@ -22,7 +22,7 @@ pub use runtime::StateRuntime;
 pub use snapshot::{CommandSnapshot, ComputeSnapshot, SnapshotClone, StateSnapshot};
 pub use state::{Reader, State, Updater, state_assign_impl};
 pub use state_sync_status::Stage;
-pub use task::{TaskHandle, TaskId};
+pub use task::{TaskHandle, TaskId, TaskIdGenerator};
 
 /// Manual-only side effects / commands.
 ///

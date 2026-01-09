@@ -87,6 +87,11 @@ pub struct V1ContentItem {
     pub status: String,
     /// Content visibility (private, public, restricted).
     pub visibility: String,
+    /// Content kind: "file" (uploaded to R2) or "text" (stored inline).
+    pub kind: String,
+    /// Inline text content (only present when kind="text").
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub body: Option<String>,
     /// Timestamp when content was trashed (ISO 8601 format).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub trashed_at: Option<String>,
@@ -112,6 +117,8 @@ impl From<ContentRow> for V1ContentItem {
             file_size: row.file_size,
             status: row.status,
             visibility: row.visibility,
+            kind: row.kind,
+            body: row.body,
             trashed_at: row.trashed_at.map(|t| t.to_rfc3339()),
             archived_at: row.archived_at.map(|t| t.to_rfc3339()),
             created_at: row.created_at.to_rfc3339(),
@@ -143,6 +150,40 @@ pub struct V1ContentsUpdateRequest {
     /// New visibility (optional: private, public, restricted).
     #[serde(default)]
     pub visibility: Option<String>,
+    /// New body content (optional, only allowed when kind="text").
+    #[serde(default)]
+    pub body: Option<String>,
+}
+
+/// Request body for creating text content directly (without upload).
+#[derive(Debug, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct V1ContentCreateRequest {
+    /// Content title.
+    pub title: String,
+    /// Optional description.
+    #[serde(default)]
+    pub description: Option<String>,
+    /// Text content body (required, max recommended 64KB).
+    pub body: String,
+    /// MIME type of the content (default: "text/plain").
+    #[serde(default = "default_text_content_type")]
+    pub content_type: String,
+    /// Content visibility (private, public, restricted). Default: private.
+    #[serde(default = "default_visibility")]
+    pub visibility: String,
+}
+
+fn default_text_content_type() -> String {
+    "text/plain".to_string()
+}
+
+/// Response for creating text content.
+#[derive(Debug, Serialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct V1ContentCreateResponse {
+    /// The created content item.
+    pub content: V1ContentItem,
 }
 
 /// Request for view URL.

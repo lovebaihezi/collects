@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT\n                id, user_id, title, description,\n                storage_backend, storage_profile, storage_key,\n                content_type, file_size, status, visibility,\n                trashed_at, archived_at, created_at, updated_at\n            FROM contents\n            WHERE id = $1\n            ",
+  "query": "\n            INSERT INTO contents (\n                user_id, title, description,\n                storage_backend, storage_profile, storage_key,\n                content_type, file_size, visibility, kind, body\n            )\n            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)\n            RETURNING\n                id, user_id, title, description,\n                storage_backend, storage_profile, storage_key,\n                content_type, file_size, status, visibility,\n                kind, body,\n                trashed_at, archived_at, created_at, updated_at\n            ",
   "describe": {
     "columns": [
       {
@@ -60,28 +60,48 @@
       },
       {
         "ordinal": 11,
+        "name": "kind",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 12,
+        "name": "body",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 13,
         "name": "trashed_at",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 12,
+        "ordinal": 14,
         "name": "archived_at",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 13,
+        "ordinal": 15,
         "name": "created_at",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 14,
+        "ordinal": 16,
         "name": "updated_at",
         "type_info": "Timestamptz"
       }
     ],
     "parameters": {
       "Left": [
-        "Uuid"
+        "Uuid",
+        "Varchar",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Varchar",
+        "Int8",
+        "Varchar",
+        "Varchar",
+        "Text"
       ]
     },
     "nullable": [
@@ -96,11 +116,13 @@
       false,
       false,
       false,
+      false,
+      true,
       true,
       true,
       false,
       false
     ]
   },
-  "hash": "130b428ee63a704e95670ed2d17450d57b73521eb884b0307fc01ff166252804"
+  "hash": "6a47da9d819cabcfe3a88c03d665bab27e360b1adc1ed3f3e40b3071ef85e31b"
 }

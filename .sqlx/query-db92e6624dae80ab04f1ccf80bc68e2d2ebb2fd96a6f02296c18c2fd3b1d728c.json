@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT\n                id, user_id, title, description,\n                storage_backend, storage_profile, storage_key,\n                content_type, file_size, status, visibility,\n                trashed_at, archived_at, created_at, updated_at\n            FROM contents\n            WHERE user_id = $1\n              AND ($2::text IS NULL OR status = $2)\n            ORDER BY created_at DESC\n            LIMIT $3 OFFSET $4\n            ",
+  "query": "\n            UPDATE contents\n            SET\n                title = COALESCE($3, title),\n                description = CASE\n                    WHEN $4::bool THEN $5\n                    ELSE description\n                END,\n                visibility = COALESCE($6, visibility),\n                body = CASE\n                    WHEN $7::bool AND kind = 'text' THEN $8\n                    ELSE body\n                END,\n                file_size = CASE\n                    WHEN $7::bool AND kind = 'text' THEN COALESCE(LENGTH($8), 0)\n                    ELSE file_size\n                END\n            WHERE id = $1 AND user_id = $2\n            RETURNING\n                id, user_id, title, description,\n                storage_backend, storage_profile, storage_key,\n                content_type, file_size, status, visibility,\n                kind, body,\n                trashed_at, archived_at, created_at, updated_at\n            ",
   "describe": {
     "columns": [
       {
@@ -60,21 +60,31 @@
       },
       {
         "ordinal": 11,
+        "name": "kind",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 12,
+        "name": "body",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 13,
         "name": "trashed_at",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 12,
+        "ordinal": 14,
         "name": "archived_at",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 13,
+        "ordinal": 15,
         "name": "created_at",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 14,
+        "ordinal": 16,
         "name": "updated_at",
         "type_info": "Timestamptz"
       }
@@ -82,9 +92,13 @@
     "parameters": {
       "Left": [
         "Uuid",
+        "Uuid",
+        "Varchar",
+        "Bool",
         "Text",
-        "Int8",
-        "Int8"
+        "Varchar",
+        "Bool",
+        "Text"
       ]
     },
     "nullable": [
@@ -99,11 +113,13 @@
       false,
       false,
       false,
+      false,
+      true,
       true,
       true,
       false,
       false
     ]
   },
-  "hash": "93f46eb327bfe81d351e7687f561a45534d0e15e357e95c49a78464a12e003b5"
+  "hash": "db92e6624dae80ab04f1ccf80bc68e2d2ebb2fd96a6f02296c18c2fd3b1d728c"
 }

@@ -39,7 +39,10 @@ where
             post(uploads::v1_uploads_complete::<S, U>),
         )
         // Contents endpoints
-        .route("/contents", get(contents::v1_contents_list::<S, U>))
+        .route(
+            "/contents",
+            get(contents::v1_contents_list::<S, U>).post(contents::v1_contents_create::<S, U>),
+        )
         .route("/contents/{id}", get(contents::v1_contents_get::<S, U>))
         .route(
             "/contents/{id}",

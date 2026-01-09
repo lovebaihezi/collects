@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            UPDATE contents\n            SET\n                status = $3,\n                trashed_at = $4,\n                archived_at = $5\n            WHERE id = $1 AND user_id = $2\n            RETURNING\n                id, user_id, title, description,\n                storage_backend, storage_profile, storage_key,\n                content_type, file_size, status, visibility,\n                trashed_at, archived_at, created_at, updated_at\n            ",
+  "query": "\n            SELECT\n                id, user_id, title, description,\n                storage_backend, storage_profile, storage_key,\n                content_type, file_size, status, visibility,\n                kind, body,\n                trashed_at, archived_at, created_at, updated_at\n            FROM contents\n            WHERE id = $1\n            ",
   "describe": {
     "columns": [
       {
@@ -60,32 +60,38 @@
       },
       {
         "ordinal": 11,
+        "name": "kind",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 12,
+        "name": "body",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 13,
         "name": "trashed_at",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 12,
+        "ordinal": 14,
         "name": "archived_at",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 13,
+        "ordinal": 15,
         "name": "created_at",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 14,
+        "ordinal": 16,
         "name": "updated_at",
         "type_info": "Timestamptz"
       }
     ],
     "parameters": {
       "Left": [
-        "Uuid",
-        "Uuid",
-        "Varchar",
-        "Timestamptz",
-        "Timestamptz"
+        "Uuid"
       ]
     },
     "nullable": [
@@ -100,11 +106,13 @@
       false,
       false,
       false,
+      false,
+      true,
       true,
       true,
       false,
       false
     ]
   },
-  "hash": "0d3ffe8a8973fa3a324516c855006c605d3e6d19f997085dfd4852390ad06119"
+  "hash": "a994db7826484e9d0d48f48311825b366a28e578136eb0c789a377e88a039b1e"
 }

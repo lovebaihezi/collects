@@ -297,6 +297,8 @@ where
         content_type: upload.content_type,
         file_size: upload.file_size,
         visibility: Visibility::Private,
+        kind: None, // Defaults to "file" for uploaded content
+        body: None, // No inline body for uploaded files
     };
 
     let content = match state.sql_storage.contents_insert(content_input).await {

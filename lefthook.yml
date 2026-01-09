@@ -10,3 +10,5 @@ pre-commit:
     migration-check:
       run: just scripts::migration-check
       glob: "services/migrations/*.sql"
+    ast-grep:
+      run: sg scan

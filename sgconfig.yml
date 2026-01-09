@@ -1,0 +1,20 @@
+# ast-grep project configuration
+# See: https://ast-grep.github.io/reference/sgconfig.html
+
+# Directories containing ast-grep rules
+ruleDirs:
+  - rules
+
+# Test configuration for ast-grep rules
+testConfigs:
+  - testDir: rule-tests
+    snapshotDir: __snapshots__
+
+# Utility rules that can be reused across multiple rules
+utilDirs:
+  - rules/utils
+
+# Language glob mappings for non-standard file extensions
+languageGlobs:
+  # Treat .rs files in build directories as Rust
+  rust: ["*.rs"]

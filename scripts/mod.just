@@ -133,3 +133,15 @@ migration-check: install
 # Usage: just scripts::migration-lock
 migration-lock: install
     bun run main.ts migration-lock
+
+# Run ast-grep rule tests
+# Tests rules defined in rules/ directory against test cases in rule-tests/
+# Usage: just scripts::sg-test
+sg-test:
+    sg test
+
+# Run ast-grep scan on the codebase
+# Scans for violations using rules defined in rules/ directory
+# Usage: just scripts::sg-scan
+sg-scan:
+    sg scan

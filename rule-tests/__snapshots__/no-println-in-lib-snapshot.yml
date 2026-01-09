@@ -1,0 +1,53 @@
+id: no-println-in-lib
+snapshots:
+  ? |
+    fn debug_info() {
+        let a = 1;
+        let b = 2;
+        let c = 3;
+        println!("{} - {} - {}", a, b, c);
+    }
+  : labels:
+    - source: println!("{} - {} - {}", a, b, c)
+      style: primary
+      start: 67
+      end: 100
+  ? |
+    fn greet() {
+        println!("Hello, world!");
+    }
+  : labels:
+    - source: println!("Hello, world!")
+      style: primary
+      start: 17
+      end: 42
+  ? |
+    fn log_value() {
+        let value = 42;
+        println!("Value: {}", value);
+    }
+  : labels:
+    - source: 'println!("Value: {}", value)'
+      style: primary
+      start: 41
+      end: 69
+  ? |
+    fn newline() {
+        println!();
+    }
+  : labels:
+    - source: println!()
+      style: primary
+      start: 19
+      end: 29
+  ? |
+    fn outer() {
+        fn inner() {
+            println!("nested");
+        }
+    }
+  : labels:
+    - source: println!("nested")
+      style: primary
+      start: 38
+      end: 56

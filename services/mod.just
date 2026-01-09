@@ -269,6 +269,39 @@ fmt:
 lint:
     cargo clippy
 
+# Run tests for services using gcloud secrets
+# Environments: prod, internal, nightly, test, test-internal, pr, local
+# Usage: just services::test local
+test env="local":
+    #!/bin/bash
+    set -euo pipefail
+
+    DATABASE_SECRET=$(just scripts::env-secret {{env}})
+
+    echo "Running tests for {{env}} environment..."
+
+    # Fetch database URL
+    set +x
+    DATABASE_URL=$(gcloud secrets versions access latest --secret=${DATABASE_SECRET})
+    export DATABASE_URL
+
+    # Fetch R2 secrets if available (optional for tests)
+    if gcloud secrets versions access latest --secret=cf-account-id 2>/dev/null; then
+        export CF_ACCOUNT_ID=$(gcloud secrets versions access latest --secret=cf-account-id)
+        export CF_ACCESS_KEY_ID=$(gcloud secrets versions access latest --secret=cf-access-key-id)
+        export CF_SECRET_ACCESS_KEY=$(gcloud secrets versions access latest --secret=cf-secret-access-key)
+        export CF_BUCKET=$(gcloud secrets versions access latest --secret=cf-bucket)
+        echo "R2 secrets loaded"
+    else
+        echo "R2 secrets not found, running tests without R2 configuration"
+    fi
+
+    cargo test --workspace
+
+# Run tests without database (unit tests only, offline mode)
+test-unit:
+    SQLX_OFFLINE=true cargo test --workspace --lib
+
 # Deploys the service to Cloud Run
 # Environments: prod, internal, nightly, test, test-internal, pr
 # Usage: just services::gcloud-deploy prod 20251017-1

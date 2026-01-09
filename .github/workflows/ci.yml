@@ -317,9 +317,7 @@ jobs:
         uses: swatinem/rust-cache@v2
 
       - name: Run Services Tests
-        env:
-          SQLX_OFFLINE: "true"
-        run: cargo test -p collects-services
+        run: just services::test-unit
 
       - name: Post CI Feedback on Failure
         if: failure() && github.event_name == 'pull_request'

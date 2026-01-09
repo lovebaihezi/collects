@@ -48,12 +48,43 @@ mod tests {
             ("DATABASE_URL", "postgres://example"),
             ("PORT", "8080"),
             ("JWT_SECRET", "test-jwt-secret"),
+            ("CF_ACCOUNT_ID", "test-account"),
+            ("CF_ACCESS_KEY_ID", "test-access-key"),
+            ("CF_SECRET_ACCESS_KEY", "test-secret"),
+            ("CF_BUCKET", "test-bucket"),
         ])
         .expect("RawConfig should deserialize");
 
         let config = Config::from_raw(raw).expect("pr config should build");
         assert_eq!(config.server_addr(), "0.0.0.0");
         assert_eq!(config.port(), 8080);
+    }
+
+    #[test]
+    fn r2_credentials_required_for_prod() {
+        let raw: RawConfig = from_iter(vec![
+            ("ENV", "prod"),
+            ("DATABASE_URL", "postgres://example"),
+            ("PORT", "8080"),
+            ("JWT_SECRET", "test-jwt-secret"),
+        ])
+        .expect("RawConfig should deserialize");
+
+        let result = Config::from_raw(raw);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("CF_ACCOUNT_ID"));
+    }
+
+    #[test]
+    fn r2_credentials_optional_for_local() {
+        let raw: RawConfig = from_iter(vec![
+            ("ENV", "local"),
+            ("DATABASE_URL", "postgres://example"),
+        ])
+        .expect("RawConfig should deserialize");
+
+        let config = Config::from_raw(raw).expect("local config should build without R2 creds");
+        assert!(config.cf_account_id().is_none());
     }
 
     #[test]
@@ -388,6 +419,23 @@ impl Config {
                  Internal routes require Zero Trust authentication.",
                 env
             );
+        }
+
+        // R2 credentials are required for non-local environments
+        if !matches!(env, Env::Local | Env::Test | Env::TestInternal) {
+            if cf_account_id.is_none() {
+                anyhow::bail!("CF_ACCOUNT_ID must be set for {} environment", env);
+            }
+            if cf_access_key_id.is_none() {
+                anyhow::bail!("CF_ACCESS_KEY_ID must be set for {} environment", env);
+            }
+            if cf_secret_access_key.is_none() {
+                anyhow::bail!("CF_SECRET_ACCESS_KEY must be set for {} environment", env);
+            }
+            if cf_bucket.is_none() {
+                anyhow::bail!("CF_BUCKET must be set for {} environment", env);
+            }
+            info!("R2 storage credentials validated for {} environment", env);
         }
 
         // Construct the final, validated Config struct

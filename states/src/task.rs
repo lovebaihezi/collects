@@ -59,7 +59,10 @@ pub struct TaskId {
 impl TaskId {
     /// Creates a new `TaskId` with the given type and generation.
     pub fn new(type_id: TypeId, generation: u64) -> Self {
-        Self { type_id, generation }
+        Self {
+            type_id,
+            generation,
+        }
     }
 
     /// Returns the `TypeId` component of this task identifier.

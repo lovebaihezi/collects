@@ -296,7 +296,8 @@ pub trait UserStorage: Clone + Send + Sync + 'static {
 /// ```
 #[derive(Clone, Default)]
 pub struct MockUserStorage {
-    users: std::sync::Arc<std::sync::RwLock<std::collections::HashMap<String, StoredUser>>>,
+    pub(crate) users:
+        std::sync::Arc<std::sync::RwLock<std::collections::HashMap<String, StoredUser>>>,
 }
 
 impl MockUserStorage {

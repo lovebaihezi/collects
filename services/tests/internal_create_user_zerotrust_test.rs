@@ -18,7 +18,7 @@ use collects_services::{
         ContentStatus, ContentsInsert, ContentsListParams, ContentsUpdate, GroupCreate,
         GroupShareCreateForLink, GroupShareCreateForUser, GroupStatus, GroupUpdate,
         GroupsListParams, ShareLinkCreate, ShareLinkRow, SqlStorage, SqlStorageError, TagCreate,
-        TagRow, TagUpdate,
+        TagRow, TagUpdate, UploadInsert, UploadRow,
     },
     internal,
     users::AppState,
@@ -289,6 +289,24 @@ impl SqlStorage for MockSqlStorage {
     ) -> Result<bool, SqlStorageError> {
         // Mock: never rate limited
         Ok(false)
+    }
+
+    async fn uploads_create(&self, _input: UploadInsert) -> Result<UploadRow, SqlStorageError> {
+        Err(SqlStorageError::Db(
+            "MockSqlStorage.uploads_create: unimplemented".to_string(),
+        ))
+    }
+
+    async fn uploads_get(&self, _id: uuid::Uuid) -> Result<Option<UploadRow>, SqlStorageError> {
+        Ok(None)
+    }
+
+    async fn uploads_complete(
+        &self,
+        _id: uuid::Uuid,
+        _user_id: uuid::Uuid,
+    ) -> Result<Option<UploadRow>, SqlStorageError> {
+        Ok(None)
     }
 }
 

@@ -1,5 +1,6 @@
 use crate::config::Config;
 use crate::database::SqlStorage;
+use crate::storage::{CFDiskConfig, R2Presigner};
 use crate::users::routes::AppState;
 use crate::users::storage::UserStorage;
 use axum::{
@@ -69,6 +70,17 @@ where
         router = router.merge(openapi_routes);
     }
 
+    // Add R2 presigner extension if R2 is configured
+    if let Some(r2_config) = config.r2() {
+        let presigner = R2Presigner::new(CFDiskConfig {
+            account_id: r2_config.account_id().to_string(),
+            access_key_id: r2_config.access_key_id().to_string(),
+            secret_access_key: r2_config.secret_access_key().to_string(),
+            bucket: r2_config.bucket().to_string(),
+        });
+        router = router.layer(Extension(presigner));
+    }
+
     router
         .fallback(any(catch_all))
         .layer(
@@ -135,16 +147,64 @@ async fn catch_all() -> impl IntoResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::users::storage::MockUserStorage;
+    use crate::users::storage::{MockUserStorage, StoredUser};
     use axum::{
         body::Body,
         http::{Request, StatusCode},
     };
     use tower::ServiceExt;
 
+    /// A fixed UUID for test scenarios to coordinate between MockSqlStorage and MockUserStorage.
+    const TEST_USER_ID: uuid::Uuid = uuid::Uuid::from_u128(0x00000000_0000_0000_0000_000000000001);
+
+    /// A fixed UUID for test content.
+    const TEST_CONTENT_ID: uuid::Uuid =
+        uuid::Uuid::from_u128(0x00000000_0000_0000_0000_000000000000);
+
     #[derive(Clone)]
     struct MockSqlStorage {
         is_connected: bool,
+        /// When set, mock methods will use this user ID for ownership checks.
+        mock_user_id: Option<uuid::Uuid>,
+    }
+
+    impl MockSqlStorage {
+        /// Creates a new MockSqlStorage with default settings (connected, no mock user ID).
+        fn new() -> Self {
+            Self {
+                is_connected: true,
+                mock_user_id: None,
+            }
+        }
+
+        /// Creates a MockSqlStorage configured to work with a specific user ID.
+        fn with_user_id(user_id: uuid::Uuid) -> Self {
+            Self {
+                is_connected: true,
+                mock_user_id: Some(user_id),
+            }
+        }
+
+        /// Creates a MockSqlStorage that simulates a disconnected database.
+        fn disconnected() -> Self {
+            Self {
+                is_connected: false,
+                mock_user_id: None,
+            }
+        }
+    }
+
+    /// Creates a MockUserStorage with a user that has the TEST_USER_ID.
+    fn create_test_user_storage() -> MockUserStorage {
+        let user = StoredUser::with_id(TEST_USER_ID, "testuser", "SECRET123");
+        let storage = MockUserStorage::new();
+        // We need to insert the user manually since with_users generates random IDs
+        storage
+            .users
+            .write()
+            .expect("lock poisoned")
+            .insert("testuser".to_string(), user);
+        storage
     }
 
     impl SqlStorage for MockSqlStorage {
@@ -163,8 +223,30 @@ mod tests {
 
         async fn contents_get(
             &self,
-            _id: uuid::Uuid,
+            id: uuid::Uuid,
         ) -> Result<Option<crate::database::ContentRow>, crate::database::SqlStorageError> {
+            // Return a mock content for the test content ID when mock_user_id is set
+            if id == TEST_CONTENT_ID
+                && let Some(user_id) = self.mock_user_id
+            {
+                return Ok(Some(crate::database::ContentRow {
+                    id: TEST_CONTENT_ID,
+                    user_id,
+                    title: "Test Content".to_string(),
+                    description: None,
+                    storage_backend: "r2".to_string(),
+                    storage_profile: "default".to_string(),
+                    storage_key: format!("{}/test-uuid/test-file.jpg", user_id),
+                    content_type: "image/jpeg".to_string(),
+                    file_size: 1234,
+                    status: "active".to_string(),
+                    visibility: "private".to_string(),
+                    trashed_at: None,
+                    archived_at: None,
+                    created_at: chrono::Utc::now(),
+                    updated_at: chrono::Utc::now(),
+                }));
+            }
             Ok(None)
         }
 
@@ -419,11 +501,46 @@ mod tests {
             // Mock: never rate limited
             Ok(false)
         }
+
+        async fn uploads_create(
+            &self,
+            input: crate::database::UploadInsert,
+        ) -> Result<crate::database::UploadRow, crate::database::SqlStorageError> {
+            // Return a mock upload row based on the input
+            Ok(crate::database::UploadRow {
+                id: uuid::Uuid::new_v4(),
+                user_id: input.user_id,
+                storage_backend: input.storage_backend,
+                storage_profile: input.storage_profile,
+                storage_key: input.storage_key,
+                content_type: input.content_type,
+                file_size: input.file_size,
+                status: "initiated".to_string(),
+                expires_at: input.expires_at,
+                created_at: chrono::Utc::now(),
+                completed_at: None,
+            })
+        }
+
+        async fn uploads_get(
+            &self,
+            _id: uuid::Uuid,
+        ) -> Result<Option<crate::database::UploadRow>, crate::database::SqlStorageError> {
+            Ok(None)
+        }
+
+        async fn uploads_complete(
+            &self,
+            _id: uuid::Uuid,
+            _user_id: uuid::Uuid,
+        ) -> Result<Option<crate::database::UploadRow>, crate::database::SqlStorageError> {
+            Ok(None)
+        }
     }
 
     #[tokio::test]
     async fn test_health_check_connected() {
-        let sql_storage = MockSqlStorage { is_connected: true };
+        let sql_storage = MockSqlStorage::new();
         let user_storage = MockUserStorage::new();
         let config = Config::new_for_test();
         let app = routes(sql_storage, user_storage, config).await;
@@ -454,7 +571,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_v1_me_without_auth_returns_401() {
-        let sql_storage = MockSqlStorage { is_connected: true };
+        let sql_storage = MockSqlStorage::new();
         let user_storage = MockUserStorage::new();
         let config = Config::new_for_test();
         let app = routes(sql_storage, user_storage, config).await;
@@ -475,7 +592,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_v1_me_with_valid_auth() {
-        let sql_storage = MockSqlStorage { is_connected: true };
+        let sql_storage = MockSqlStorage::new();
         let user_storage = MockUserStorage::new();
         let config = Config::new_for_test();
         let app = routes(sql_storage, user_storage, config).await;
@@ -505,7 +622,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_v1_uploads_init_without_auth_returns_401() {
-        let sql_storage = MockSqlStorage { is_connected: true };
+        let sql_storage = MockSqlStorage::new();
         let user_storage = MockUserStorage::new();
         let config = Config::new_for_test();
         let app = routes(sql_storage, user_storage, config).await;
@@ -530,8 +647,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_v1_uploads_init_with_valid_auth() {
-        let sql_storage = MockSqlStorage { is_connected: true };
-        let user_storage = MockUserStorage::new();
+        let sql_storage = MockSqlStorage::with_user_id(TEST_USER_ID);
+        let user_storage = create_test_user_storage();
         let config = Config::new_for_test();
         let app = routes(sql_storage, user_storage, config).await;
 
@@ -557,7 +674,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_v1_contents_view_url_without_auth_returns_401() {
-        let sql_storage = MockSqlStorage { is_connected: true };
+        let sql_storage = MockSqlStorage::new();
         let user_storage = MockUserStorage::new();
         let config = Config::new_for_test();
         let app = routes(sql_storage, user_storage, config).await;
@@ -580,8 +697,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_v1_contents_view_url_with_valid_auth() {
-        let sql_storage = MockSqlStorage { is_connected: true };
-        let user_storage = MockUserStorage::new();
+        let sql_storage = MockSqlStorage::with_user_id(TEST_USER_ID);
+        let user_storage = create_test_user_storage();
         let config = Config::new_for_test();
         let app = routes(sql_storage, user_storage, config).await;
 
@@ -605,7 +722,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_v1_me_with_invalid_token_returns_401() {
-        let sql_storage = MockSqlStorage { is_connected: true };
+        let sql_storage = MockSqlStorage::new();
         let user_storage = MockUserStorage::new();
         let config = Config::new_for_test();
         let app = routes(sql_storage, user_storage, config).await;
@@ -634,7 +751,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_v1_me_with_wrong_secret_token_returns_401() {
-        let sql_storage = MockSqlStorage { is_connected: true };
+        let sql_storage = MockSqlStorage::new();
         let user_storage = MockUserStorage::new();
         let config = Config::new_for_test();
         let app = routes(sql_storage, user_storage, config).await;
@@ -672,7 +789,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_health_check_includes_headers() {
-        let sql_storage = MockSqlStorage { is_connected: true };
+        let sql_storage = MockSqlStorage::new();
         let user_storage = MockUserStorage::new();
         let config = Config::new_for_test();
         let app = routes(sql_storage, user_storage, config).await;
@@ -704,9 +821,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_health_check_disconnected() {
-        let sql_storage = MockSqlStorage {
-            is_connected: false,
-        };
+        let sql_storage = MockSqlStorage::disconnected();
         let user_storage = MockUserStorage::new();
         let config = Config::new_for_test();
         let app = routes(sql_storage, user_storage, config).await;
@@ -748,7 +863,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_v1_contents_list_without_auth_returns_401() {
-        let sql_storage = MockSqlStorage { is_connected: true };
+        let sql_storage = MockSqlStorage::new();
         let user_storage = MockUserStorage::new();
         let config = Config::new_for_test();
         let app = routes(sql_storage, user_storage, config).await;
@@ -768,7 +883,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_v1_contents_list_with_valid_auth() {
-        let sql_storage = MockSqlStorage { is_connected: true };
+        let sql_storage = MockSqlStorage::new();
         let user_storage = MockUserStorage::with_users([("testuser", "SECRET123")]);
         let config = Config::new_for_test();
         let app = routes(sql_storage, user_storage, config).await;
@@ -798,7 +913,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_v1_contents_list_with_query_params() {
-        let sql_storage = MockSqlStorage { is_connected: true };
+        let sql_storage = MockSqlStorage::new();
         let user_storage = MockUserStorage::with_users([("testuser", "SECRET123")]);
         let config = Config::new_for_test();
         let app = routes(sql_storage, user_storage, config).await;
@@ -821,7 +936,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_v1_contents_get_without_auth_returns_401() {
-        let sql_storage = MockSqlStorage { is_connected: true };
+        let sql_storage = MockSqlStorage::new();
         let user_storage = MockUserStorage::new();
         let config = Config::new_for_test();
         let app = routes(sql_storage, user_storage, config).await;
@@ -841,7 +956,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_v1_contents_get_not_found() {
-        let sql_storage = MockSqlStorage { is_connected: true };
+        let sql_storage = MockSqlStorage::new();
         let user_storage = MockUserStorage::with_users([("testuser", "SECRET123")]);
         let config = Config::new_for_test();
         let app = routes(sql_storage, user_storage, config).await;
@@ -864,7 +979,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_v1_contents_get_invalid_id() {
-        let sql_storage = MockSqlStorage { is_connected: true };
+        let sql_storage = MockSqlStorage::new();
         let user_storage = MockUserStorage::with_users([("testuser", "SECRET123")]);
         let config = Config::new_for_test();
         let app = routes(sql_storage, user_storage, config).await;
@@ -887,7 +1002,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_v1_contents_update_without_auth_returns_401() {
-        let sql_storage = MockSqlStorage { is_connected: true };
+        let sql_storage = MockSqlStorage::new();
         let user_storage = MockUserStorage::new();
         let config = Config::new_for_test();
         let app = routes(sql_storage, user_storage, config).await;
@@ -909,7 +1024,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_v1_contents_update_not_found() {
-        let sql_storage = MockSqlStorage { is_connected: true };
+        let sql_storage = MockSqlStorage::new();
         let user_storage = MockUserStorage::with_users([("testuser", "SECRET123")]);
         let config = Config::new_for_test();
         let app = routes(sql_storage, user_storage, config).await;
@@ -934,7 +1049,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_v1_contents_update_invalid_visibility() {
-        let sql_storage = MockSqlStorage { is_connected: true };
+        let sql_storage = MockSqlStorage::new();
         let user_storage = MockUserStorage::with_users([("testuser", "SECRET123")]);
         let config = Config::new_for_test();
         let app = routes(sql_storage, user_storage, config).await;
@@ -959,7 +1074,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_v1_contents_trash_without_auth_returns_401() {
-        let sql_storage = MockSqlStorage { is_connected: true };
+        let sql_storage = MockSqlStorage::new();
         let user_storage = MockUserStorage::new();
         let config = Config::new_for_test();
         let app = routes(sql_storage, user_storage, config).await;
@@ -980,7 +1095,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_v1_contents_trash_not_found() {
-        let sql_storage = MockSqlStorage { is_connected: true };
+        let sql_storage = MockSqlStorage::new();
         let user_storage = MockUserStorage::with_users([("testuser", "SECRET123")]);
         let config = Config::new_for_test();
         let app = routes(sql_storage, user_storage, config).await;
@@ -1004,7 +1119,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_v1_contents_restore_without_auth_returns_401() {
-        let sql_storage = MockSqlStorage { is_connected: true };
+        let sql_storage = MockSqlStorage::new();
         let user_storage = MockUserStorage::new();
         let config = Config::new_for_test();
         let app = routes(sql_storage, user_storage, config).await;
@@ -1025,7 +1140,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_v1_contents_archive_without_auth_returns_401() {
-        let sql_storage = MockSqlStorage { is_connected: true };
+        let sql_storage = MockSqlStorage::new();
         let user_storage = MockUserStorage::new();
         let config = Config::new_for_test();
         let app = routes(sql_storage, user_storage, config).await;
@@ -1046,7 +1161,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_v1_contents_unarchive_without_auth_returns_401() {
-        let sql_storage = MockSqlStorage { is_connected: true };
+        let sql_storage = MockSqlStorage::new();
         let user_storage = MockUserStorage::new();
         let config = Config::new_for_test();
         let app = routes(sql_storage, user_storage, config).await;
@@ -1067,7 +1182,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_v1_contents_list_user_not_found() {
-        let sql_storage = MockSqlStorage { is_connected: true };
+        let sql_storage = MockSqlStorage::new();
         // User storage is empty, so "testuser" from the token won't be found
         let user_storage = MockUserStorage::new();
         let config = Config::new_for_test();
@@ -1096,7 +1211,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_v1_tags_list_without_auth_returns_401() {
-        let sql_storage = MockSqlStorage { is_connected: true };
+        let sql_storage = MockSqlStorage::new();
         let user_storage = MockUserStorage::new();
         let config = Config::new_for_test();
         let app = routes(sql_storage, user_storage, config).await;
@@ -1116,7 +1231,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_v1_tags_list_with_valid_auth() {
-        let sql_storage = MockSqlStorage { is_connected: true };
+        let sql_storage = MockSqlStorage::new();
         let user_storage = MockUserStorage::with_users([("testuser", "SECRET123")]);
         let config = Config::new_for_test();
         let app = routes(sql_storage, user_storage, config).await;
@@ -1139,7 +1254,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_v1_tags_create_without_auth_returns_401() {
-        let sql_storage = MockSqlStorage { is_connected: true };
+        let sql_storage = MockSqlStorage::new();
         let user_storage = MockUserStorage::new();
         let config = Config::new_for_test();
         let app = routes(sql_storage, user_storage, config).await;
@@ -1161,7 +1276,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_v1_tags_create_empty_name() {
-        let sql_storage = MockSqlStorage { is_connected: true };
+        let sql_storage = MockSqlStorage::new();
         let user_storage = MockUserStorage::with_users([("testuser", "SECRET123")]);
         let config = Config::new_for_test();
         let app = routes(sql_storage, user_storage, config).await;
@@ -1186,7 +1301,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_v1_tags_update_without_auth_returns_401() {
-        let sql_storage = MockSqlStorage { is_connected: true };
+        let sql_storage = MockSqlStorage::new();
         let user_storage = MockUserStorage::new();
         let config = Config::new_for_test();
         let app = routes(sql_storage, user_storage, config).await;
@@ -1208,7 +1323,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_v1_tags_update_not_found() {
-        let sql_storage = MockSqlStorage { is_connected: true };
+        let sql_storage = MockSqlStorage::new();
         let user_storage = MockUserStorage::with_users([("testuser", "SECRET123")]);
         let config = Config::new_for_test();
         let app = routes(sql_storage, user_storage, config).await;
@@ -1233,7 +1348,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_v1_tags_update_invalid_id() {
-        let sql_storage = MockSqlStorage { is_connected: true };
+        let sql_storage = MockSqlStorage::new();
         let user_storage = MockUserStorage::with_users([("testuser", "SECRET123")]);
         let config = Config::new_for_test();
         let app = routes(sql_storage, user_storage, config).await;
@@ -1258,7 +1373,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_v1_tags_delete_without_auth_returns_401() {
-        let sql_storage = MockSqlStorage { is_connected: true };
+        let sql_storage = MockSqlStorage::new();
         let user_storage = MockUserStorage::new();
         let config = Config::new_for_test();
         let app = routes(sql_storage, user_storage, config).await;
@@ -1279,7 +1394,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_v1_tags_delete_not_found() {
-        let sql_storage = MockSqlStorage { is_connected: true };
+        let sql_storage = MockSqlStorage::new();
         let user_storage = MockUserStorage::with_users([("testuser", "SECRET123")]);
         let config = Config::new_for_test();
         let app = routes(sql_storage, user_storage, config).await;
@@ -1303,7 +1418,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_v1_tags_delete_invalid_id() {
-        let sql_storage = MockSqlStorage { is_connected: true };
+        let sql_storage = MockSqlStorage::new();
         let user_storage = MockUserStorage::with_users([("testuser", "SECRET123")]);
         let config = Config::new_for_test();
         let app = routes(sql_storage, user_storage, config).await;
@@ -1331,7 +1446,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_v1_content_tags_list_without_auth_returns_401() {
-        let sql_storage = MockSqlStorage { is_connected: true };
+        let sql_storage = MockSqlStorage::new();
         let user_storage = MockUserStorage::new();
         let config = Config::new_for_test();
         let app = routes(sql_storage, user_storage, config).await;
@@ -1351,7 +1466,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_v1_content_tags_list_content_not_found() {
-        let sql_storage = MockSqlStorage { is_connected: true };
+        let sql_storage = MockSqlStorage::new();
         let user_storage = MockUserStorage::with_users([("testuser", "SECRET123")]);
         let config = Config::new_for_test();
         let app = routes(sql_storage, user_storage, config).await;
@@ -1374,7 +1489,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_v1_content_tags_attach_without_auth_returns_401() {
-        let sql_storage = MockSqlStorage { is_connected: true };
+        let sql_storage = MockSqlStorage::new();
         let user_storage = MockUserStorage::new();
         let config = Config::new_for_test();
         let app = routes(sql_storage, user_storage, config).await;
@@ -1398,7 +1513,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_v1_content_tags_attach_content_not_found() {
-        let sql_storage = MockSqlStorage { is_connected: true };
+        let sql_storage = MockSqlStorage::new();
         let user_storage = MockUserStorage::with_users([("testuser", "SECRET123")]);
         let config = Config::new_for_test();
         let app = routes(sql_storage, user_storage, config).await;
@@ -1425,7 +1540,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_v1_content_tags_attach_invalid_tag_id() {
-        let sql_storage = MockSqlStorage { is_connected: true };
+        let sql_storage = MockSqlStorage::new();
         let user_storage = MockUserStorage::with_users([("testuser", "SECRET123")]);
         let config = Config::new_for_test();
         let app = routes(sql_storage, user_storage, config).await;
@@ -1450,7 +1565,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_v1_content_tags_detach_without_auth_returns_401() {
-        let sql_storage = MockSqlStorage { is_connected: true };
+        let sql_storage = MockSqlStorage::new();
         let user_storage = MockUserStorage::new();
         let config = Config::new_for_test();
         let app = routes(sql_storage, user_storage, config).await;
@@ -1471,7 +1586,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_v1_content_tags_detach_content_not_found() {
-        let sql_storage = MockSqlStorage { is_connected: true };
+        let sql_storage = MockSqlStorage::new();
         let user_storage = MockUserStorage::with_users([("testuser", "SECRET123")]);
         let config = Config::new_for_test();
         let app = routes(sql_storage, user_storage, config).await;
@@ -1495,7 +1610,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_v1_content_tags_detach_invalid_content_id() {
-        let sql_storage = MockSqlStorage { is_connected: true };
+        let sql_storage = MockSqlStorage::new();
         let user_storage = MockUserStorage::with_users([("testuser", "SECRET123")]);
         let config = Config::new_for_test();
         let app = routes(sql_storage, user_storage, config).await;
@@ -1519,7 +1634,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_v1_content_tags_detach_invalid_tag_id() {
-        let sql_storage = MockSqlStorage { is_connected: true };
+        let sql_storage = MockSqlStorage::new();
         let user_storage = MockUserStorage::with_users([("testuser", "SECRET123")]);
         let config = Config::new_for_test();
         let app = routes(sql_storage, user_storage, config).await;

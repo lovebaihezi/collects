@@ -6,12 +6,17 @@
 mod cloudflare;
 mod gcs;
 mod mock;
+mod presign;
 mod traits;
 mod types;
 
 pub use cloudflare::{CFDisk, CFDiskConfig, CFFileStorage};
 pub use gcs::{GDDisk, GDDiskConfig};
 pub use mock::MockFileStorage;
+pub use presign::{
+    ContentDisposition, DEFAULT_PRESIGN_EXPIRY, FileMetadata as PresignFileMetadata,
+    MAX_PRESIGN_EXPIRY, PresignError, PresignedUrl, R2Presigner,
+};
 pub use traits::{FileStorage, OpenDALDisk};
 pub use types::{FileMetadata, FileStorageError, FileUploadRequest};
 

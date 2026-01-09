@@ -1,0 +1,82 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT\n                id, user_id, storage_backend, storage_profile, storage_key,\n                content_type, file_size, status, expires_at, created_at, completed_at\n            FROM uploads\n            WHERE id = $1\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "user_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "storage_backend",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "storage_profile",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "storage_key",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "content_type",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 6,
+        "name": "file_size",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 7,
+        "name": "status",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 8,
+        "name": "expires_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 9,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 10,
+        "name": "completed_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "c24d50761d4f294566dd864e073f017e401de45d484e2ef7ff5adf89afd1bc0f"
+}

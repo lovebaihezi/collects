@@ -211,6 +211,29 @@ pub trait SqlStorage: Clone + Send + Sync + 'static {
     ) -> impl Future<Output = Result<ContentGroupShareRow, SqlStorageError>> + Send;
 
     // -------------------------------------------------------------------------
+    // Uploads
+    // -------------------------------------------------------------------------
+
+    /// Create a new upload record.
+    fn uploads_create(
+        &self,
+        input: UploadInsert,
+    ) -> impl Future<Output = Result<UploadRow, SqlStorageError>> + Send;
+
+    /// Get an upload by ID.
+    fn uploads_get(
+        &self,
+        id: uuid::Uuid,
+    ) -> impl Future<Output = Result<Option<UploadRow>, SqlStorageError>> + Send;
+
+    /// Mark an upload as completed.
+    fn uploads_complete(
+        &self,
+        id: uuid::Uuid,
+        user_id: uuid::Uuid,
+    ) -> impl Future<Output = Result<Option<UploadRow>, SqlStorageError>> + Send;
+
+    // -------------------------------------------------------------------------
     // OTP rate limiting
     // -------------------------------------------------------------------------
 
@@ -565,6 +588,68 @@ impl Default for OtpRateLimitConfig {
             window_seconds: 900,
         }
     }
+}
+
+// -----------------------------------------------------------------------------
+// Upload Types
+// -----------------------------------------------------------------------------
+
+/// Status of an upload session.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UploadStatus {
+    Initiated,
+    Completed,
+    Aborted,
+    Expired,
+}
+
+impl UploadStatus {
+    pub fn as_db_str(&self) -> &'static str {
+        match self {
+            Self::Initiated => "initiated",
+            Self::Completed => "completed",
+            Self::Aborted => "aborted",
+            Self::Expired => "expired",
+        }
+    }
+
+    pub fn from_db_str(s: &str) -> Option<Self> {
+        match s {
+            "initiated" => Some(Self::Initiated),
+            "completed" => Some(Self::Completed),
+            "aborted" => Some(Self::Aborted),
+            "expired" => Some(Self::Expired),
+            _ => None,
+        }
+    }
+}
+
+/// Row from the `uploads` table.
+#[derive(Debug, Clone)]
+pub struct UploadRow {
+    pub id: uuid::Uuid,
+    pub user_id: uuid::Uuid,
+    pub storage_backend: String,
+    pub storage_profile: String,
+    pub storage_key: String,
+    pub content_type: String,
+    pub file_size: i64,
+    pub status: String,
+    pub expires_at: chrono::DateTime<chrono::Utc>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub completed_at: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+/// Input for creating an upload record.
+#[derive(Debug, Clone)]
+pub struct UploadInsert {
+    pub user_id: uuid::Uuid,
+    pub storage_backend: String,
+    pub storage_profile: String,
+    pub storage_key: String,
+    pub content_type: String,
+    pub file_size: i64,
+    pub expires_at: chrono::DateTime<chrono::Utc>,
 }
 
 // -----------------------------------------------------------------------------
@@ -1608,6 +1693,140 @@ impl SqlStorage for PgStorage {
             created_at: rec.created_at,
             created_by: rec.created_by,
         })
+    }
+
+    async fn uploads_create(&self, input: UploadInsert) -> Result<UploadRow, SqlStorageError> {
+        let rec = sqlx::query!(
+            r#"
+            INSERT INTO uploads (
+                user_id, storage_backend, storage_profile, storage_key,
+                content_type, file_size, expires_at
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            RETURNING
+                id, user_id, storage_backend, storage_profile, storage_key,
+                content_type, file_size, status, expires_at, created_at, completed_at
+            "#,
+            input.user_id,
+            input.storage_backend,
+            input.storage_profile,
+            input.storage_key,
+            input.content_type,
+            input.file_size,
+            input.expires_at,
+        )
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| SqlStorageError::Db(e.to_string()))?;
+
+        Ok(UploadRow {
+            id: rec.id,
+            user_id: rec.user_id,
+            storage_backend: rec.storage_backend,
+            storage_profile: rec.storage_profile,
+            storage_key: rec.storage_key,
+            content_type: rec.content_type,
+            file_size: rec.file_size,
+            status: rec.status,
+            expires_at: rec.expires_at,
+            created_at: rec.created_at,
+            completed_at: rec.completed_at,
+        })
+    }
+
+    async fn uploads_get(&self, id: uuid::Uuid) -> Result<Option<UploadRow>, SqlStorageError> {
+        let rec = sqlx::query!(
+            r#"
+            SELECT
+                id, user_id, storage_backend, storage_profile, storage_key,
+                content_type, file_size, status, expires_at, created_at, completed_at
+            FROM uploads
+            WHERE id = $1
+            "#,
+            id
+        )
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| SqlStorageError::Db(e.to_string()))?;
+
+        Ok(rec.map(|r| UploadRow {
+            id: r.id,
+            user_id: r.user_id,
+            storage_backend: r.storage_backend,
+            storage_profile: r.storage_profile,
+            storage_key: r.storage_key,
+            content_type: r.content_type,
+            file_size: r.file_size,
+            status: r.status,
+            expires_at: r.expires_at,
+            created_at: r.created_at,
+            completed_at: r.completed_at,
+        }))
+    }
+
+    async fn uploads_complete(
+        &self,
+        id: uuid::Uuid,
+        user_id: uuid::Uuid,
+    ) -> Result<Option<UploadRow>, SqlStorageError> {
+        // First check ownership and status
+        let existing = sqlx::query!(
+            r#"
+            SELECT user_id, status
+            FROM uploads
+            WHERE id = $1
+            "#,
+            id
+        )
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| SqlStorageError::Db(e.to_string()))?;
+
+        let Some(existing) = existing else {
+            return Ok(None);
+        };
+
+        if existing.user_id != user_id {
+            return Err(SqlStorageError::Unauthorized);
+        }
+
+        if existing.status != "initiated" {
+            return Err(SqlStorageError::Invalid(format!(
+                "Upload status is '{}', expected 'initiated'",
+                existing.status
+            )));
+        }
+
+        // Update to completed
+        let rec = sqlx::query!(
+            r#"
+            UPDATE uploads
+            SET status = 'completed', completed_at = now()
+            WHERE id = $1 AND user_id = $2
+            RETURNING
+                id, user_id, storage_backend, storage_profile, storage_key,
+                content_type, file_size, status, expires_at, created_at, completed_at
+            "#,
+            id,
+            user_id
+        )
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| SqlStorageError::Db(e.to_string()))?;
+
+        Ok(rec.map(|r| UploadRow {
+            id: r.id,
+            user_id: r.user_id,
+            storage_backend: r.storage_backend,
+            storage_profile: r.storage_profile,
+            storage_key: r.storage_key,
+            content_type: r.content_type,
+            file_size: r.file_size,
+            status: r.status,
+            expires_at: r.expires_at,
+            created_at: r.created_at,
+            completed_at: r.completed_at,
+        }))
     }
 
     async fn otp_record_attempt(&self, input: OtpAttemptRecord) -> Result<(), SqlStorageError> {

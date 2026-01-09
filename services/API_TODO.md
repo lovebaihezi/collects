@@ -107,30 +107,30 @@ R2 credentials (`CF_ACCOUNT_ID`, `CF_ACCESS_KEY_ID`, `CF_SECRET_ACCESS_KEY`, `CF
 - Environments requiring R2: `prod`, `internal`, `nightly`, `pr`
 - Environments where R2 is optional: `local`, `test`, `test-internal`
 
-### Presigned URL Generation
-- [ ] Implement R2 presigning (S3 SigV4)
-  - [ ] `presign_put(storage_key, content_type, expires)` → signed PUT URL
-  - [ ] `presign_get(storage_key, disposition, expires)` → signed GET URL
+### Presigned URL Generation ✅
+- [x] Implement R2 presigning (S3 SigV4) — `src/storage/presign.rs`
+  - [x] `presign_put(storage_key, content_type, expires)` → signed PUT URL
+  - [x] `presign_get(storage_key, disposition, expires)` → signed GET URL
 - [ ] Implement GCS V4 signing (if needed)
 
-### Upload Init Endpoint
-`POST /v1/uploads/init` — currently a stub, needs:
-- [ ] Generate unique `storage_key` (e.g., `{user_id}/{uuid}/{filename}`)
-- [ ] Generate presigned PUT URL for R2
-- [ ] Return `{ upload_id, storage_key, upload_url, expires_at }`
+### Upload Init Endpoint ✅
+`POST /v1/uploads/init` — implemented in `src/v1/uploads.rs`:
+- [x] Generate unique `storage_key` (e.g., `{user_id}/{uuid}/{filename}`)
+- [x] Generate presigned PUT URL for R2
+- [x] Return `{ upload_id, storage_key, upload_url, expires_at }`
 
-### Upload Complete Endpoint
-`POST /v1/uploads/complete` — needs:
-- [ ] Validate object exists via HEAD/stat
-- [ ] Create `contents` row with `(storage_backend, storage_profile, storage_key)`
-- [ ] Write audit log entry
+### Upload Complete Endpoint ✅
+`POST /v1/uploads/complete` — implemented in `src/v1/uploads.rs`:
+- [x] Validate object exists via HEAD/stat
+- [x] Create `contents` row with `(storage_backend, storage_profile, storage_key)`
+- [ ] Write audit log entry (deferred to observability priority)
 
-### View URL Endpoint
-`POST /v1/contents/:id/view-url` — currently a stub, needs:
-- [ ] Verify ownership
-- [ ] Read `(storage_backend, storage_profile, storage_key)` from content
-- [ ] Generate presigned GET URL
-- [ ] Return `{ url, expires_at }`
+### View URL Endpoint ✅
+`POST /v1/contents/:id/view-url` — implemented in `src/v1/contents.rs`:
+- [x] Verify ownership
+- [x] Read `(storage_backend, storage_profile, storage_key)` from content
+- [x] Generate presigned GET URL
+- [x] Return `{ url, expires_at }`
 
 ### Text Content Support
 - [ ] Add migration for `body` and `kind` columns

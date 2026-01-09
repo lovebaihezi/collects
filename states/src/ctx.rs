@@ -1,13 +1,17 @@
 use std::{
     any::TypeId,
     cell::{RefCell, RefMut},
-    collections::{BTreeMap, VecDeque},
+    collections::{BTreeMap, HashMap, VecDeque},
     ptr::NonNull,
 };
 
 use log::{Level, log_enabled, trace};
+use tokio::task::JoinSet;
 
-use crate::{Command, CommandSnapshot, Dep, Reader, Updater, state::UpdateMessage};
+use crate::{
+    Command, CommandSnapshot, Dep, Reader, TaskHandle, TaskIdGenerator, Updater,
+    state::UpdateMessage,
+};
 
 use super::{Compute, Stage, State, StateRuntime};
 
@@ -30,6 +34,13 @@ use super::{Compute, Stage, State, StateRuntime};
 /// 4. **Command execution**: Commands are queued via `enqueue_command::<T>()` and executed
 ///    at end-of-frame via `flush_commands()`. This ensures commands never execute mid-frame
 ///    and always operate on snapshot copies of state/compute values.
+///
+/// # Task Management
+///
+/// `StateCtx` manages async tasks via structured concurrency:
+/// - `JoinSet` tracks all spawned async tasks
+/// - `TaskHandle` by `TypeId` enables auto-cancellation when a new task is spawned for the same type
+/// - `TaskIdGenerator` provides unique task identifiers
 #[derive(Debug)]
 pub struct StateCtx {
     runtime: StateRuntime,
@@ -53,6 +64,27 @@ pub struct StateCtx {
     /// during `flush_commands()`. Each command receives a `CommandSnapshot` containing
     /// owned clones of states and computes at flush time.
     command_queue: VecDeque<TypeId>,
+
+    /// Set of spawned async tasks for structured concurrency.
+    ///
+    /// The `JoinSet` owns all spawned tasks and allows for:
+    /// - Awaiting all tasks to complete
+    /// - Aborting all tasks during shutdown
+    /// - Collecting task results
+    task_set: JoinSet<()>,
+
+    /// Active task handles indexed by compute type.
+    ///
+    /// When a new task is spawned for a compute type that already has an active task,
+    /// the previous task's cancellation token is triggered before spawning the new one.
+    /// This implements the auto-cancellation pattern for superseded tasks.
+    active_tasks: HashMap<TypeId, TaskHandle>,
+
+    /// Generator for unique task identifiers.
+    ///
+    /// Combines `TypeId` with a monotonically increasing generation counter
+    /// to produce globally unique `TaskId`s.
+    task_id_generator: TaskIdGenerator,
 }
 
 impl Default for StateCtx {
@@ -74,12 +106,18 @@ impl StateCtx {
         let states = BTreeMap::new();
         let commands = BTreeMap::new();
         let command_queue = VecDeque::new();
+        let task_set = JoinSet::new();
+        let active_tasks = HashMap::new();
+        let task_id_generator = TaskIdGenerator::new();
         Self {
             runtime,
             states,
             computes,
             commands,
             command_queue,
+            task_set,
+            active_tasks,
+            task_id_generator,
         }
     }
 
@@ -611,6 +649,8 @@ This is a programmer error (e.g. a Command called `Updater::set_state(...)` for 
         self.states.clear();
         self.computes.clear();
         self.commands.clear();
+        self.active_tasks.clear();
+        self.task_set.abort_all();
     }
 
     pub fn reader(&self) -> Reader {
@@ -619,5 +659,140 @@ This is a programmer error (e.g. a Command called `Updater::set_state(...)` for 
 
     pub fn updater(&self) -> Updater {
         self.runtime().into()
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // TASK MANAGEMENT
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// Returns a reference to the `JoinSet` managing all spawned async tasks.
+    ///
+    /// This provides read access to the task set for inspection purposes.
+    /// Use `task_set_mut()` for spawning or aborting tasks.
+    pub fn task_set(&self) -> &JoinSet<()> {
+        &self.task_set
+    }
+
+    /// Returns a mutable reference to the `JoinSet` managing all spawned async tasks.
+    ///
+    /// This allows spawning new tasks, aborting tasks, and awaiting task completion.
+    pub fn task_set_mut(&mut self) -> &mut JoinSet<()> {
+        &mut self.task_set
+    }
+
+    /// Returns a reference to the map of active task handles by compute type.
+    ///
+    /// Each entry maps a `TypeId` (representing a compute type) to the `TaskHandle`
+    /// of the currently active task for that type.
+    pub fn active_tasks(&self) -> &HashMap<TypeId, TaskHandle> {
+        &self.active_tasks
+    }
+
+    /// Returns a mutable reference to the map of active task handles.
+    pub fn active_tasks_mut(&mut self) -> &mut HashMap<TypeId, TaskHandle> {
+        &mut self.active_tasks
+    }
+
+    /// Returns a reference to the task ID generator.
+    ///
+    /// The generator produces unique `TaskId`s combining `TypeId` with a
+    /// monotonically increasing generation counter.
+    pub fn task_id_generator(&self) -> &TaskIdGenerator {
+        &self.task_id_generator
+    }
+
+    /// Returns the number of tasks currently in the `JoinSet`.
+    ///
+    /// This includes both running and completed (but not yet joined) tasks.
+    pub fn task_count(&self) -> usize {
+        self.task_set.len()
+    }
+
+    /// Returns the number of compute types with active task handles.
+    ///
+    /// This represents the number of compute types that currently have
+    /// a tracked task (which may or may not still be running).
+    pub fn active_task_type_count(&self) -> usize {
+        self.active_tasks.len()
+    }
+
+    /// Checks if there is an active task for the given compute type.
+    pub fn has_active_task<T: 'static>(&self) -> bool {
+        self.active_tasks.contains_key(&TypeId::of::<T>())
+    }
+
+    /// Gets the active `TaskHandle` for the given compute type, if any.
+    pub fn get_active_task<T: 'static>(&self) -> Option<&TaskHandle> {
+        self.active_tasks.get(&TypeId::of::<T>())
+    }
+
+    /// Cancels the active task for the given compute type, if any.
+    ///
+    /// This triggers the cancellation token for the task, signaling it
+    /// to stop at its next cancellation check point. The task handle
+    /// is removed from the active tasks map.
+    ///
+    /// Returns `true` if a task was cancelled, `false` if no active task
+    /// existed for the type.
+    pub fn cancel_active_task<T: 'static>(&mut self) -> bool {
+        if let Some(handle) = self.active_tasks.remove(&TypeId::of::<T>()) {
+            trace!(
+                "Cancelling active task for type {:?}",
+                std::any::type_name::<T>()
+            );
+            handle.cancel();
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Cancels all active tasks.
+    ///
+    /// This triggers the cancellation token for all tracked tasks and clears
+    /// the active tasks map. Additionally, aborts all tasks in the `JoinSet`.
+    pub fn cancel_all_tasks(&mut self) {
+        trace!("Cancelling all {} active tasks", self.active_tasks.len());
+        for (type_id, handle) in self.active_tasks.drain() {
+            trace!("Cancelling task for type {:?}", type_id);
+            handle.cancel();
+        }
+        self.task_set.abort_all();
+    }
+
+    /// Registers a new task handle for a compute type.
+    ///
+    /// If a task handle already exists for the type, its cancellation token
+    /// is triggered before being replaced with the new handle.
+    ///
+    /// This is typically called by `spawn_task` implementations to track
+    /// the new task and enable auto-cancellation of superseded tasks.
+    pub fn register_task_handle<T: 'static>(&mut self, handle: TaskHandle) {
+        let type_id = TypeId::of::<T>();
+
+        // Cancel previous task for this type if it exists
+        if let Some(old_handle) = self.active_tasks.remove(&type_id) {
+            trace!(
+                "Auto-cancelling previous task for type {} (generation {})",
+                std::any::type_name::<T>(),
+                old_handle.id().generation()
+            );
+            old_handle.cancel();
+        }
+
+        trace!(
+            "Registering new task for type {} (generation {})",
+            std::any::type_name::<T>(),
+            handle.id().generation()
+        );
+        self.active_tasks.insert(type_id, handle);
+    }
+
+    /// Removes and returns the task handle for a compute type without cancelling it.
+    ///
+    /// This is useful when a task completes normally and should be removed
+    /// from tracking without triggering cancellation.
+    pub fn remove_task_handle<T: 'static>(&mut self) -> Option<TaskHandle> {
+        self.active_tasks.remove(&TypeId::of::<T>())
     }
 }

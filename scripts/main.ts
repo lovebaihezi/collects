@@ -23,7 +23,6 @@ import {
   runMigrationCheckCLI,
   runMigrationLockCLI,
 } from "./gh-actions/migration-check.ts";
-import { runPatternCheckCLI } from "./gh-actions/pattern-check.ts";
 import {
   getCargoFeature,
   getDatabaseSecret,
@@ -442,15 +441,6 @@ cli
     await runMigrationLockCLI();
   });
 
-cli
-  .command(
-    "pattern-check",
-    "Check for forbidden patterns in source files (configured in .pattern-checks.json)",
-  )
-  .action(async () => {
-    await runPatternCheckCLI();
-  });
-
 cli.command("", "Show help").action(() => {
   const helpText = `
 # Services Helper Script
@@ -776,58 +766,6 @@ just scripts::artifact-check
 
 # Or with bun directly
 bun run main.ts artifact-check
-\`\`\`
-
-### \`pattern-check\`
-
-Checks for forbidden patterns in source files using **ripgrep-js** (fast regex search) and **@ast-grep/napi** (semantic AST-based search).
-These are installed via npm packages for better integration with Bun.
-
-**How it works:**
-1. Reads rules from \`.pattern-checks.jsonc\` at the repository root (JSONC supports comments).
-2. For each rule, uses the appropriate search engine:
-   - \`type: "regex"\` (default): Uses ripgrep-js (requires ripgrep binary)
-   - \`type: "ast"\`: Uses @ast-grep/napi for language-aware AST-based matching
-3. Reports violations with file location, matched text, and explanation.
-4. Exits with code 1 if any error-severity violations are found.
-
-**Configuration file format (\`.pattern-checks.jsonc\`):**
-\`\`\`jsonc
-{
-  // Schema provides LSP support for autocompletion
-  "$schema": "./scripts/gh-actions/pattern-check.schema.json",
-  "version": 1,
-  "description": "Pattern checks description",
-  "rules": [
-    {
-      "id": "no-println-in-lib",
-      "type": "regex",  // or "ast" for AST-based matching
-      "pattern": "println!\\\\(",
-      "language": "rust",  // required for type: "ast"
-      "files": ["**/*.rs"],
-      "exclude": ["**/main.rs", "**/build.rs"],
-      "severity": "error",
-      "message": "Avoid println! in library code",
-      "explanation": "Use tracing crate instead..."
-    }
-  ]
-}
-\`\`\`
-
-**Rule fields:**
-- \`id\`: Unique identifier for the rule
-- \`type\`: "regex" (uses ripgrep-js) or "ast" (uses @ast-grep/napi for semantic matching)
-- \`pattern\`: Regex pattern for type="regex", or ast-grep pattern for type="ast"
-- \`language\`: Language for ast-grep (required when type="ast"): rust, typescript, python, etc.
-- \`files\`: Glob patterns for files to check
-- \`exclude\`: (optional) Glob patterns for files to skip
-- \`severity\`: "error" (fails CI) or "warning" (informational)
-- \`message\`: Short description of the violation
-- \`explanation\`: Detailed explanation of why this pattern is forbidden
-
-**Example:**
-\`\`\`bash
-just scripts::pattern-check
 \`\`\`
 
 ---

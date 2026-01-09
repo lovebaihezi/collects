@@ -1,7 +1,7 @@
 //! /v1/contents endpoint handlers.
 
 use crate::database::{
-    ContentStatus, ContentsListParams, ContentsUpdate, SqlStorage, SqlStorageError,
+    ContentStatus, ContentsInsert, ContentsListParams, ContentsUpdate, SqlStorage, SqlStorageError,
 };
 use crate::storage::{ContentDisposition, DEFAULT_PRESIGN_EXPIRY, R2Presigner};
 use crate::users::routes::AppState;
@@ -15,9 +15,13 @@ use axum::{
 };
 
 use super::types::{
-    V1ContentItem, V1ContentsListQuery, V1ContentsListResponse, V1ContentsUpdateRequest,
-    V1ErrorResponse, V1ViewUrlRequest, V1ViewUrlResponse, parse_visibility,
+    V1ContentCreateRequest, V1ContentCreateResponse, V1ContentItem, V1ContentsListQuery,
+    V1ContentsListResponse, V1ContentsUpdateRequest, V1ErrorResponse, V1ViewUrlRequest,
+    V1ViewUrlResponse, parse_visibility,
 };
+
+/// Maximum allowed body size for text content (64KB).
+const MAX_TEXT_BODY_SIZE: usize = 64 * 1024;
 
 /// List contents for the authenticated user.
 ///
@@ -87,6 +91,114 @@ where
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(V1ErrorResponse::internal_error("Failed to list contents")),
+            )
+                .into_response()
+        }
+    }
+}
+
+/// Create text content directly (without upload).
+///
+/// POST /v1/contents
+///
+/// This endpoint creates text content that is stored inline in the database
+/// (not uploaded to R2). Suitable for notes, markdown, and other text < 64KB.
+pub async fn v1_contents_create<S, U>(
+    State(state): State<AppState<S, U>>,
+    auth: RequireAuth,
+    Json(payload): Json<V1ContentCreateRequest>,
+) -> impl IntoResponse
+where
+    S: SqlStorage,
+    U: UserStorage,
+{
+    // Resolve user from JWT username
+    let user = match state.user_storage.get_user(auth.username()).await {
+        Ok(Some(user)) => user,
+        Ok(None) => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(V1ErrorResponse::not_found("User not found")),
+            )
+                .into_response();
+        }
+        Err(e) => {
+            tracing::error!("Failed to get user: {}", e);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(V1ErrorResponse::internal_error("Failed to get user")),
+            )
+                .into_response();
+        }
+    };
+
+    // Validate body size
+    if payload.body.len() > MAX_TEXT_BODY_SIZE {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(V1ErrorResponse::bad_request(format!(
+                "Body exceeds maximum size of {} bytes",
+                MAX_TEXT_BODY_SIZE
+            ))),
+        )
+            .into_response();
+    }
+
+    // Parse visibility
+    let visibility = match parse_visibility(&payload.visibility) {
+        Some(v) => v,
+        None => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(V1ErrorResponse::bad_request(format!(
+                    "Invalid visibility: {}",
+                    payload.visibility
+                ))),
+            )
+                .into_response();
+        }
+    };
+
+    // Validate content type (only text types allowed for inline storage)
+    if !payload.content_type.starts_with("text/") {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(V1ErrorResponse::bad_request(
+                "Content type must be a text/* type for inline content",
+            )),
+        )
+            .into_response();
+    }
+
+    let file_size = payload.body.len() as i64;
+
+    let content_input = ContentsInsert {
+        user_id: user.id,
+        title: payload.title,
+        description: payload.description,
+        storage_backend: "inline".to_string(),
+        storage_profile: "inline".to_string(),
+        storage_key: "".to_string(), // No storage key for inline content
+        content_type: payload.content_type,
+        file_size,
+        visibility,
+        kind: Some("text".to_string()),
+        body: Some(payload.body),
+    };
+
+    match state.sql_storage.contents_insert(content_input).await {
+        Ok(content) => (
+            StatusCode::CREATED,
+            Json(V1ContentCreateResponse {
+                content: V1ContentItem::from(content),
+            }),
+        )
+            .into_response(),
+        Err(e) => {
+            tracing::error!("Failed to create content: {:?}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(V1ErrorResponse::internal_error("Failed to create content")),
             )
                 .into_response()
         }
@@ -228,10 +340,25 @@ where
         None => None,
     };
 
+    // Validate body size if provided
+    if let Some(ref body) = payload.body
+        && body.len() > MAX_TEXT_BODY_SIZE
+    {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(V1ErrorResponse::bad_request(format!(
+                "Body exceeds maximum size of {} bytes",
+                MAX_TEXT_BODY_SIZE
+            ))),
+        )
+            .into_response();
+    }
+
     let changes = ContentsUpdate {
         title: payload.title,
         description: payload.description,
         visibility,
+        body: payload.body,
     };
 
     match state

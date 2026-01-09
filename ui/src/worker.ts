@@ -21,6 +21,11 @@ async function handleApi(req: Request, env: Env): Promise<Response> {
   const apiBase =
     env.API_BASE ||
     `https://collects-services-${projectNumber}.us-east1.run.app`;
+
+  // Strip /api prefix and proxy to backend
+  // e.g. /api/v1/me -> /v1/me
+  //      /api/docs -> /docs (OpenAPI docs, internal env only, requires Zero Trust)
+  //      /api/openapi.json -> /openapi.json (OpenAPI spec, internal env only, requires Zero Trust)
   const newPath = url.pathname.substring("/api".length);
   const newUrl = new URL(apiBase + newPath);
   newUrl.search = url.search;

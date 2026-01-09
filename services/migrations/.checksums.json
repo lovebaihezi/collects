@@ -16,6 +16,11 @@
       "filename": "20260108080436_add-uuid-v7-support.sql",
       "sha256": "078f9d0a3a681cb61a8a3a09d0e13c66aa25ad7399c0f85a257d798abdbb187b",
       "lockedAt": "2026-01-08T08:11:18.645Z"
+    },
+    {
+      "filename": "20260109101346_add-text-content-support.sql",
+      "sha256": "03ff48348ad17ca0cd452ea8138fd82982ddd3e4f4ab1a15930bb3a3635fd334",
+      "lockedAt": "2026-01-09T10:28:44.257Z"
     }
   ]
 }

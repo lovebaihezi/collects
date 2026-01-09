@@ -3,14 +3,20 @@
 use crate::database::{self, ContentRow, Visibility};
 use serde::{Deserialize, Serialize};
 
+#[cfg(feature = "openapi")]
+use utoipa::ToSchema;
+
 // =============================================================================
 // Generic Error Response
 // =============================================================================
 
 /// Generic error response.
 #[derive(Debug, Serialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct V1ErrorResponse {
+    /// Error type identifier.
     pub error: String,
+    /// Human-readable error message.
     pub message: String,
 }
 
@@ -43,6 +49,7 @@ impl V1ErrorResponse {
 
 /// Query parameters for listing contents.
 #[derive(Debug, Deserialize, Default)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct V1ContentsListQuery {
     /// Maximum number of results to return (default: 50, max: 100)
     #[serde(default)]
@@ -57,23 +64,38 @@ pub struct V1ContentsListQuery {
 
 /// A content item in API responses.
 #[derive(Debug, Serialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct V1ContentItem {
+    /// Unique identifier (UUID).
     pub id: String,
+    /// Content title.
     pub title: String,
+    /// Optional description.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    /// Storage backend identifier.
     pub storage_backend: String,
+    /// Storage profile identifier.
     pub storage_profile: String,
+    /// Storage key/path.
     pub storage_key: String,
+    /// MIME type of the content.
     pub content_type: String,
+    /// File size in bytes.
     pub file_size: i64,
+    /// Content status (active, archived, trashed).
     pub status: String,
+    /// Content visibility (private, public, restricted).
     pub visibility: String,
+    /// Timestamp when content was trashed (ISO 8601 format).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub trashed_at: Option<String>,
+    /// Timestamp when content was archived (ISO 8601 format).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub archived_at: Option<String>,
+    /// Timestamp when content was created (ISO 8601 format).
     pub created_at: String,
+    /// Timestamp when content was last updated (ISO 8601 format).
     pub updated_at: String,
 }
 
@@ -100,32 +122,44 @@ impl From<ContentRow> for V1ContentItem {
 
 /// Response for listing contents.
 #[derive(Debug, Serialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct V1ContentsListResponse {
+    /// List of content items.
     pub items: Vec<V1ContentItem>,
+    /// Total number of items returned.
     pub total: usize,
 }
 
 /// Request body for updating content metadata.
 #[derive(Debug, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct V1ContentsUpdateRequest {
+    /// New title (optional).
     #[serde(default)]
     pub title: Option<String>,
+    /// New description (optional, pass null to clear).
     #[serde(default)]
     pub description: Option<Option<String>>,
+    /// New visibility (optional: private, public, restricted).
     #[serde(default)]
     pub visibility: Option<String>,
 }
 
 /// Request for view URL.
 #[derive(Debug, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct V1ViewUrlRequest {
+    /// Content disposition: inline or attachment.
     pub disposition: String,
 }
 
 /// Response for view URL.
 #[derive(Debug, Serialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct V1ViewUrlResponse {
+    /// Presigned URL for viewing/downloading content.
     pub url: String,
+    /// URL expiration timestamp (ISO 8601 format).
     pub expires_at: String,
 }
 
@@ -135,11 +169,16 @@ pub struct V1ViewUrlResponse {
 
 /// A tag item in API responses.
 #[derive(Debug, Serialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct V1TagItem {
+    /// Unique identifier (UUID).
     pub id: String,
+    /// Tag name.
     pub name: String,
+    /// Optional hex color code.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub color: Option<String>,
+    /// Timestamp when tag was created (ISO 8601 format).
     pub created_at: String,
 }
 
@@ -156,31 +195,42 @@ impl From<database::TagRow> for V1TagItem {
 
 /// Response for listing tags.
 #[derive(Debug, Serialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct V1TagsListResponse {
+    /// List of tags.
     pub items: Vec<V1TagItem>,
+    /// Total number of tags returned.
     pub total: usize,
 }
 
 /// Request body for creating a tag.
 #[derive(Debug, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct V1TagCreateRequest {
+    /// Tag name.
     pub name: String,
+    /// Optional hex color code.
     #[serde(default)]
     pub color: Option<String>,
 }
 
 /// Request body for updating a tag.
 #[derive(Debug, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct V1TagUpdateRequest {
+    /// New tag name (optional).
     #[serde(default)]
     pub name: Option<String>,
+    /// New color (optional, pass null to clear).
     #[serde(default)]
     pub color: Option<Option<String>>,
 }
 
 /// Request body for attaching tags to content.
 #[derive(Debug, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct V1ContentTagsAttachRequest {
+    /// ID of the tag to attach.
     pub tag_id: String,
 }
 
@@ -190,6 +240,7 @@ pub struct V1ContentTagsAttachRequest {
 
 /// Query parameters for listing groups.
 #[derive(Debug, Deserialize, Default)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct V1GroupsListQuery {
     /// Maximum number of results to return (default: 50, max: 100)
     #[serde(default)]
@@ -204,18 +255,28 @@ pub struct V1GroupsListQuery {
 
 /// Response item for a group.
 #[derive(Debug, Serialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct V1GroupItem {
+    /// Unique identifier (UUID).
     pub id: String,
+    /// Group name.
     pub name: String,
+    /// Optional description.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    /// Group visibility (private, public).
     pub visibility: String,
+    /// Group status (active, archived, trashed).
     pub status: String,
+    /// Timestamp when group was trashed (ISO 8601 format).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub trashed_at: Option<String>,
+    /// Timestamp when group was archived (ISO 8601 format).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub archived_at: Option<String>,
+    /// Timestamp when group was created (ISO 8601 format).
     pub created_at: String,
+    /// Timestamp when group was last updated (ISO 8601 format).
     pub updated_at: String,
 }
 
@@ -237,17 +298,24 @@ impl From<database::ContentGroupRow> for V1GroupItem {
 
 /// Response for listing groups.
 #[derive(Debug, Serialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct V1GroupsListResponse {
+    /// List of groups.
     pub items: Vec<V1GroupItem>,
+    /// Total number of groups returned.
     pub total: usize,
 }
 
 /// Request body for creating a group.
 #[derive(Debug, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct V1GroupCreateRequest {
+    /// Group name.
     pub name: String,
+    /// Optional description.
     #[serde(default)]
     pub description: Option<String>,
+    /// Group visibility (private, public). Default: private.
     #[serde(default = "default_visibility")]
     pub visibility: String,
 }
@@ -258,22 +326,32 @@ fn default_visibility() -> String {
 
 /// Request body for updating a group.
 #[derive(Debug, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct V1GroupUpdateRequest {
+    /// New group name (optional).
     #[serde(default)]
     pub name: Option<String>,
+    /// New description (optional, pass null to clear).
     #[serde(default)]
     pub description: Option<Option<String>>,
+    /// New visibility (optional: private, public).
     #[serde(default)]
     pub visibility: Option<String>,
 }
 
 /// Response item for a group content item.
 #[derive(Debug, Serialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct V1GroupContentItem {
+    /// Unique identifier (UUID).
     pub id: String,
+    /// Group ID (UUID).
     pub group_id: String,
+    /// Content ID (UUID).
     pub content_id: String,
+    /// Sort order within the group.
     pub sort_order: i32,
+    /// Timestamp when content was added to group (ISO 8601 format).
     pub added_at: String,
 }
 
@@ -291,29 +369,40 @@ impl From<database::ContentGroupItemRow> for V1GroupContentItem {
 
 /// Response for listing group contents.
 #[derive(Debug, Serialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct V1GroupContentsListResponse {
+    /// List of group content items.
     pub items: Vec<V1GroupContentItem>,
+    /// Total number of items returned.
     pub total: usize,
 }
 
 /// Request body for adding content to a group.
 #[derive(Debug, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct V1GroupAddContentRequest {
+    /// Content ID to add (UUID).
     pub content_id: String,
+    /// Optional sort order.
     #[serde(default)]
     pub sort_order: Option<i32>,
 }
 
 /// Request body for reordering group contents.
 #[derive(Debug, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct V1GroupReorderRequest {
-    /// List of (content_id, sort_order) pairs
+    /// List of (content_id, sort_order) pairs.
     pub items: Vec<V1GroupReorderItem>,
 }
 
+/// A single item in a group reorder request.
 #[derive(Debug, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct V1GroupReorderItem {
+    /// Content ID (UUID).
     pub content_id: String,
+    /// New sort order.
     pub sort_order: i32,
 }
 
@@ -321,19 +410,31 @@ pub struct V1GroupReorderItem {
 // Uploads API Types
 // =============================================================================
 
+/// Request body for upload initialization.
 #[derive(Debug, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct V1UploadsInitRequest {
+    /// Original filename.
     pub filename: String,
+    /// MIME type of the file.
     pub content_type: String,
+    /// File size in bytes.
     pub file_size: u64,
 }
 
+/// Response for upload initialization.
 #[derive(Debug, Serialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct V1UploadsInitResponse {
+    /// Unique upload identifier (UUID).
     pub upload_id: String,
+    /// Storage key/path where file will be stored.
     pub storage_key: String,
+    /// HTTP method to use for upload.
     pub method: String,
+    /// Presigned URL for uploading the file.
     pub upload_url: String,
+    /// URL expiration timestamp (ISO 8601 format).
     pub expires_at: String,
 }
 
@@ -343,6 +444,7 @@ pub struct V1UploadsInitResponse {
 
 /// Response from the `/v1/me` endpoint containing authenticated user information.
 #[derive(Debug, Serialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct V1MeResponse {
     /// The authenticated user's username.
     pub username: String,

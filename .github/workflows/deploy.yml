@@ -99,6 +99,9 @@ jobs:
           toolchain: nightly
           targets: wasm32-unknown-unknown
 
+      - name: Cache Rust dependencies
+        uses: swatinem/rust-cache@v2
+
       - name: Setup Just
         uses: extractions/setup-just@v2
 
@@ -155,6 +158,9 @@ jobs:
           toolchain: nightly
           targets: wasm32-unknown-unknown
 
+      - name: Cache Rust dependencies
+        uses: swatinem/rust-cache@v2
+
       - name: Setup Just
         uses: extractions/setup-just@v2
 
@@ -209,6 +215,9 @@ jobs:
         with:
           toolchain: nightly
           targets: wasm32-unknown-unknown
+
+      - name: Cache Rust dependencies
+        uses: swatinem/rust-cache@v2
 
       - name: Setup Just
         uses: extractions/setup-just@v2
@@ -265,6 +274,9 @@ jobs:
           toolchain: nightly
           targets: wasm32-unknown-unknown
 
+      - name: Cache Rust dependencies
+        uses: swatinem/rust-cache@v2
+
       - name: Setup Just
         uses: extractions/setup-just@v2
 
@@ -320,6 +332,9 @@ jobs:
           toolchain: nightly
           targets: wasm32-unknown-unknown
 
+      - name: Cache Rust dependencies
+        uses: swatinem/rust-cache@v2
+
       - name: Setup Just
         uses: extractions/setup-just@v2
 
@@ -373,6 +388,9 @@ jobs:
         with:
           toolchain: nightly
           targets: wasm32-unknown-unknown
+
+      - name: Cache Rust dependencies
+        uses: swatinem/rust-cache@v2
 
       - name: Setup Just
         uses: extractions/setup-just@v2

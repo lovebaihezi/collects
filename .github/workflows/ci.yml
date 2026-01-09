@@ -90,6 +90,9 @@ jobs:
           toolchain: nightly
           components: rustfmt
 
+      - name: Cache Rust dependencies
+        uses: swatinem/rust-cache@v2
+
       - name: Setup Just
         uses: extractions/setup-just@v2
 

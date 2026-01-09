@@ -70,7 +70,7 @@ mod state_runtime_test {
         any::{Any, TypeId},
         sync::{
             Arc,
-            atomic::{AtomicUsize, Ordering},
+            atomic::{AtomicBool, AtomicUsize, Ordering},
         },
     };
 
@@ -1174,5 +1174,258 @@ mod state_runtime_test {
         assert!(ctx.has_active_task::<DummyState>());
         assert!(!ctx.has_active_task::<DummyComputeA>());
         assert!(ctx.has_active_task::<DummyComputeB>());
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // SPAWN_TASK, CANCEL_TASK, SHUTDOWN TESTS
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// Tests that spawn_task creates a task and returns a valid handle.
+    #[tokio::test]
+    async fn test_spawn_task_returns_handle() {
+        let mut ctx = StateCtx::new();
+
+        let handle = ctx.spawn_task::<DummyState, _, _>(|_cancel| async {
+            // Simple task that completes immediately
+        });
+
+        // Handle should have correct type
+        assert_eq!(handle.id().type_id(), TypeId::of::<DummyState>());
+        assert_eq!(handle.id().generation(), 0);
+        assert!(!handle.is_cancelled());
+
+        // Task should be tracked
+        assert!(ctx.has_active_task::<DummyState>());
+        assert_eq!(ctx.active_task_type_count(), 1);
+    }
+
+    /// Tests that spawn_task auto-cancels previous task for same type.
+    #[tokio::test]
+    async fn test_spawn_task_auto_cancels_previous() {
+        let mut ctx = StateCtx::new();
+
+        // Spawn first task
+        let handle1 = ctx.spawn_task::<DummyState, _, _>(|cancel| async move {
+            // Wait for cancellation
+            cancel.cancelled().await;
+        });
+
+        assert!(!handle1.is_cancelled());
+        assert_eq!(handle1.id().generation(), 0);
+
+        // Spawn second task for same type
+        let handle2 = ctx.spawn_task::<DummyState, _, _>(|_cancel| async {
+            // Complete immediately
+        });
+
+        // First task should be cancelled
+        assert!(handle1.is_cancelled());
+        // Second task should not be cancelled
+        assert!(!handle2.is_cancelled());
+        assert_eq!(handle2.id().generation(), 1);
+
+        // Only one active task for the type
+        assert_eq!(ctx.active_task_type_count(), 1);
+
+        // Active task should be the second one
+        let active = ctx.get_active_task::<DummyState>().unwrap();
+        assert_eq!(active.id(), handle2.id());
+    }
+
+    /// Tests that spawn_task increments task generation.
+    #[tokio::test]
+    async fn test_spawn_task_increments_generation() {
+        let mut ctx = StateCtx::new();
+
+        let handle1 = ctx.spawn_task::<DummyState, _, _>(|_| async {});
+        let handle2 = ctx.spawn_task::<DummyComputeA, _, _>(|_| async {});
+        let handle3 = ctx.spawn_task::<DummyState, _, _>(|_| async {});
+
+        assert_eq!(handle1.id().generation(), 0);
+        assert_eq!(handle2.id().generation(), 1);
+        assert_eq!(handle3.id().generation(), 2);
+    }
+
+    /// Tests that cancel_task cancels the specified task.
+    #[tokio::test]
+    async fn test_cancel_task() {
+        let mut ctx = StateCtx::new();
+
+        let handle = ctx.spawn_task::<DummyState, _, _>(|cancel| async move {
+            cancel.cancelled().await;
+        });
+
+        assert!(!handle.is_cancelled());
+
+        ctx.cancel_task(&handle);
+
+        assert!(handle.is_cancelled());
+    }
+
+    /// Tests that cancel_task only cancels the specified task.
+    #[tokio::test]
+    async fn test_cancel_task_only_cancels_specified() {
+        let mut ctx = StateCtx::new();
+
+        let handle1 = ctx.spawn_task::<DummyState, _, _>(|cancel| async move {
+            cancel.cancelled().await;
+        });
+
+        let handle2 = ctx.spawn_task::<DummyComputeA, _, _>(|cancel| async move {
+            cancel.cancelled().await;
+        });
+
+        assert!(!handle1.is_cancelled());
+        assert!(!handle2.is_cancelled());
+
+        ctx.cancel_task(&handle1);
+
+        assert!(handle1.is_cancelled());
+        assert!(!handle2.is_cancelled());
+    }
+
+    /// Tests that shutdown cancels all tasks and awaits completion.
+    #[tokio::test]
+    async fn test_shutdown_cancels_all_tasks() {
+        let mut ctx = StateCtx::new();
+
+        let handle1 = ctx.spawn_task::<DummyState, _, _>(|cancel| async move {
+            cancel.cancelled().await;
+        });
+
+        let handle2 = ctx.spawn_task::<DummyComputeA, _, _>(|cancel| async move {
+            cancel.cancelled().await;
+        });
+
+        assert_eq!(ctx.active_task_type_count(), 2);
+        assert!(!handle1.is_cancelled());
+        assert!(!handle2.is_cancelled());
+
+        // Shutdown should cancel all tasks and await their completion
+        ctx.shutdown().await;
+
+        // Cancellation tokens should be triggered
+        assert!(handle1.is_cancelled());
+        assert!(handle2.is_cancelled());
+        // Active tasks map should be empty
+        assert_eq!(ctx.active_task_type_count(), 0);
+        // Task set should be empty
+        assert_eq!(ctx.task_count(), 0);
+    }
+
+    /// Tests that shutdown works with empty task set.
+    #[tokio::test]
+    async fn test_shutdown_empty() {
+        let mut ctx = StateCtx::new();
+
+        // Should not panic with empty task set
+        ctx.shutdown().await;
+
+        assert_eq!(ctx.task_count(), 0);
+        assert_eq!(ctx.active_task_type_count(), 0);
+    }
+
+    /// Tests that spawned tasks can access the cancellation token.
+    #[tokio::test]
+    async fn test_spawn_task_cancellation_token_accessible() {
+        let mut ctx = StateCtx::new();
+
+        let handle = ctx.spawn_task::<DummyState, _, _>(|cancel| async move {
+            // Task should be able to check cancellation status
+            assert!(!cancel.is_cancelled());
+            cancel.cancelled().await;
+            // After cancellation signal, this should be true
+            assert!(cancel.is_cancelled());
+        });
+
+        // Task should not be cancelled yet
+        assert!(!handle.is_cancelled());
+
+        // Cancel the task
+        ctx.cancel_task(&handle);
+
+        // Handle should show cancelled
+        assert!(handle.is_cancelled());
+
+        // Clean up
+        ctx.shutdown().await;
+    }
+
+    /// Tests that tasks can complete normally (not just via cancellation).
+    #[tokio::test]
+    async fn test_spawn_task_normal_completion() {
+        let mut ctx = StateCtx::new();
+        let completed = Arc::new(AtomicBool::new(false));
+        let completed_clone = Arc::clone(&completed);
+
+        let _handle = ctx.spawn_task::<DummyState, _, _>(|_cancel| async move {
+            // Task completes without checking cancellation
+            completed_clone.store(true, Ordering::SeqCst);
+        });
+
+        // Yield to allow task to run
+        tokio::task::yield_now().await;
+
+        // Wait for all tasks
+        ctx.shutdown().await;
+
+        assert!(completed.load(Ordering::SeqCst));
+    }
+
+    /// Tests that multiple task types can be spawned and tracked independently.
+    #[tokio::test]
+    async fn test_spawn_multiple_task_types() {
+        let mut ctx = StateCtx::new();
+
+        let handle1 = ctx.spawn_task::<DummyState, _, _>(|cancel| async move {
+            cancel.cancelled().await;
+        });
+
+        let handle2 = ctx.spawn_task::<DummyComputeA, _, _>(|cancel| async move {
+            cancel.cancelled().await;
+        });
+
+        let handle3 = ctx.spawn_task::<DummyComputeB, _, _>(|cancel| async move {
+            cancel.cancelled().await;
+        });
+
+        assert_eq!(ctx.active_task_type_count(), 3);
+        assert!(ctx.has_active_task::<DummyState>());
+        assert!(ctx.has_active_task::<DummyComputeA>());
+        assert!(ctx.has_active_task::<DummyComputeB>());
+
+        // All handles should be distinct
+        assert_ne!(handle1.id(), handle2.id());
+        assert_ne!(handle2.id(), handle3.id());
+        assert_ne!(handle1.id(), handle3.id());
+
+        ctx.shutdown().await;
+    }
+
+    /// Tests that spawn_task works with the updater pattern.
+    #[tokio::test]
+    async fn test_spawn_task_with_updater() {
+        let mut ctx = StateCtx::new();
+        ctx.record_compute(DummyComputeFromCommand { value: 0 });
+
+        let updater = ctx.updater();
+
+        let _handle = ctx.spawn_task::<DummyComputeFromCommand, _, _>(|_cancel| async move {
+            // Yield to simulate async work
+            tokio::task::yield_now().await;
+            // Update compute via updater
+            updater.set(DummyComputeFromCommand { value: 42 });
+        });
+
+        // Yield to allow task to run and complete
+        tokio::task::yield_now().await;
+        tokio::task::yield_now().await;
+
+        // Sync the compute values
+        ctx.sync_computes();
+
+        assert_eq!(ctx.cached::<DummyComputeFromCommand>().unwrap().value, 42);
+
+        ctx.shutdown().await;
     }
 }

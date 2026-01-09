@@ -7,6 +7,7 @@ use std::{
 
 use log::{Level, log_enabled, trace};
 use tokio::task::JoinSet;
+use tokio_util::sync::CancellationToken;
 
 use crate::{
     Command, CommandSnapshot, Dep, Reader, TaskHandle, TaskIdGenerator, Updater,
@@ -794,5 +795,143 @@ This is a programmer error (e.g. a Command called `Updater::set_state(...)` for 
     /// from tracking without triggering cancellation.
     pub fn remove_task_handle<T: 'static>(&mut self) -> Option<TaskHandle> {
         self.active_tasks.remove(&TypeId::of::<T>())
+    }
+
+    /// Spawns an async task for a compute type, auto-cancelling any previous task for the same type.
+    ///
+    /// This method implements structured concurrency by:
+    /// 1. Generating a unique `TaskId` for the task
+    /// 2. Creating a `CancellationToken` for cooperative cancellation
+    /// 3. Auto-cancelling any existing task for the same compute type
+    /// 4. Spawning the future onto the `JoinSet`
+    /// 5. Registering the `TaskHandle` for tracking
+    ///
+    /// The spawned future receives a `CancellationToken` that it should check periodically
+    /// to respond to cancellation requests gracefully.
+    ///
+    /// # Type Parameters
+    ///
+    /// * `T` - The compute type this task is associated with. Used for auto-cancellation
+    ///   when a new task is spawned for the same type.
+    /// * `F` - The future type that will be spawned.
+    ///
+    /// # Arguments
+    ///
+    /// * `f` - A function that takes a `CancellationToken` and returns a future to spawn.
+    ///
+    /// # Returns
+    ///
+    /// A `TaskHandle` that can be used to cancel the task or check its cancellation status.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let handle = ctx.spawn_task::<ApiStatus>(|cancel| async move {
+    ///     tokio::select! {
+    ///         _ = cancel.cancelled() => {
+    ///             // Task was cancelled
+    ///         }
+    ///         result = fetch_api_status() => {
+    ///             // Process result
+    ///             updater.set(ApiStatus { data: result });
+    ///         }
+    ///     }
+    /// });
+    /// ```
+    pub fn spawn_task<T, F, Fut>(&mut self, f: F) -> TaskHandle
+    where
+        T: 'static,
+        F: FnOnce(CancellationToken) -> Fut,
+        Fut: std::future::Future<Output = ()> + Send + 'static,
+    {
+        use tokio_util::sync::CancellationToken;
+
+        // Generate unique task ID
+        let task_id = self.task_id_generator.next::<T>();
+        let cancel_token = CancellationToken::new();
+        let handle = TaskHandle::new(task_id, cancel_token.clone());
+
+        trace!(
+            "Spawning task for type {} (generation {})",
+            std::any::type_name::<T>(),
+            task_id.generation()
+        );
+
+        // Register handle (this auto-cancels any previous task for this type)
+        self.register_task_handle::<T>(handle.clone());
+
+        // Spawn the future onto the JoinSet
+        let future = f(cancel_token);
+        self.task_set.spawn(future);
+
+        handle
+    }
+
+    /// Cancels a specific task by its handle.
+    ///
+    /// This triggers the cancellation token for the task, signaling it
+    /// to stop at its next cancellation check point.
+    ///
+    /// Note: This only signals cancellation - the task must cooperatively
+    /// check the cancellation token to actually stop. The task will remain
+    /// in the `JoinSet` until it completes or is aborted.
+    ///
+    /// # Arguments
+    ///
+    /// * `handle` - The `TaskHandle` of the task to cancel.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let handle = ctx.spawn_task::<ApiStatus>(|cancel| async move { ... });
+    /// // Later...
+    /// ctx.cancel_task(&handle);
+    /// ```
+    pub fn cancel_task(&self, handle: &TaskHandle) {
+        trace!(
+            "Cancelling task with id {:?} (generation {})",
+            handle.id().type_id(),
+            handle.id().generation()
+        );
+        handle.cancel();
+    }
+
+    /// Cancels all tasks and awaits their completion.
+    ///
+    /// This method implements graceful shutdown by:
+    /// 1. Cancelling all active task cancellation tokens
+    /// 2. Aborting all tasks in the `JoinSet`
+    /// 3. Awaiting all tasks to complete (either normally or via abort)
+    ///
+    /// This should be called during application shutdown to ensure all
+    /// async work is properly cleaned up.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // In application shutdown:
+    /// ctx.shutdown().await;
+    /// ```
+    pub async fn shutdown(&mut self) {
+        trace!(
+            "Shutting down: cancelling {} active tasks",
+            self.active_tasks.len()
+        );
+
+        // Cancel all active tasks via their cancellation tokens
+        for (type_id, handle) in self.active_tasks.drain() {
+            trace!("Cancelling task for type {:?} during shutdown", type_id);
+            handle.cancel();
+        }
+
+        // Abort all tasks in the JoinSet
+        self.task_set.abort_all();
+
+        // Await all tasks to complete
+        while self.task_set.join_next().await.is_some() {
+            // Tasks are completing (either normally or via abort)
+        }
+
+        trace!("Shutdown complete");
     }
 }

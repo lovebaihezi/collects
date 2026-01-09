@@ -338,9 +338,9 @@ Any state intended to be updated from async completion must:
 - [x] Implement `TaskHandle` with `CancellationToken`
 - [x] Implement `TaskId` type
 - [x] Add `JoinSet` to `StateCtx` for task management
-- [ ] Add `StateCtx::spawn_task<T>()` method
-- [ ] Add `StateCtx::cancel_task()` method
-- [ ] Add `StateCtx::shutdown()` async method
+- [x] Add `StateCtx::spawn_task<T>()` method
+- [x] Add `StateCtx::cancel_task()` method
+- [x] Add `StateCtx::shutdown()` async method
 - [ ] Convert `Compute` trait to async
 - [ ] Convert `Command` trait to async
 - [ ] Update all existing computes to async

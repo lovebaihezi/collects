@@ -1,6 +1,5 @@
 /node_modules
 /target
-package-lock.json
 
 # Generated Windows resources
 windows-resources.rc

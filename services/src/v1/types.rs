@@ -2,8 +2,6 @@
 
 use crate::database::{self, ContentRow, Visibility};
 use serde::{Deserialize, Serialize};
-
-#[cfg(feature = "openapi")]
 use utoipa::ToSchema;
 
 // =============================================================================
@@ -11,8 +9,7 @@ use utoipa::ToSchema;
 // =============================================================================
 
 /// Generic error response.
-#[derive(Debug, Serialize)]
-#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct V1ErrorResponse {
     /// Error type identifier.
     pub error: String,
@@ -48,8 +45,7 @@ impl V1ErrorResponse {
 // =============================================================================
 
 /// Query parameters for listing contents.
-#[derive(Debug, Deserialize, Default)]
-#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[derive(Debug, Deserialize, Default, ToSchema)]
 pub struct V1ContentsListQuery {
     /// Maximum number of results to return (default: 50, max: 100)
     #[serde(default)]
@@ -63,8 +59,7 @@ pub struct V1ContentsListQuery {
 }
 
 /// A content item in API responses.
-#[derive(Debug, Serialize)]
-#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct V1ContentItem {
     /// Unique identifier (UUID).
     pub id: String,
@@ -128,8 +123,7 @@ impl From<ContentRow> for V1ContentItem {
 }
 
 /// Response for listing contents.
-#[derive(Debug, Serialize)]
-#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct V1ContentsListResponse {
     /// List of content items.
     pub items: Vec<V1ContentItem>,
@@ -138,8 +132,7 @@ pub struct V1ContentsListResponse {
 }
 
 /// Request body for updating content metadata.
-#[derive(Debug, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct V1ContentsUpdateRequest {
     /// New title (optional).
     #[serde(default)]
@@ -156,8 +149,7 @@ pub struct V1ContentsUpdateRequest {
 }
 
 /// Request body for creating text content directly (without upload).
-#[derive(Debug, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct V1ContentCreateRequest {
     /// Content title.
     pub title: String,
@@ -179,24 +171,21 @@ fn default_text_content_type() -> String {
 }
 
 /// Response for creating text content.
-#[derive(Debug, Serialize)]
-#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct V1ContentCreateResponse {
     /// The created content item.
     pub content: V1ContentItem,
 }
 
 /// Request for view URL.
-#[derive(Debug, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct V1ViewUrlRequest {
     /// Content disposition: inline or attachment.
     pub disposition: String,
 }
 
 /// Response for view URL.
-#[derive(Debug, Serialize)]
-#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct V1ViewUrlResponse {
     /// Presigned URL for viewing/downloading content.
     pub url: String,
@@ -209,8 +198,7 @@ pub struct V1ViewUrlResponse {
 // =============================================================================
 
 /// A tag item in API responses.
-#[derive(Debug, Serialize)]
-#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct V1TagItem {
     /// Unique identifier (UUID).
     pub id: String,
@@ -235,8 +223,7 @@ impl From<database::TagRow> for V1TagItem {
 }
 
 /// Response for listing tags.
-#[derive(Debug, Serialize)]
-#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct V1TagsListResponse {
     /// List of tags.
     pub items: Vec<V1TagItem>,
@@ -245,8 +232,7 @@ pub struct V1TagsListResponse {
 }
 
 /// Request body for creating a tag.
-#[derive(Debug, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct V1TagCreateRequest {
     /// Tag name.
     pub name: String,
@@ -256,8 +242,7 @@ pub struct V1TagCreateRequest {
 }
 
 /// Request body for updating a tag.
-#[derive(Debug, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct V1TagUpdateRequest {
     /// New tag name (optional).
     #[serde(default)]
@@ -268,8 +253,7 @@ pub struct V1TagUpdateRequest {
 }
 
 /// Request body for attaching tags to content.
-#[derive(Debug, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct V1ContentTagsAttachRequest {
     /// ID of the tag to attach.
     pub tag_id: String,
@@ -280,8 +264,7 @@ pub struct V1ContentTagsAttachRequest {
 // =============================================================================
 
 /// Query parameters for listing groups.
-#[derive(Debug, Deserialize, Default)]
-#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[derive(Debug, Deserialize, Default, ToSchema)]
 pub struct V1GroupsListQuery {
     /// Maximum number of results to return (default: 50, max: 100)
     #[serde(default)]
@@ -295,8 +278,7 @@ pub struct V1GroupsListQuery {
 }
 
 /// Response item for a group.
-#[derive(Debug, Serialize)]
-#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct V1GroupItem {
     /// Unique identifier (UUID).
     pub id: String,
@@ -338,8 +320,7 @@ impl From<database::ContentGroupRow> for V1GroupItem {
 }
 
 /// Response for listing groups.
-#[derive(Debug, Serialize)]
-#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct V1GroupsListResponse {
     /// List of groups.
     pub items: Vec<V1GroupItem>,
@@ -348,8 +329,7 @@ pub struct V1GroupsListResponse {
 }
 
 /// Request body for creating a group.
-#[derive(Debug, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct V1GroupCreateRequest {
     /// Group name.
     pub name: String,
@@ -366,8 +346,7 @@ fn default_visibility() -> String {
 }
 
 /// Request body for updating a group.
-#[derive(Debug, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct V1GroupUpdateRequest {
     /// New group name (optional).
     #[serde(default)]
@@ -381,8 +360,7 @@ pub struct V1GroupUpdateRequest {
 }
 
 /// Response item for a group content item.
-#[derive(Debug, Serialize)]
-#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct V1GroupContentItem {
     /// Unique identifier (UUID).
     pub id: String,
@@ -409,8 +387,7 @@ impl From<database::ContentGroupItemRow> for V1GroupContentItem {
 }
 
 /// Response for listing group contents.
-#[derive(Debug, Serialize)]
-#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct V1GroupContentsListResponse {
     /// List of group content items.
     pub items: Vec<V1GroupContentItem>,
@@ -419,8 +396,7 @@ pub struct V1GroupContentsListResponse {
 }
 
 /// Request body for adding content to a group.
-#[derive(Debug, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct V1GroupAddContentRequest {
     /// Content ID to add (UUID).
     pub content_id: String,
@@ -430,16 +406,14 @@ pub struct V1GroupAddContentRequest {
 }
 
 /// Request body for reordering group contents.
-#[derive(Debug, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct V1GroupReorderRequest {
     /// List of (content_id, sort_order) pairs.
     pub items: Vec<V1GroupReorderItem>,
 }
 
 /// A single item in a group reorder request.
-#[derive(Debug, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct V1GroupReorderItem {
     /// Content ID (UUID).
     pub content_id: String,
@@ -452,8 +426,7 @@ pub struct V1GroupReorderItem {
 // =============================================================================
 
 /// Request body for upload initialization.
-#[derive(Debug, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct V1UploadsInitRequest {
     /// Original filename.
     pub filename: String,
@@ -464,8 +437,7 @@ pub struct V1UploadsInitRequest {
 }
 
 /// Response for upload initialization.
-#[derive(Debug, Serialize)]
-#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct V1UploadsInitResponse {
     /// Unique upload identifier (UUID).
     pub upload_id: String,
@@ -480,8 +452,7 @@ pub struct V1UploadsInitResponse {
 }
 
 /// Request body for completing an upload.
-#[derive(Debug, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct V1UploadsCompleteRequest {
     /// Upload ID from the init response.
     pub upload_id: String,
@@ -494,8 +465,7 @@ pub struct V1UploadsCompleteRequest {
 }
 
 /// Response for upload completion.
-#[derive(Debug, Serialize)]
-#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct V1UploadsCompleteResponse {
     /// The created content item.
     pub content: V1ContentItem,
@@ -506,8 +476,7 @@ pub struct V1UploadsCompleteResponse {
 // =============================================================================
 
 /// Response from the `/v1/me` endpoint containing authenticated user information.
-#[derive(Debug, Serialize)]
-#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct V1MeResponse {
     /// The authenticated user's username.
     pub username: String,

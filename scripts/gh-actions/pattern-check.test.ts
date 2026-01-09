@@ -13,7 +13,7 @@ import {
 } from "./pattern-check.ts";
 
 const TEST_DIR = join(import.meta.dir, ".test-pattern-check");
-const CONFIG_FILE = join(TEST_DIR, ".pattern-checks.json");
+const CONFIG_FILE = join(TEST_DIR, ".pattern-checks.jsonc");
 
 async function createTestFile(relativePath: string, content: string) {
   const fullPath = join(TEST_DIR, relativePath);
@@ -106,7 +106,24 @@ describe("pattern-check", () => {
     });
 
     test("returns empty config for missing file", async () => {
-      const loaded = await loadConfig(join(TEST_DIR, "nonexistent.json"));
+      const loaded = await loadConfig(join(TEST_DIR, "nonexistent.jsonc"));
+      expect(loaded.rules).toHaveLength(0);
+    });
+
+    test("loads config with JSONC comments", async () => {
+      const jsonc = `{
+        // This is a line comment
+        "version": 1,
+        "description": "Test config with comments",
+        /* This is a
+           block comment */
+        "rules": []
+      }`;
+      await writeFile(CONFIG_FILE, jsonc, "utf-8");
+
+      const loaded = await loadConfig(CONFIG_FILE);
+      expect(loaded.version).toBe(1);
+      expect(loaded.description).toBe("Test config with comments");
       expect(loaded.rules).toHaveLength(0);
     });
   });

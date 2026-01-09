@@ -1,0 +1,78 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/lqxc-org/collects/blob/main/scripts/gh-actions/pattern-check.schema.json",
+  "title": "Pattern Check Configuration",
+  "description": "Configuration file for the pattern-check script that enforces coding standards via pattern matching",
+  "type": "object",
+  "required": ["version", "rules"],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "JSON Schema reference for editor support"
+    },
+    "version": {
+      "type": "integer",
+      "description": "Configuration file version",
+      "const": 1
+    },
+    "description": {
+      "type": "string",
+      "description": "Human-readable description of this configuration"
+    },
+    "rules": {
+      "type": "array",
+      "description": "List of pattern check rules",
+      "items": {
+        "$ref": "#/definitions/Rule"
+      }
+    }
+  },
+  "definitions": {
+    "Rule": {
+      "type": "object",
+      "description": "A single pattern check rule",
+      "required": ["id", "pattern", "files", "severity", "message", "explanation"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for this rule (e.g., 'no-println-in-lib')",
+          "pattern": "^[a-z][a-z0-9-]*$"
+        },
+        "pattern": {
+          "type": "string",
+          "description": "JavaScript regex pattern to search for in file contents"
+        },
+        "files": {
+          "type": "array",
+          "description": "Glob patterns for files to check (e.g., ['**/*.rs', '**/*.ts'])",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "exclude": {
+          "type": "array",
+          "description": "Glob patterns for files to exclude from checking",
+          "items": {
+            "type": "string"
+          }
+        },
+        "severity": {
+          "type": "string",
+          "description": "Severity level: 'error' fails CI, 'warning' is informational",
+          "enum": ["error", "warning"]
+        },
+        "message": {
+          "type": "string",
+          "description": "Short message describing the violation"
+        },
+        "explanation": {
+          "type": "string",
+          "description": "Detailed explanation of why this pattern is forbidden and what to use instead"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

@@ -660,14 +660,16 @@ Checks for forbidden patterns in source files. This tool scans the codebase for 
 that violate coding standards, with detailed explanations of why each pattern is forbidden.
 
 **How it works:**
-1. Reads rules from \`.pattern-checks.json\` at the repository root.
+1. Reads rules from \`.pattern-checks.jsonc\` at the repository root (JSONC supports comments).
 2. For each rule, scans files matching the specified glob patterns.
 3. Reports violations with file location, matched text, and explanation.
 4. Exits with code 1 if any error-severity violations are found.
 
-**Configuration file format (\`.pattern-checks.json\`):**
-\`\`\`json
+**Configuration file format (\`.pattern-checks.jsonc\`):**
+\`\`\`jsonc
 {
+  // Schema provides LSP support for autocompletion
+  "$schema": "./scripts/gh-actions/pattern-check.schema.json",
   "version": 1,
   "description": "Pattern checks description",
   "rules": [

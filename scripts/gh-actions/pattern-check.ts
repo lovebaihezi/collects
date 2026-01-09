@@ -4,7 +4,7 @@
  * This script scans files for forbidden patterns and reports violations
  * with explanations for why certain patterns are not allowed.
  *
- * Configuration is defined in `.pattern-checks.json` at the repository root.
+ * Configuration is defined in `.pattern-checks.jsonc` at the repository root.
  *
  * Example use cases:
  * - Prevent use of certain crates (e.g., use tracing instead of println!)
@@ -20,7 +20,7 @@ import { fileURLToPath } from "url";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = join(__dirname, "..", "..");
 
-const CONFIG_FILE = join(PROJECT_ROOT, ".pattern-checks.json");
+const CONFIG_FILE = join(PROJECT_ROOT, ".pattern-checks.jsonc");
 
 /**
  * Severity levels for pattern violations
@@ -80,14 +80,76 @@ export interface PatternCheckResult {
 }
 
 /**
- * Load the pattern check configuration file
+ * Strip comments from JSONC content
+ * Supports // line comments and /* block comments *\/
+ */
+function stripJsoncComments(content: string): string {
+  let result = "";
+  let i = 0;
+  let inString = false;
+  let stringChar = "";
+
+  while (i < content.length) {
+    const char = content[i];
+    const nextChar = content[i + 1];
+
+    // Handle string start/end
+    if (
+      (char === '"' || char === "'") &&
+      (i === 0 || content[i - 1] !== "\\")
+    ) {
+      if (!inString) {
+        inString = true;
+        stringChar = char;
+      } else if (char === stringChar) {
+        inString = false;
+      }
+      result += char;
+      i++;
+      continue;
+    }
+
+    // Skip comments only when not in a string
+    if (!inString) {
+      // Line comment
+      if (char === "/" && nextChar === "/") {
+        // Skip until end of line
+        while (i < content.length && content[i] !== "\n") {
+          i++;
+        }
+        continue;
+      }
+      // Block comment
+      if (char === "/" && nextChar === "*") {
+        i += 2;
+        while (i < content.length - 1) {
+          if (content[i] === "*" && content[i + 1] === "/") {
+            i += 2;
+            break;
+          }
+          i++;
+        }
+        continue;
+      }
+    }
+
+    result += char;
+    i++;
+  }
+
+  return result;
+}
+
+/**
+ * Load the pattern check configuration file (supports JSONC with comments)
  */
 export async function loadConfig(
   configPath: string = CONFIG_FILE,
 ): Promise<PatternCheckConfig> {
   try {
     const content = await readFile(configPath, "utf-8");
-    return JSON.parse(content) as PatternCheckConfig;
+    const jsonContent = stripJsoncComments(content);
+    return JSON.parse(jsonContent) as PatternCheckConfig;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
       // Return empty config if file doesn't exist

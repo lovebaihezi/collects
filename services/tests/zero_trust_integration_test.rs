@@ -369,7 +369,7 @@ async fn test_internal_route_blocked_in_deployed_env_without_zerotrust() {
     use collects_services::users::AppState;
 
     // Simulate a deployed environment (TestInternal) without Zero Trust config
-    let config = Config::new_for_deployed_env(Env::TestInternal);
+    let config = Config::new_for_test_with_env(Env::TestInternal);
 
     // Verify this environment requires Zero Trust
     assert!(

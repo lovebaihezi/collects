@@ -74,23 +74,23 @@ mod tests {
     fn requires_zero_trust_for_deployed_environments() {
         // These environments require Zero Trust for internal routes
         assert!(
-            Config::new_for_deployed_env(Env::Internal).requires_zero_trust_for_internal(),
+            Config::new_for_test_with_env(Env::Internal).requires_zero_trust_for_internal(),
             "Internal env should require Zero Trust"
         );
         assert!(
-            Config::new_for_deployed_env(Env::TestInternal).requires_zero_trust_for_internal(),
+            Config::new_for_test_with_env(Env::TestInternal).requires_zero_trust_for_internal(),
             "TestInternal env should require Zero Trust"
         );
         assert!(
-            Config::new_for_deployed_env(Env::Prod).requires_zero_trust_for_internal(),
+            Config::new_for_test_with_env(Env::Prod).requires_zero_trust_for_internal(),
             "Prod env should require Zero Trust"
         );
         assert!(
-            Config::new_for_deployed_env(Env::Nightly).requires_zero_trust_for_internal(),
+            Config::new_for_test_with_env(Env::Nightly).requires_zero_trust_for_internal(),
             "Nightly env should require Zero Trust"
         );
         assert!(
-            Config::new_for_deployed_env(Env::Pr).requires_zero_trust_for_internal(),
+            Config::new_for_test_with_env(Env::Pr).requires_zero_trust_for_internal(),
             "Pr env should require Zero Trust"
         );
     }
@@ -99,11 +99,11 @@ mod tests {
     fn local_and_test_do_not_require_zero_trust() {
         // Local and Test environments do NOT require Zero Trust
         assert!(
-            !Config::new_for_deployed_env(Env::Local).requires_zero_trust_for_internal(),
+            !Config::new_for_test_with_env(Env::Local).requires_zero_trust_for_internal(),
             "Local env should not require Zero Trust"
         );
         assert!(
-            !Config::new_for_deployed_env(Env::Test).requires_zero_trust_for_internal(),
+            !Config::new_for_test_with_env(Env::Test).requires_zero_trust_for_internal(),
             "Test env should not require Zero Trust"
         );
     }
@@ -204,14 +204,14 @@ impl Config {
         config
     }
 
-    /// Create a test configuration that simulates a deployed environment.
+    /// Create a test configuration with a specific environment.
     ///
-    /// This is used for testing fail-secure behavior where Zero Trust is required
-    /// but not configured. The environment can be overridden for specific tests.
+    /// This is used for testing environment-specific behavior such as
+    /// fail-secure Zero Trust requirements in deployed environments.
     ///
     /// This function is available for both unit tests and integration tests.
     /// It should not be used in production code.
-    pub fn new_for_deployed_env(env: Env) -> Self {
+    pub fn new_for_test_with_env(env: Env) -> Self {
         Self {
             env,
             database_url: "postgres://localhost:5432/test".to_string(),

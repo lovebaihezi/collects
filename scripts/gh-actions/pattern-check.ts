@@ -149,13 +149,10 @@ export function matchGlob(pattern: string, filePath: string): boolean {
         .replace(/\?/g, "<<<QUESTION>>>");
 
       // Escape all regex special characters
-      // Using String.fromCharCode to avoid parsing issues with braces in regex
-      const openBrace = String.fromCharCode(123); // {
-      const closeBrace = String.fromCharCode(125); // }
       segmentPattern = segmentPattern
         .replace(/[.+^$|()[\]\\]/g, "\\$&")
-        .replace(new RegExp(openBrace, "g"), "\\" + openBrace)
-        .replace(new RegExp(closeBrace, "g"), "\\" + closeBrace);
+        .replace(/{/g, "\\{")
+        .replace(/}/g, "\\}");
 
       // Restore * and ? as regex patterns
       segmentPattern = segmentPattern
@@ -259,7 +256,8 @@ export async function checkFile(
       const line = lines[lineIndex];
       let match: RegExpExecArray | null;
 
-      // Reset regex lastIndex for each line
+      // Reset regex lastIndex for each line to ensure the global regex
+      // doesn't carry state from previous line matches
       regex.lastIndex = 0;
 
       while ((match = regex.exec(line)) !== null) {
@@ -272,7 +270,8 @@ export async function checkFile(
           lineContent: line,
         });
 
-        // Prevent infinite loop on zero-width matches
+        // Prevent infinite loop on zero-width matches (e.g., patterns like /(?=a)/g)
+        // by manually advancing lastIndex when the match is empty
         if (match.index === regex.lastIndex) {
           regex.lastIndex++;
         }

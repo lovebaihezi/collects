@@ -166,6 +166,17 @@ impl Config {
         config
     }
 
+    /// Create a test configuration with a specific environment.
+    ///
+    /// This is intended for unit tests that need to test behavior with different environments.
+    #[cfg(test)]
+    pub fn new_for_test_with_env(env: Env) -> Self {
+        Self {
+            env,
+            ..Self::new_for_test()
+        }
+    }
+
     pub fn environment(&self) -> &Env {
         &self.env
     }

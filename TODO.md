@@ -337,7 +337,7 @@ Any state intended to be updated from async completion must:
 - [x] Add `tokio`, `tokio_util` dependencies to `collects/states`
 - [x] Implement `TaskHandle` with `CancellationToken`
 - [x] Implement `TaskId` type
-- [ ] Add `JoinSet` to `StateCtx` for task management
+- [x] Add `JoinSet` to `StateCtx` for task management
 - [ ] Add `StateCtx::spawn_task<T>()` method
 - [ ] Add `StateCtx::cancel_task()` method
 - [ ] Add `StateCtx::shutdown()` async method

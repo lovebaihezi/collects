@@ -10,6 +10,7 @@ mod runtime;
 mod snapshot;
 mod state;
 mod state_sync_status;
+mod task;
 
 pub use basic_state::Time;
 pub use compute::{Compute, ComputeDeps, assign_impl};
@@ -21,6 +22,7 @@ pub use runtime::StateRuntime;
 pub use snapshot::{CommandSnapshot, ComputeSnapshot, SnapshotClone, StateSnapshot};
 pub use state::{Reader, State, Updater, state_assign_impl};
 pub use state_sync_status::Stage;
+pub use task::{TaskHandle, TaskId, TaskIdGenerator};
 
 /// Manual-only side effects / commands.
 ///

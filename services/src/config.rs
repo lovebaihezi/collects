@@ -62,12 +62,87 @@ mod tests {
             ("ENV", "test-internal"),
             ("DATABASE_URL", "postgres://example"),
             ("PORT", "8080"),
+            ("CF_ACCESS_TEAM_DOMAIN", "myteam.cloudflareaccess.com"),
+            ("CF_ACCESS_AUD", "test-audience"),
         ])
         .expect("RawConfig should deserialize");
 
         let config = Config::from_raw(raw).expect("test-internal config should build");
         assert_eq!(config.server_addr(), "0.0.0.0");
         assert_eq!(config.port(), 8080);
+    }
+
+    #[test]
+    fn internal_env_requires_zero_trust_config() {
+        let raw: RawConfig = from_iter(vec![
+            ("ENV", "internal"),
+            ("DATABASE_URL", "postgres://example"),
+            ("PORT", "8080"),
+            ("JWT_SECRET", "test-jwt-secret"),
+        ])
+        .expect("RawConfig should deserialize");
+
+        let result = Config::from_raw(raw);
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("CF_ACCESS_TEAM_DOMAIN"));
+        assert!(err.contains("CF_ACCESS_AUD"));
+    }
+
+    #[test]
+    fn internal_env_succeeds_with_zero_trust_config() {
+        let raw: RawConfig = from_iter(vec![
+            ("ENV", "internal"),
+            ("DATABASE_URL", "postgres://example"),
+            ("PORT", "8080"),
+            ("JWT_SECRET", "test-jwt-secret"),
+            ("CF_ACCESS_TEAM_DOMAIN", "myteam.cloudflareaccess.com"),
+            ("CF_ACCESS_AUD", "test-audience"),
+        ])
+        .expect("RawConfig should deserialize");
+
+        let config = Config::from_raw(raw).expect("internal config should build with Zero Trust");
+        assert_eq!(
+            config.cf_access_team_domain(),
+            Some("myteam.cloudflareaccess.com")
+        );
+        assert_eq!(config.cf_access_aud(), Some("test-audience"));
+    }
+
+    #[test]
+    fn test_internal_env_requires_zero_trust_config() {
+        let raw: RawConfig = from_iter(vec![
+            ("ENV", "test-internal"),
+            ("DATABASE_URL", "postgres://example"),
+            ("PORT", "8080"),
+        ])
+        .expect("RawConfig should deserialize");
+
+        let result = Config::from_raw(raw);
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("CF_ACCESS_TEAM_DOMAIN"));
+        assert!(err.contains("CF_ACCESS_AUD"));
+    }
+
+    #[test]
+    fn test_internal_env_succeeds_with_zero_trust_config() {
+        let raw: RawConfig = from_iter(vec![
+            ("ENV", "test-internal"),
+            ("DATABASE_URL", "postgres://example"),
+            ("PORT", "8080"),
+            ("CF_ACCESS_TEAM_DOMAIN", "myteam.cloudflareaccess.com"),
+            ("CF_ACCESS_AUD", "test-audience"),
+        ])
+        .expect("RawConfig should deserialize");
+
+        let config =
+            Config::from_raw(raw).expect("test-internal config should build with Zero Trust");
+        assert_eq!(
+            config.cf_access_team_domain(),
+            Some("myteam.cloudflareaccess.com")
+        );
+        assert_eq!(config.cf_access_aud(), Some("test-audience"));
     }
 }
 
@@ -303,6 +378,17 @@ impl Config {
             }
             None => anyhow::bail!("JWT_SECRET must be set for {} environment", env),
         };
+
+        // Zero Trust configuration is required for Internal and TestInternal environments
+        if matches!(env, Env::Internal | Env::TestInternal)
+            && (cf_access_team_domain.is_none() || cf_access_aud.is_none())
+        {
+            anyhow::bail!(
+                "CF_ACCESS_TEAM_DOMAIN and CF_ACCESS_AUD must be set for {} environment. \
+                 Internal routes require Zero Trust authentication.",
+                env
+            );
+        }
 
         // Construct the final, validated Config struct
         Ok(Config {

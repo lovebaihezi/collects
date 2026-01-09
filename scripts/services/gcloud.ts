@@ -222,6 +222,27 @@ export async function grantSecretAccessToAllJwtSecrets(
 }
 
 /**
+ * Grants access to all Zero Trust secrets for the Compute Service Account.
+ * These secrets are required for the internal environment.
+ */
+export async function grantSecretAccessToAllZeroTrustSecrets(
+  ctx: SetupContext,
+): Promise<void> {
+  const computeSaEmail = `${ctx.projectNumber}-compute@developer.gserviceaccount.com`;
+  const zeroTrustSecrets = [
+    "cf-access-team-domain", // Cloudflare Access team domain
+    "cf-access-aud", // Cloudflare Access application audience
+  ];
+
+  for (const secretName of zeroTrustSecrets) {
+    await confirmAndRun(
+      `gcloud secrets add-iam-policy-binding ${secretName} --member="serviceAccount:${computeSaEmail}" --role="roles/secretmanager.secretAccessor" --project=${ctx.projectId}`,
+      `Grant access to secret '${secretName}' for Compute Service Account`,
+    );
+  }
+}
+
+/**
  * Displays the final workflow YAML
  */
 function displayWorkflowYAML(ctx: SetupContext): void {
@@ -548,6 +569,9 @@ export async function setupGitHubActions(ctx: SetupContext): Promise<void> {
 
   // 9. Grant access to all JWT secrets
   await grantSecretAccessToAllJwtSecrets(ctx);
+
+  // 10. Grant access to all Zero Trust secrets (for internal environment)
+  await grantSecretAccessToAllZeroTrustSecrets(ctx);
 
   p.outro("Setup Complete!");
   displayWorkflowYAML(ctx);

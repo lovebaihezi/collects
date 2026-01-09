@@ -844,8 +844,6 @@ This is a programmer error (e.g. a Command called `Updater::set_state(...)` for 
         F: FnOnce(CancellationToken) -> Fut,
         Fut: std::future::Future<Output = ()> + Send + 'static,
     {
-        use tokio_util::sync::CancellationToken;
-
         // Generate unique task ID
         let task_id = self.task_id_generator.next::<T>();
         let cancel_token = CancellationToken::new();

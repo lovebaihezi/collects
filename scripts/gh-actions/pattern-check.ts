@@ -402,8 +402,15 @@ async function searchWithAstGrep(
   }
 
   try {
-    // Get all files matching the globs
-    const files = await getAllFilesRecursive(rootDir);
+    // Extract file extensions from glob patterns to optimize file scanning
+    const allowedExtensions = extractExtensionsFromGlobs(globs);
+
+    // Get all files matching the globs with extension filtering
+    const files = await getAllFilesRecursive(
+      rootDir,
+      rootDir,
+      allowedExtensions,
+    );
     const matchingFiles = files.filter((f) => matchesAnyGlob(globs, f));
 
     for (const file of matchingFiles) {
@@ -532,12 +539,91 @@ export async function checkWithTools(
 }
 
 /**
+ * Common directories to skip during file traversal
+ */
+const SKIP_DIRECTORIES = new Set([
+  "node_modules",
+  "target",
+  "dist",
+  "build",
+  ".git",
+  ".svn",
+  ".hg",
+  "__pycache__",
+  ".cache",
+  ".next",
+  ".nuxt",
+  "coverage",
+  ".nyc_output",
+  "vendor",
+]);
+
+/**
+ * Common binary/non-source file extensions to skip
+ */
+const SKIP_EXTENSIONS = new Set([
+  ".exe",
+  ".dll",
+  ".so",
+  ".dylib",
+  ".a",
+  ".o",
+  ".obj",
+  ".bin",
+  ".png",
+  ".jpg",
+  ".jpeg",
+  ".gif",
+  ".ico",
+  ".svg",
+  ".woff",
+  ".woff2",
+  ".ttf",
+  ".eot",
+  ".pdf",
+  ".zip",
+  ".tar",
+  ".gz",
+  ".rar",
+  ".7z",
+  ".lock",
+  ".sum",
+]);
+
+/**
+ * Extract file extensions from glob patterns (e.g., `**\/*.rs` -> `.rs`)
+ */
+function extractExtensionsFromGlobs(globs: string[]): Set<string> {
+  const extensions = new Set<string>();
+  for (const glob of globs) {
+    // Match patterns like "*.rs", "**/*.rs", "src/**/*.ts"
+    const match = glob.match(/\*\.(\w+)$/);
+    if (match) {
+      extensions.add(`.${match[1]}`);
+    }
+  }
+  return extensions;
+}
+
+/**
  * Recursively get all files in a directory (fallback when ripgrep not available)
+ * Optimized to skip non-source directories and files early
  */
 async function getAllFilesRecursive(
   dir: string,
   basePath: string = dir,
+  allowedExtensions?: Set<string>,
+  depth: number = 0,
+  maxDepth: number = 20,
 ): Promise<string[]> {
+  // Prevent infinite recursion
+  if (depth > maxDepth) {
+    console.warn(
+      `Warning: Max directory depth (${maxDepth}) reached at ${dir}`,
+    );
+    return [];
+  }
+
   const files: string[] = [];
   const entries = await readdir(dir, { withFileTypes: true });
 
@@ -545,15 +631,34 @@ async function getAllFilesRecursive(
     const fullPath = join(dir, entry.name);
     if (entry.isDirectory()) {
       // Skip hidden directories and common non-source directories
-      if (
-        entry.name.startsWith(".") ||
-        entry.name === "node_modules" ||
-        entry.name === "target"
-      ) {
+      if (entry.name.startsWith(".") || SKIP_DIRECTORIES.has(entry.name)) {
         continue;
       }
-      files.push(...(await getAllFilesRecursive(fullPath, basePath)));
+      files.push(
+        ...(await getAllFilesRecursive(
+          fullPath,
+          basePath,
+          allowedExtensions,
+          depth + 1,
+          maxDepth,
+        )),
+      );
     } else if (entry.isFile()) {
+      // Skip binary/non-source files
+      const ext = entry.name.includes(".")
+        ? `.${entry.name.split(".").pop()}`
+        : "";
+      if (SKIP_EXTENSIONS.has(ext.toLowerCase())) {
+        continue;
+      }
+
+      // If we have specific extensions to look for, filter early
+      if (allowedExtensions && allowedExtensions.size > 0) {
+        if (!allowedExtensions.has(ext.toLowerCase())) {
+          continue;
+        }
+      }
+
       // Return relative path from base
       files.push(relative(basePath, fullPath).replace(/\\/g, "/"));
     }
@@ -569,8 +674,15 @@ export async function getFilesForRule(
   rule: PatternRule,
   rootDir: string,
 ): Promise<string[]> {
-  // Use Node.js implementation for file listing
-  const allFiles = await getAllFilesRecursive(rootDir);
+  // Extract file extensions from glob patterns to optimize file scanning
+  const allowedExtensions = extractExtensionsFromGlobs(rule.files);
+
+  // Use Node.js implementation for file listing with extension filtering
+  const allFiles = await getAllFilesRecursive(
+    rootDir,
+    rootDir,
+    allowedExtensions,
+  );
 
   return allFiles.filter((file) => {
     // Must match at least one include pattern

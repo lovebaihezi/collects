@@ -326,9 +326,9 @@ impl Command for LoginCommand {
                                         },
                                     });
                                 } else {
-                                    let error_msg = verify_response
-                                        .message
-                                        .unwrap_or_else(|| "Invalid username or OTP code".to_string());
+                                    let error_msg = verify_response.message.unwrap_or_else(|| {
+                                        "Invalid username or OTP code".to_string()
+                                    });
                                     info!("LoginCommand: OTP verification failed: {}", error_msg);
                                     updater.set(AuthCompute {
                                         status: AuthStatus::Failed(error_msg),

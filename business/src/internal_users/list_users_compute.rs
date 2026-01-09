@@ -162,7 +162,8 @@ impl Command for RefreshInternalUsersCommand {
         _cancel: tokio_util::sync::CancellationToken,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> {
         // Read inputs/config.
-        let input: InternalUsersListUsersInput = snap.state::<InternalUsersListUsersInput>().clone();
+        let input: InternalUsersListUsersInput =
+            snap.state::<InternalUsersListUsersInput>().clone();
         let config: BusinessConfig = snap.state::<BusinessConfig>().clone();
         let cf_token: CFTokenCompute = snap.compute::<CFTokenCompute>().clone();
 

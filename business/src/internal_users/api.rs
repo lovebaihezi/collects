@@ -18,7 +18,7 @@ use crate::internal::{
     ListUsersResponse, RevokeOtpResponse, UpdateProfileRequest, UpdateProfileResponse,
     UpdateUsernameRequest, UpdateUsernameResponse,
 };
-use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE};
+use reqwest::header::{CONTENT_TYPE, HeaderMap, HeaderValue};
 use std::sync::LazyLock;
 
 /// Shared HTTP client for connection pooling across API calls.
@@ -51,10 +51,10 @@ pub type ApiResult<T> = Result<T, InternalUsersApiError>;
 
 fn build_headers(cf_token: &CFTokenCompute) -> HeaderMap {
     let mut headers = HeaderMap::new();
-    if let Some(token) = cf_token.token() {
-        if let Ok(value) = HeaderValue::from_str(token) {
-            headers.insert("cf-authorization", value);
-        }
+    if let Some(token) = cf_token.token()
+        && let Ok(value) = HeaderValue::from_str(token)
+    {
+        headers.insert("cf-authorization", value);
     }
     headers
 }
@@ -82,10 +82,9 @@ pub async fn list_users(
         return Err(http_status_error(status));
     }
 
-    let list_response: ListUsersResponse = response
-        .json()
-        .await
-        .map_err(|e| InternalUsersApiError::new(format!("Failed to parse ListUsersResponse: {e}")))?;
+    let list_response: ListUsersResponse = response.json().await.map_err(|e| {
+        InternalUsersApiError::new(format!("Failed to parse ListUsersResponse: {e}"))
+    })?;
 
     Ok(list_response.users)
 }
@@ -146,10 +145,9 @@ pub async fn update_username(
         return Err(http_status_error(status));
     }
 
-    response
-        .json()
-        .await
-        .map_err(|e| InternalUsersApiError::new(format!("Failed to parse UpdateUsernameResponse: {e}")))
+    response.json().await.map_err(|e| {
+        InternalUsersApiError::new(format!("Failed to parse UpdateUsernameResponse: {e}"))
+    })
 }
 
 /// PUT `/internal/users/{username}/profile`
@@ -184,10 +182,9 @@ pub async fn update_profile(
         return Err(http_status_error(status));
     }
 
-    response
-        .json()
-        .await
-        .map_err(|e| InternalUsersApiError::new(format!("Failed to parse UpdateProfileResponse: {e}")))
+    response.json().await.map_err(|e| {
+        InternalUsersApiError::new(format!("Failed to parse UpdateProfileResponse: {e}"))
+    })
 }
 
 /// DELETE `/internal/users/{username}`

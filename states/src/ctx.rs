@@ -646,11 +646,11 @@ This is a programmer error (e.g. a Command called `Updater::set_state(...)` for 
     }
 
     pub fn clear(&mut self) {
+        // Cancel all tasks first to ensure proper cleanup before clearing state
+        self.cancel_all_tasks();
         self.states.clear();
         self.computes.clear();
         self.commands.clear();
-        self.active_tasks.clear();
-        self.task_set.abort_all();
     }
 
     pub fn reader(&self) -> Reader {

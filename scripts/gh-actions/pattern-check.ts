@@ -1,8 +1,12 @@
 /**
- * Pattern Check - Enforce coding standards via regex pattern matching
+ * Pattern Check - Enforce coding standards via ast-grep and ripgrep
  *
  * This script scans files for forbidden patterns and reports violations
  * with explanations for why certain patterns are not allowed.
+ *
+ * Uses:
+ * - ripgrep (rg) for fast regex-based text search
+ * - ast-grep (sg) for AST-based semantic pattern matching
  *
  * Configuration is defined in `.pattern-checks.jsonc` at the repository root.
  *
@@ -12,9 +16,10 @@
  * - Detect security anti-patterns (e.g., hardcoded secrets patterns)
  */
 
-import { readdir, readFile, stat } from "fs/promises";
+import { readFile, stat, readdir } from "fs/promises";
 import { join, dirname, relative } from "path";
 import { fileURLToPath } from "url";
+import { spawn } from "child_process";
 
 // Get the project root directory (two levels up from scripts/gh-actions/)
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -28,13 +33,22 @@ const CONFIG_FILE = join(PROJECT_ROOT, ".pattern-checks.jsonc");
 export type Severity = "error" | "warning";
 
 /**
+ * Type of pattern matching engine to use
+ */
+export type PatternType = "regex" | "ast";
+
+/**
  * A single pattern check rule
  */
 export interface PatternRule {
   /** Unique identifier for this rule */
   id: string;
-  /** Regex pattern to search for (JavaScript regex syntax) */
+  /** Pattern to search for (regex for ripgrep, or ast-grep pattern) */
   pattern: string;
+  /** Type of pattern: "regex" uses ripgrep, "ast" uses ast-grep */
+  type?: PatternType;
+  /** Language for ast-grep patterns (e.g., "rust", "typescript") */
+  language?: string;
   /** Glob patterns for files to check */
   files: string[];
   /** Glob patterns for files to exclude (optional) */
@@ -260,9 +274,300 @@ export function matchesAnyGlob(patterns: string[], filePath: string): boolean {
 }
 
 /**
- * Recursively get all files in a directory
+ * Check if a command exists on the system
  */
-async function getAllFiles(
+async function commandExists(command: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    const proc = spawn("which", [command], {
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    proc.on("close", (code) => resolve(code === 0));
+    proc.on("error", () => resolve(false));
+  });
+}
+
+/**
+ * Run a command and capture its output
+ */
+async function runCommand(
+  command: string,
+  args: string[],
+  cwd: string,
+): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+  return new Promise((resolve) => {
+    const proc = spawn(command, args, {
+      cwd,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+
+    let stdout = "";
+    let stderr = "";
+
+    proc.stdout.on("data", (data: Buffer) => {
+      stdout += data.toString();
+    });
+
+    proc.stderr.on("data", (data: Buffer) => {
+      stderr += data.toString();
+    });
+
+    proc.on("close", (code) => {
+      resolve({ stdout, stderr, exitCode: code ?? 0 });
+    });
+
+    proc.on("error", (err) => {
+      resolve({ stdout, stderr: err.message, exitCode: 1 });
+    });
+  });
+}
+
+/**
+ * Search for patterns using ripgrep (fast regex-based search)
+ */
+async function searchWithRipgrep(
+  pattern: string,
+  globs: string[],
+  excludes: string[],
+  rootDir: string,
+): Promise<
+  Array<{
+    file: string;
+    line: number;
+    column: number;
+    match: string;
+    lineContent: string;
+  }>
+> {
+  const results: Array<{
+    file: string;
+    line: number;
+    column: number;
+    match: string;
+    lineContent: string;
+  }> = [];
+
+  // Build ripgrep arguments
+  const args = [
+    "--json", // JSON output for structured parsing
+    "--no-heading",
+    "--line-number",
+    "--column",
+    "-e",
+    pattern,
+  ];
+
+  // Add glob patterns
+  for (const glob of globs) {
+    args.push("--glob", glob);
+  }
+
+  // Add exclude patterns
+  for (const exclude of excludes) {
+    args.push("--glob", `!${exclude}`);
+  }
+
+  // Add the search directory
+  args.push(".");
+
+  const { stdout, exitCode } = await runCommand("rg", args, rootDir);
+
+  // Exit code 1 means no matches (not an error), 0 means matches found
+  if (exitCode > 1) {
+    return results;
+  }
+
+  // Parse JSON lines output
+  const lines = stdout.trim().split("\n").filter(Boolean);
+  for (const line of lines) {
+    try {
+      const parsed = JSON.parse(line);
+      if (parsed.type === "match") {
+        const data = parsed.data;
+        const filePath = data.path.text;
+        const lineNum = data.line_number;
+        const lineText = data.lines.text.replace(/\n$/, "");
+
+        // Extract each submatch
+        for (const submatch of data.submatches) {
+          results.push({
+            file: filePath,
+            line: lineNum,
+            column: submatch.start + 1, // 1-indexed
+            match: submatch.match.text,
+            lineContent: lineText,
+          });
+        }
+      }
+    } catch {
+      // Skip malformed JSON lines
+    }
+  }
+
+  return results;
+}
+
+/**
+ * Search for patterns using ast-grep (AST-based semantic search)
+ */
+async function searchWithAstGrep(
+  pattern: string,
+  language: string,
+  globs: string[],
+  rootDir: string,
+): Promise<
+  Array<{
+    file: string;
+    line: number;
+    column: number;
+    match: string;
+    lineContent: string;
+  }>
+> {
+  const results: Array<{
+    file: string;
+    line: number;
+    column: number;
+    match: string;
+    lineContent: string;
+  }> = [];
+
+  // Build ast-grep arguments
+  const args = ["scan", "--json", "-p", pattern, "-l", language];
+
+  const { stdout, exitCode } = await runCommand("sg", args, rootDir);
+
+  if (exitCode !== 0) {
+    return results;
+  }
+
+  // Parse JSON output
+  try {
+    const parsed = JSON.parse(stdout);
+    if (Array.isArray(parsed)) {
+      for (const match of parsed) {
+        results.push({
+          file: match.file || match.path || "",
+          line: match.range?.start?.line || match.start?.line || 1,
+          column: match.range?.start?.column || match.start?.column || 1,
+          match: match.text || match.matched || "",
+          lineContent: match.lines || match.text || "",
+        });
+      }
+    }
+  } catch {
+    // Try parsing as JSON lines
+    const lines = stdout.trim().split("\n").filter(Boolean);
+    for (const line of lines) {
+      try {
+        const match = JSON.parse(line);
+        results.push({
+          file: match.file || match.path || "",
+          line: match.range?.start?.line || match.start?.line || 1,
+          column: match.range?.start?.column || match.start?.column || 1,
+          match: match.text || match.matched || "",
+          lineContent: match.lines || match.text || "",
+        });
+      } catch {
+        // Skip malformed lines
+      }
+    }
+  }
+
+  return results;
+}
+
+/**
+ * Check files for pattern violations using the appropriate search tool
+ */
+export async function checkWithTools(
+  rule: PatternRule,
+  rootDir: string,
+  useRipgrep: boolean,
+  useAstGrep: boolean,
+): Promise<Violation[]> {
+  const violations: Violation[] = [];
+  const patternType = rule.type || "regex";
+
+  if (patternType === "ast") {
+    // Validate language is provided for AST patterns
+    if (!rule.language) {
+      console.error(
+        `Rule ${rule.id}: 'language' field is required when type is 'ast'`,
+      );
+      return violations;
+    }
+
+    if (useAstGrep) {
+      // Use ast-grep for AST-based patterns
+      const results = await searchWithAstGrep(
+        rule.pattern,
+        rule.language,
+        rule.files,
+        rootDir,
+      );
+
+      for (const result of results) {
+        // Check if file matches include/exclude patterns
+        if (rule.exclude && matchesAnyGlob(rule.exclude, result.file)) {
+          continue;
+        }
+        if (!matchesAnyGlob(rule.files, result.file)) {
+          continue;
+        }
+
+        violations.push({
+          rule,
+          file: result.file,
+          line: result.line,
+          column: result.column,
+          match: result.match,
+          lineContent: result.lineContent,
+        });
+      }
+    } else {
+      console.warn(
+        `Rule ${rule.id}: ast-grep not available, skipping AST-based rule`,
+      );
+    }
+  } else if (useRipgrep) {
+    // Use ripgrep for regex-based patterns
+    const results = await searchWithRipgrep(
+      rule.pattern,
+      rule.files,
+      rule.exclude || [],
+      rootDir,
+    );
+
+    for (const result of results) {
+      violations.push({
+        rule,
+        file: result.file,
+        line: result.line,
+        column: result.column,
+        match: result.match,
+        lineContent: result.lineContent,
+      });
+    }
+  } else {
+    // Fallback to internal implementation
+    const files = await getFilesForRule(rule, rootDir);
+    for (const file of files) {
+      const fullPath = join(rootDir, file);
+      const fileViolations = await checkFileInternal(fullPath, rule);
+      for (const v of fileViolations) {
+        v.file = file;
+      }
+      violations.push(...fileViolations);
+    }
+  }
+
+  return violations;
+}
+
+/**
+ * Recursively get all files in a directory (fallback when ripgrep not available)
+ */
+async function getAllFilesRecursive(
   dir: string,
   basePath: string = dir,
 ): Promise<string[]> {
@@ -280,7 +585,7 @@ async function getAllFiles(
       ) {
         continue;
       }
-      files.push(...(await getAllFiles(fullPath, basePath)));
+      files.push(...(await getAllFilesRecursive(fullPath, basePath)));
     } else if (entry.isFile()) {
       // Return relative path from base
       files.push(relative(basePath, fullPath).replace(/\\/g, "/"));
@@ -297,7 +602,28 @@ export async function getFilesForRule(
   rule: PatternRule,
   rootDir: string,
 ): Promise<string[]> {
-  const allFiles = await getAllFiles(rootDir);
+  // Try to use ripgrep first (much faster for large repos)
+  const hasRipgrep = await commandExists("rg");
+
+  if (hasRipgrep) {
+    const args = ["--files"];
+
+    for (const glob of rule.files) {
+      args.push("--glob", glob);
+    }
+
+    for (const exclude of rule.exclude || []) {
+      args.push("--glob", `!${exclude}`);
+    }
+
+    args.push(".");
+
+    const { stdout } = await runCommand("rg", args, rootDir);
+    return stdout.trim().split("\n").filter(Boolean);
+  }
+
+  // Fallback to Node.js implementation
+  const allFiles = await getAllFilesRecursive(rootDir);
 
   return allFiles.filter((file) => {
     // Must match at least one include pattern
@@ -315,9 +641,9 @@ export async function getFilesForRule(
 }
 
 /**
- * Check a file for pattern violations
+ * Internal fallback: Check a file for pattern violations using JS regex
  */
-export async function checkFile(
+async function checkFileInternal(
   filePath: string,
   rule: PatternRule,
 ): Promise<Violation[]> {
@@ -332,31 +658,26 @@ export async function checkFile(
       const line = lines[lineIndex];
       let match: RegExpExecArray | null;
 
-      // Reset regex lastIndex for each line to ensure the global regex
-      // doesn't carry state from previous line matches
+      // Reset regex lastIndex for each line
       regex.lastIndex = 0;
 
       while ((match = regex.exec(line)) !== null) {
         violations.push({
           rule,
           file: filePath,
-          line: lineIndex + 1, // 1-indexed
-          column: match.index + 1, // 1-indexed
+          line: lineIndex + 1,
+          column: match.index + 1,
           match: match[0],
           lineContent: line,
         });
 
-        // Prevent infinite loop on zero-width matches (e.g., patterns like /(?=a)/g)
-        // by manually advancing lastIndex when the match is empty
         if (match.index === regex.lastIndex) {
           regex.lastIndex++;
         }
       }
     }
   } catch (error) {
-    // Skip files that can't be read (binary files, permission issues, etc.)
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-      // Only warn for unexpected errors
       console.warn(`Warning: Could not read file ${filePath}: ${error}`);
     }
   }
@@ -377,7 +698,6 @@ export async function runPatternCheck(options: {
   const verbose = options.verbose ?? false;
 
   const violations: Violation[] = [];
-  let checkedFiles = 0;
   const checkedFilesSet = new Set<string>();
 
   // Check if root directory exists
@@ -391,6 +711,16 @@ export async function runPatternCheck(options: {
       errorCount: 0,
       warningCount: 0,
     };
+  }
+
+  // Check if external tools are available
+  const hasRipgrep = await commandExists("rg");
+  const hasAstGrep = await commandExists("sg");
+
+  if (verbose) {
+    console.log(
+      `Tools available: ripgrep=${hasRipgrep}, ast-grep=${hasAstGrep}`,
+    );
   }
 
   // Load configuration
@@ -413,35 +743,32 @@ export async function runPatternCheck(options: {
     console.log(`Loaded ${config.rules.length} pattern check rule(s)`);
   }
 
-  // Check each rule
+  // Check each rule using appropriate tool
   for (const rule of config.rules) {
     if (verbose) {
-      console.log(`\nChecking rule: ${rule.id}`);
+      const toolName =
+        rule.type === "ast" ? "ast-grep" : hasRipgrep ? "ripgrep" : "internal";
+      console.log(`\nChecking rule: ${rule.id} (using ${toolName})`);
     }
 
-    const files = await getFilesForRule(rule, rootDir);
+    const ruleViolations = await checkWithTools(
+      rule,
+      rootDir,
+      hasRipgrep,
+      hasAstGrep,
+    );
+
+    // Track checked files
+    for (const v of ruleViolations) {
+      checkedFilesSet.add(v.file);
+    }
+
+    violations.push(...ruleViolations);
 
     if (verbose) {
-      console.log(`  Found ${files.length} file(s) to check`);
-    }
-
-    for (const file of files) {
-      const fullPath = join(rootDir, file);
-      checkedFilesSet.add(file);
-
-      const fileViolations = await checkFile(fullPath, rule);
-
-      if (fileViolations.length > 0) {
-        // Update file path to be relative
-        for (const v of fileViolations) {
-          v.file = file;
-        }
-        violations.push(...fileViolations);
-      }
+      console.log(`  Found ${ruleViolations.length} violation(s)`);
     }
   }
-
-  checkedFiles = checkedFilesSet.size;
 
   // Count by severity
   const errorCount = violations.filter(
@@ -454,7 +781,7 @@ export async function runPatternCheck(options: {
   return {
     success: errorCount === 0,
     violations,
-    checkedFiles,
+    checkedFiles: checkedFilesSet.size,
     errorCount,
     warningCount,
   };

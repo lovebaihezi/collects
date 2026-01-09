@@ -5,8 +5,6 @@ import {
   matchGlob,
   matchesAnyGlob,
   loadConfig,
-  checkFile,
-  getFilesForRule,
   runPatternCheck,
   type PatternRule,
   type PatternCheckConfig,
@@ -149,116 +147,6 @@ describe("pattern-check", () => {
 
       const loaded = await loadConfig(CONFIG_FILE);
       expect(loaded.version).toBe(1);
-    });
-  });
-
-  describe("checkFile", () => {
-    const rule: PatternRule = {
-      id: "test-rule",
-      pattern: "println!\\(",
-      files: ["**/*.rs"],
-      severity: "error",
-      message: "No println!",
-      explanation: "Use tracing instead",
-    };
-
-    test("finds pattern violations", async () => {
-      const filePath = join(TEST_DIR, "test.rs");
-      await createTestFile("test.rs", 'println!("hello");');
-
-      const violations = await checkFile(filePath, rule);
-
-      expect(violations).toHaveLength(1);
-      expect(violations[0].line).toBe(1);
-      expect(violations[0].column).toBe(1);
-      expect(violations[0].match).toBe("println!(");
-    });
-
-    test("finds multiple violations in same file", async () => {
-      const filePath = join(TEST_DIR, "test.rs");
-      await createTestFile(
-        "test.rs",
-        `fn main() {
-    println!("hello");
-    let x = 1;
-    println!("world");
-}`,
-      );
-
-      const violations = await checkFile(filePath, rule);
-
-      expect(violations).toHaveLength(2);
-      expect(violations[0].line).toBe(2);
-      expect(violations[1].line).toBe(4);
-    });
-
-    test("finds multiple violations on same line", async () => {
-      const filePath = join(TEST_DIR, "test.rs");
-      await createTestFile("test.rs", 'println!("a"); println!("b");');
-
-      const violations = await checkFile(filePath, rule);
-
-      expect(violations).toHaveLength(2);
-      expect(violations[0].column).toBe(1);
-      expect(violations[1].column).toBe(16);
-    });
-
-    test("returns empty array for clean file", async () => {
-      const filePath = join(TEST_DIR, "test.rs");
-      await createTestFile(
-        "test.rs",
-        `fn main() {
-    tracing::info!("hello");
-}`,
-      );
-
-      const violations = await checkFile(filePath, rule);
-      expect(violations).toHaveLength(0);
-    });
-  });
-
-  describe("getFilesForRule", () => {
-    test("filters files by include patterns", async () => {
-      await createTestFile("src/lib.rs", "// lib");
-      await createTestFile("src/main.rs", "// main");
-      await createTestFile("src/util.ts", "// ts");
-
-      const rule: PatternRule = {
-        id: "test",
-        pattern: "test",
-        files: ["**/*.rs"],
-        severity: "error",
-        message: "",
-        explanation: "",
-      };
-
-      const files = await getFilesForRule(rule, TEST_DIR);
-
-      expect(files).toContain("src/lib.rs");
-      expect(files).toContain("src/main.rs");
-      expect(files).not.toContain("src/util.ts");
-    });
-
-    test("excludes files matching exclude patterns", async () => {
-      await createTestFile("src/lib.rs", "// lib");
-      await createTestFile("src/main.rs", "// main");
-      await createTestFile("src/tests/unit.rs", "// test");
-
-      const rule: PatternRule = {
-        id: "test",
-        pattern: "test",
-        files: ["**/*.rs"],
-        exclude: ["**/main.rs", "**/tests/**"],
-        severity: "error",
-        message: "",
-        explanation: "",
-      };
-
-      const files = await getFilesForRule(rule, TEST_DIR);
-
-      expect(files).toContain("src/lib.rs");
-      expect(files).not.toContain("src/main.rs");
-      expect(files).not.toContain("src/tests/unit.rs");
     });
   });
 

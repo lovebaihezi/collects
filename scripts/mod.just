@@ -112,8 +112,8 @@ migration-check: install
 migration-lock: install
     bun run main.ts migration-lock
 
-# Check for forbidden patterns in source files
-# Uses rules defined in .pattern-checks.json at the repository root
+# Check for forbidden patterns in source files using ripgrep and ast-grep
+# Uses rules defined in .pattern-checks.jsonc at the repository root
 # Usage: just scripts::pattern-check
 pattern-check: install
     bun run main.ts pattern-check

@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://github.com/lqxc-org/collects/blob/main/scripts/gh-actions/pattern-check.schema.json",
   "title": "Pattern Check Configuration",
-  "description": "Configuration file for the pattern-check script that enforces coding standards via pattern matching",
+  "description": "Configuration file for the pattern-check script that enforces coding standards via ast-grep and ripgrep",
   "type": "object",
   "required": ["version", "rules"],
   "properties": {
@@ -31,16 +31,52 @@
     "Rule": {
       "type": "object",
       "description": "A single pattern check rule",
-      "required": ["id", "pattern", "files", "severity", "message", "explanation"],
+      "required": [
+        "id",
+        "pattern",
+        "files",
+        "severity",
+        "message",
+        "explanation"
+      ],
       "properties": {
         "id": {
           "type": "string",
           "description": "Unique identifier for this rule (e.g., 'no-println-in-lib')",
           "pattern": "^[a-z][a-z0-9-]*$"
         },
+        "type": {
+          "type": "string",
+          "description": "Type of pattern matching: 'regex' uses ripgrep (default), 'ast' uses ast-grep for semantic matching",
+          "enum": ["regex", "ast"],
+          "default": "regex"
+        },
         "pattern": {
           "type": "string",
-          "description": "JavaScript regex pattern to search for in file contents"
+          "description": "Pattern to search for: regex pattern for type='regex', ast-grep pattern for type='ast'"
+        },
+        "language": {
+          "type": "string",
+          "description": "Language for ast-grep patterns (required when type='ast'). E.g., 'rust', 'typescript', 'python'",
+          "enum": [
+            "rust",
+            "typescript",
+            "javascript",
+            "python",
+            "go",
+            "java",
+            "c",
+            "cpp",
+            "csharp",
+            "kotlin",
+            "swift",
+            "ruby",
+            "html",
+            "css",
+            "json",
+            "yaml",
+            "toml"
+          ]
         },
         "files": {
           "type": "array",

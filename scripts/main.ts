@@ -656,12 +656,14 @@ bun run main.ts artifact-check
 
 ### \`pattern-check\`
 
-Checks for forbidden patterns in source files. This tool scans the codebase for patterns
-that violate coding standards, with detailed explanations of why each pattern is forbidden.
+Checks for forbidden patterns in source files using **ripgrep** (fast regex search) and **ast-grep** (semantic AST-based search).
+This tool scans the codebase for patterns that violate coding standards, with detailed explanations of why each pattern is forbidden.
 
 **How it works:**
 1. Reads rules from \`.pattern-checks.jsonc\` at the repository root (JSONC supports comments).
-2. For each rule, scans files matching the specified glob patterns.
+2. For each rule, uses the appropriate search engine:
+   - \`type: "regex"\` (default): Uses ripgrep for fast regex-based search
+   - \`type: "ast"\`: Uses ast-grep for language-aware AST-based matching
 3. Reports violations with file location, matched text, and explanation.
 4. Exits with code 1 if any error-severity violations are found.
 
@@ -675,7 +677,9 @@ that violate coding standards, with detailed explanations of why each pattern is
   "rules": [
     {
       "id": "no-println-in-lib",
+      "type": "regex",  // or "ast" for AST-based matching
       "pattern": "println!\\\\(",
+      "language": "rust",  // required for type: "ast"
       "files": ["**/*.rs"],
       "exclude": ["**/main.rs", "**/build.rs"],
       "severity": "error",
@@ -688,7 +692,9 @@ that violate coding standards, with detailed explanations of why each pattern is
 
 **Rule fields:**
 - \`id\`: Unique identifier for the rule
-- \`pattern\`: JavaScript regex pattern to search for
+- \`type\`: "regex" (uses ripgrep) or "ast" (uses ast-grep for semantic matching)
+- \`pattern\`: Regex pattern for type="regex", or ast-grep pattern for type="ast"
+- \`language\`: Language for ast-grep (required when type="ast"): rust, typescript, python, etc.
 - \`files\`: Glob patterns for files to check
 - \`exclude\`: (optional) Glob patterns for files to skip
 - \`severity\`: "error" (fails CI) or "warning" (informational)

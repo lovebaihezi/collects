@@ -3,6 +3,7 @@
 use crate::database::{
     ContentStatus, ContentsListParams, ContentsUpdate, SqlStorage, SqlStorageError,
 };
+use crate::storage::{ContentDisposition, DEFAULT_PRESIGN_EXPIRY, R2Presigner};
 use crate::users::routes::AppState;
 use crate::users::session_auth::RequireAuth;
 use crate::users::storage::UserStorage;
@@ -403,24 +404,136 @@ where
 /// Get a view URL for content.
 ///
 /// POST /v1/contents/:id/view-url
+///
+/// This endpoint generates a presigned GET URL for viewing/downloading content
+/// from R2 storage. The URL is valid for 15 minutes by default.
 pub async fn v1_contents_view_url<S, U>(
-    State(_state): State<AppState<S, U>>,
+    State(state): State<AppState<S, U>>,
+    presigner: Option<axum::Extension<R2Presigner>>,
     auth: RequireAuth,
-    Path(_id): Path<String>,
+    Path(id): Path<String>,
     Json(payload): Json<V1ViewUrlRequest>,
 ) -> impl IntoResponse
 where
     S: SqlStorage,
     U: UserStorage,
 {
-    // Use request fields to avoid dead-code warnings while this is still a stub.
-    let _ = (payload.disposition, auth.username());
+    // Resolve user from JWT username
+    let user = match state.user_storage.get_user(auth.username()).await {
+        Ok(Some(user)) => user,
+        Ok(None) => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(V1ErrorResponse::not_found("User not found")),
+            )
+                .into_response();
+        }
+        Err(e) => {
+            tracing::error!("Failed to get user: {}", e);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(V1ErrorResponse::internal_error("Failed to get user")),
+            )
+                .into_response();
+        }
+    };
+
+    // Parse content ID
+    let content_id = match uuid::Uuid::parse_str(&id) {
+        Ok(id) => id,
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(V1ErrorResponse::bad_request("Invalid content ID format")),
+            )
+                .into_response();
+        }
+    };
+
+    // Get content and verify ownership
+    let content = match state.sql_storage.contents_get(content_id).await {
+        Ok(Some(content)) => content,
+        Ok(None) => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(V1ErrorResponse::not_found("Content not found")),
+            )
+                .into_response();
+        }
+        Err(e) => {
+            tracing::error!("Failed to get content: {:?}", e);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(V1ErrorResponse::internal_error("Failed to get content")),
+            )
+                .into_response();
+        }
+    };
+
+    // Verify ownership
+    if content.user_id != user.id {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(V1ErrorResponse::not_found("Content not found")),
+        )
+            .into_response();
+    }
+
+    // Parse disposition
+    let disposition = match ContentDisposition::try_from(payload.disposition.as_str()) {
+        Ok(d) => d,
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(V1ErrorResponse::bad_request(
+                    "Invalid disposition. Must be 'inline' or 'attachment'",
+                )),
+            )
+                .into_response();
+        }
+    };
+
+    // Generate presigned GET URL
+    let presigned = if let Some(axum::Extension(presigner)) = presigner {
+        match presigner
+            .presign_get(&content.storage_key, disposition, DEFAULT_PRESIGN_EXPIRY)
+            .await
+        {
+            Ok(presigned) => presigned,
+            Err(e) => {
+                tracing::error!("Failed to generate presigned URL: {:?}", e);
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(V1ErrorResponse::internal_error(
+                        "Failed to generate view URL",
+                    )),
+                )
+                    .into_response();
+            }
+        }
+    } else {
+        // Test mode: return mock URL
+        let expires_at =
+            chrono::Utc::now() + chrono::Duration::from_std(DEFAULT_PRESIGN_EXPIRY).unwrap();
+        let disp = match disposition {
+            ContentDisposition::Inline => "inline",
+            ContentDisposition::Attachment => "attachment",
+        };
+        crate::storage::PresignedUrl {
+            url: format!(
+                "https://test.r2.example.com/{}?mock=true&disposition={}",
+                content.storage_key, disp
+            ),
+            expires_at,
+        }
+    };
 
     (
         StatusCode::OK,
         Json(V1ViewUrlResponse {
-            url: "https://example.invalid/view".to_string(),
-            expires_at: "1970-01-01T00:00:00Z".to_string(),
+            url: presigned.url,
+            expires_at: presigned.expires_at.to_rfc3339(),
         }),
     )
+        .into_response()
 }

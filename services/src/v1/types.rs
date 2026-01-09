@@ -438,6 +438,28 @@ pub struct V1UploadsInitResponse {
     pub expires_at: String,
 }
 
+/// Request body for completing an upload.
+#[derive(Debug, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct V1UploadsCompleteRequest {
+    /// Upload ID from the init response.
+    pub upload_id: String,
+    /// Optional title for the content (defaults to filename).
+    #[serde(default)]
+    pub title: Option<String>,
+    /// Optional description for the content.
+    #[serde(default)]
+    pub description: Option<String>,
+}
+
+/// Response for upload completion.
+#[derive(Debug, Serialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct V1UploadsCompleteResponse {
+    /// The created content item.
+    pub content: V1ContentItem,
+}
+
 // =============================================================================
 // Me API Types
 // =============================================================================

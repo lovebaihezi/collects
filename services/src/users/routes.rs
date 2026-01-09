@@ -1424,6 +1424,30 @@ mod tests {
             // Mock: never rate limited
             Ok(false)
         }
+
+        async fn uploads_create(
+            &self,
+            _input: crate::database::UploadInsert,
+        ) -> Result<crate::database::UploadRow, crate::database::SqlStorageError> {
+            Err(crate::database::SqlStorageError::Db(
+                "MockSqlStorage.uploads_create: unimplemented".to_string(),
+            ))
+        }
+
+        async fn uploads_get(
+            &self,
+            _id: uuid::Uuid,
+        ) -> Result<Option<crate::database::UploadRow>, crate::database::SqlStorageError> {
+            Ok(None)
+        }
+
+        async fn uploads_complete(
+            &self,
+            _id: uuid::Uuid,
+            _user_id: uuid::Uuid,
+        ) -> Result<Option<crate::database::UploadRow>, crate::database::SqlStorageError> {
+            Ok(None)
+        }
     }
 
     fn create_test_app() -> Router {

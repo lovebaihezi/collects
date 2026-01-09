@@ -1,5 +1,6 @@
 use crate::config::Config;
 use crate::database::SqlStorage;
+use crate::storage::{CFDiskConfig, R2Presigner};
 use crate::users::routes::AppState;
 use crate::users::storage::UserStorage;
 use axum::{
@@ -67,6 +68,17 @@ where
     #[cfg(feature = "openapi")]
     if let Some(openapi_routes) = openapi::create_openapi_routes::<S, U>(&config) {
         router = router.merge(openapi_routes);
+    }
+
+    // Add R2 presigner extension if R2 is configured
+    if let Some(r2_config) = config.r2() {
+        let presigner = R2Presigner::new(CFDiskConfig {
+            account_id: r2_config.account_id().to_string(),
+            access_key_id: r2_config.access_key_id().to_string(),
+            secret_access_key: r2_config.secret_access_key().to_string(),
+            bucket: r2_config.bucket().to_string(),
+        });
+        router = router.layer(Extension(presigner));
     }
 
     router
@@ -418,6 +430,30 @@ mod tests {
         ) -> Result<bool, crate::database::SqlStorageError> {
             // Mock: never rate limited
             Ok(false)
+        }
+
+        async fn uploads_create(
+            &self,
+            _input: crate::database::UploadInsert,
+        ) -> Result<crate::database::UploadRow, crate::database::SqlStorageError> {
+            Err(crate::database::SqlStorageError::Db(
+                "MockSqlStorage.uploads_create: unimplemented".to_string(),
+            ))
+        }
+
+        async fn uploads_get(
+            &self,
+            _id: uuid::Uuid,
+        ) -> Result<Option<crate::database::UploadRow>, crate::database::SqlStorageError> {
+            Ok(None)
+        }
+
+        async fn uploads_complete(
+            &self,
+            _id: uuid::Uuid,
+            _user_id: uuid::Uuid,
+        ) -> Result<Option<crate::database::UploadRow>, crate::database::SqlStorageError> {
+            Ok(None)
         }
     }
 

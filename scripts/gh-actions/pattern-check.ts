@@ -7,6 +7,7 @@
  * Uses:
  * - @ast-grep/napi for AST-based semantic pattern matching
  * - ripgrep-js for fast regex-based text search (requires ripgrep binary)
+ * - Bun.file() for native Bun file I/O operations
  *
  * Configuration is defined in `.pattern-checks.jsonc` at the repository root.
  *
@@ -16,7 +17,7 @@
  * - Detect security anti-patterns (e.g., hardcoded secrets patterns)
  */
 
-import { readFile, stat, readdir } from "fs/promises";
+import { readdir } from "fs/promises";
 import { join, dirname, relative } from "path";
 import { fileURLToPath } from "url";
 import { ripGrep, type Match } from "ripgrep-js";
@@ -175,21 +176,21 @@ function stripJsoncComments(content: string): string {
 export async function loadConfig(
   configPath: string = CONFIG_FILE,
 ): Promise<PatternCheckConfig> {
-  try {
-    const content = await readFile(configPath, "utf-8");
-    const jsonContent = stripJsoncComments(content);
-    return JSON.parse(jsonContent) as PatternCheckConfig;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      // Return empty config if file doesn't exist
-      return {
-        version: 1,
-        description: "No pattern checks configured",
-        rules: [],
-      };
-    }
-    throw error;
+  const file = Bun.file(configPath);
+  const exists = await file.exists();
+
+  if (!exists) {
+    // Return empty config if file doesn't exist
+    return {
+      version: 1,
+      description: "No pattern checks configured",
+      rules: [],
+    };
   }
+
+  const content = await file.text();
+  const jsonContent = stripJsoncComments(content);
+  return JSON.parse(jsonContent) as PatternCheckConfig;
 }
 
 /**
@@ -408,7 +409,8 @@ async function searchWithAstGrep(
     for (const file of matchingFiles) {
       const fullPath = join(rootDir, file);
       try {
-        const content = await readFile(fullPath, "utf-8");
+        const bunFile = Bun.file(fullPath);
+        const content = await bunFile.text();
         const root = parse(lang, content);
         const pattern = root.root().find(patternStr);
 
@@ -595,7 +597,13 @@ async function checkFileInternal(
   const violations: Violation[] = [];
 
   try {
-    const content = await readFile(filePath, "utf-8");
+    const bunFile = Bun.file(filePath);
+    const exists = await bunFile.exists();
+    if (!exists) {
+      return violations;
+    }
+
+    const content = await bunFile.text();
     const lines = content.split("\n");
     const regex = new RegExp(rule.pattern, "g");
 
@@ -622,9 +630,7 @@ async function checkFileInternal(
       }
     }
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-      console.warn(`Warning: Could not read file ${filePath}: ${error}`);
-    }
+    console.warn(`Warning: Could not read file ${filePath}: ${error}`);
   }
 
   return violations;
@@ -645,9 +651,9 @@ export async function runPatternCheck(options: {
   const violations: Violation[] = [];
   const checkedFilesSet = new Set<string>();
 
-  // Check if root directory exists
+  // Check if root directory exists by trying to read it
   try {
-    await stat(rootDir);
+    await readdir(rootDir);
   } catch {
     return {
       success: false,

@@ -116,6 +116,11 @@ jobs:
           toolchain: nightly
           targets: ${{ matrix.target }}
 
+      - name: Cache Rust dependencies
+        uses: swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
       - name: Setup Just
         uses: extractions/setup-just@v2
 

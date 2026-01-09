@@ -1,0 +1,60 @@
+# Test cases for no-println-in-lib rule
+id: no-println-in-lib
+
+valid:
+  # Using tracing macros is allowed
+  - |
+    fn main() {
+        tracing::info!("Hello, world!");
+    }
+  - |
+    fn process() {
+        tracing::debug!("Processing data");
+    }
+  - |
+    fn handle_error() {
+        tracing::error!("Something went wrong");
+    }
+  # eprintln! is different (writes to stderr, often used for errors)
+  - |
+    fn report_error() {
+        eprintln!("Error occurred");
+    }
+  # print! without newline is different macro
+  - |
+    fn prompt() {
+        print!("Enter value: ");
+    }
+
+invalid:
+  # Basic println! usage
+  - |
+    fn greet() {
+        println!("Hello, world!");
+    }
+  # println! with format arguments
+  - |
+    fn log_value() {
+        let value = 42;
+        println!("Value: {}", value);
+    }
+  # println! with multiple arguments
+  - |
+    fn debug_info() {
+        let a = 1;
+        let b = 2;
+        let c = 3;
+        println!("{} - {} - {}", a, b, c);
+    }
+  # Empty println!
+  - |
+    fn newline() {
+        println!();
+    }
+  # println! in nested function
+  - |
+    fn outer() {
+        fn inner() {
+            println!("nested");
+        }
+    }

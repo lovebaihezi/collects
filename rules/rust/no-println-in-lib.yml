@@ -1,0 +1,35 @@
+# Rule: no-println-in-lib
+# Avoid println! in library code - use tracing crate instead
+#
+# println! writes directly to stdout and bypasses structured logging,
+# making it difficult to control log levels, filter logs, or integrate
+# with observability tools.
+
+id: no-println-in-lib
+language: Rust
+severity: warning
+message: Avoid println! in library code - use tracing macros instead
+note: |
+  The `println!` macro writes directly to stdout and bypasses structured logging.
+  This makes it difficult to:
+  - Control log levels
+  - Filter logs in production
+  - Integrate with observability tools
+
+  Use the `tracing` crate instead:
+  - `tracing::info!()` for informational messages
+  - `tracing::debug!()` for debug output
+  - `tracing::warn!()` for warnings
+  - `tracing::error!()` for errors
+
+rule:
+  pattern: println!($$$ARGS)
+
+# Only apply to library code, exclude binaries and build scripts
+ignores:
+  - "**/main.rs"
+  - "**/bin/**"
+  - "**/build.rs"
+  - "**/build/**"
+  - "**/*_test.rs"
+  - "**/tests/**"

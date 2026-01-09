@@ -12,7 +12,7 @@ use utoipa::OpenApi;
 use utoipa_scalar::{Scalar, Servable};
 
 use crate::auth::{self, JwksKeyResolver};
-use crate::config::Config;
+use crate::config::{Config, Env};
 use crate::database::SqlStorage;
 use crate::users::routes::AppState;
 use crate::users::storage::UserStorage;
@@ -110,7 +110,6 @@ impl utoipa::Modify for SecurityAddon {
 /// - `internal` (collects-internal.lqxclqxc.com)
 /// - `test-internal` (collects-test-internal.lqxclqxc.com)
 pub fn is_openapi_enabled(config: &Config) -> bool {
-    use crate::config::Env;
     matches!(config.environment(), Env::Internal | Env::TestInternal)
 }
 
@@ -175,7 +174,6 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::Env;
 
     #[test]
     fn test_openapi_enabled_internal() {

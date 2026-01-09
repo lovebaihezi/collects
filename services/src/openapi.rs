@@ -1,9 +1,8 @@
 //! OpenAPI documentation module.
 //!
 //! This module provides OpenAPI/Swagger documentation for the Collects API.
-//! It is only compiled when the `openapi` feature is enabled, and routes are
-//! only accessible in internal environments (internal, test-internal) and
-//! protected by Cloudflare Zero Trust authentication.
+//! Routes are only accessible in internal environments (internal, test-internal)
+//! and protected by Cloudflare Zero Trust authentication.
 
 use std::sync::Arc;
 

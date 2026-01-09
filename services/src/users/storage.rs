@@ -344,6 +344,32 @@ impl MockUserStorage {
     pub fn clear(&self) {
         self.users.write().expect("lock poisoned").clear();
     }
+
+    /// Creates a `MockUserStorage` with users that have specific UUIDs (for testing).
+    ///
+    /// # Arguments
+    ///
+    /// * `users` - An iterator of `(id, username, secret)` tuples.
+    #[cfg(test)]
+    pub fn with_users_and_ids<I, S1, S2>(users: I) -> Self
+    where
+        I: IntoIterator<Item = (uuid::Uuid, S1, S2)>,
+        S1: Into<String>,
+        S2: Into<String>,
+    {
+        let map: std::collections::HashMap<String, StoredUser> = users
+            .into_iter()
+            .map(|(id, username, secret)| {
+                let username_str = username.into();
+                let user = StoredUser::with_id(id, username_str.clone(), secret);
+                (username_str, user)
+            })
+            .collect();
+
+        Self {
+            users: std::sync::Arc::new(std::sync::RwLock::new(map)),
+        }
+    }
 }
 
 impl UserStorage for MockUserStorage {

@@ -175,9 +175,32 @@ mod tests {
 
         async fn contents_get(
             &self,
-            _id: uuid::Uuid,
+            id: uuid::Uuid,
         ) -> Result<Option<crate::database::ContentRow>, crate::database::SqlStorageError> {
-            Ok(None)
+            // Return mock content for the test UUID (accept any user_id since we can't predict it in tests)
+            if id == uuid::Uuid::parse_str("00000000-0000-0000-0000-000000000000").unwrap() {
+                Ok(Some(crate::database::ContentRow {
+                    id,
+                    // Use the first byte repeated as UUID so any test user will match
+                    // This is a hack for testing - the actual user_id will be verified by the handler
+                    user_id: test_user_id(),
+                    title: "Test Content".to_string(),
+                    description: Some("Test description".to_string()),
+                    storage_backend: "r2".to_string(),
+                    storage_profile: "default".to_string(),
+                    storage_key: "test-key".to_string(),
+                    content_type: "image/jpeg".to_string(),
+                    file_size: 1024,
+                    status: "active".to_string(),
+                    visibility: "private".to_string(),
+                    trashed_at: None,
+                    archived_at: None,
+                    created_at: chrono::Utc::now(),
+                    updated_at: chrono::Utc::now(),
+                }))
+            } else {
+                Ok(None)
+            }
         }
 
         async fn contents_list_for_user(
@@ -434,11 +457,21 @@ mod tests {
 
         async fn uploads_create(
             &self,
-            _input: crate::database::UploadInsert,
+            input: crate::database::UploadInsert,
         ) -> Result<crate::database::UploadRow, crate::database::SqlStorageError> {
-            Err(crate::database::SqlStorageError::Db(
-                "MockSqlStorage.uploads_create: unimplemented".to_string(),
-            ))
+            Ok(crate::database::UploadRow {
+                id: uuid::Uuid::new_v4(),
+                user_id: input.user_id,
+                storage_backend: input.storage_backend,
+                storage_profile: input.storage_profile,
+                storage_key: input.storage_key,
+                content_type: input.content_type,
+                file_size: input.file_size,
+                status: "pending".to_string(),
+                expires_at: input.expires_at,
+                created_at: chrono::Utc::now(),
+                completed_at: None,
+            })
         }
 
         async fn uploads_get(
@@ -484,6 +517,16 @@ mod tests {
             "test-jwt-secret-key-for-local-development",
         )
         .unwrap()
+    }
+
+    // Fixed test user ID for consistent testing
+    fn test_user_id() -> uuid::Uuid {
+        uuid::Uuid::parse_str("11111111-1111-1111-1111-111111111111").unwrap()
+    }
+
+    // Helper to create mock user storage with a fixed test user ID
+    fn test_user_storage() -> MockUserStorage {
+        MockUserStorage::with_users_and_ids([(test_user_id(), "testuser", "test-secret")])
     }
 
     // MVP v1 API: Protected endpoints require Bearer token authentication.
@@ -567,7 +610,7 @@ mod tests {
     #[tokio::test]
     async fn test_v1_uploads_init_with_valid_auth() {
         let sql_storage = MockSqlStorage { is_connected: true };
-        let user_storage = MockUserStorage::new();
+        let user_storage = test_user_storage();
         let config = Config::new_for_test();
         let app = routes(sql_storage, user_storage, config).await;
 
@@ -617,7 +660,7 @@ mod tests {
     #[tokio::test]
     async fn test_v1_contents_view_url_with_valid_auth() {
         let sql_storage = MockSqlStorage { is_connected: true };
-        let user_storage = MockUserStorage::new();
+        let user_storage = test_user_storage();
         let config = Config::new_for_test();
         let app = routes(sql_storage, user_storage, config).await;
 

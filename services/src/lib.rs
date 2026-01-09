@@ -20,6 +20,8 @@ pub mod collects;
 pub mod config;
 pub mod database;
 pub mod internal;
+#[cfg(feature = "openapi")]
+pub mod openapi;
 pub mod storage;
 pub mod telemetry;
 pub mod users;
@@ -54,11 +56,20 @@ where
     // v1 API routes from dedicated module
     let v1_routes = v1::create_routes::<S, U>();
 
-    Router::new()
+    #[cfg_attr(not(feature = "openapi"), allow(unused_mut))]
+    let mut router = Router::new()
         .route("/is-health", get(health_check::<S, U>))
         .nest("/v1", v1_routes)
         .nest("/internal", internal_routes)
-        .nest("/auth", users::auth_routes::<S, U>())
+        .nest("/auth", users::auth_routes::<S, U>());
+
+    // Add OpenAPI documentation routes for internal environments
+    #[cfg(feature = "openapi")]
+    if let Some(openapi_routes) = openapi::create_openapi_routes::<S, U>(config.environment()) {
+        router = router.merge(openapi_routes);
+    }
+
+    router
         .fallback(any(catch_all))
         .layer(
             TraceLayer::new_for_http().make_span_with(|request: &Request<_>| {

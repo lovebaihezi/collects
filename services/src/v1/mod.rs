@@ -20,7 +20,10 @@ pub mod uploads;
 use crate::database::SqlStorage;
 use crate::users::routes::AppState;
 use crate::users::storage::UserStorage;
-use axum::{Router, routing::{delete, get, patch, post}};
+use axum::{
+    Router,
+    routing::{delete, get, patch, post},
+};
 
 /// Creates the v1 API routes.
 pub fn create_routes<S, U>() -> Router<AppState<S, U>>
@@ -34,10 +37,22 @@ where
         // Contents endpoints
         .route("/contents", get(contents::v1_contents_list::<S, U>))
         .route("/contents/{id}", get(contents::v1_contents_get::<S, U>))
-        .route("/contents/{id}", patch(contents::v1_contents_update::<S, U>))
-        .route("/contents/{id}/trash", post(contents::v1_contents_trash::<S, U>))
-        .route("/contents/{id}/restore", post(contents::v1_contents_restore::<S, U>))
-        .route("/contents/{id}/archive", post(contents::v1_contents_archive::<S, U>))
+        .route(
+            "/contents/{id}",
+            patch(contents::v1_contents_update::<S, U>),
+        )
+        .route(
+            "/contents/{id}/trash",
+            post(contents::v1_contents_trash::<S, U>),
+        )
+        .route(
+            "/contents/{id}/restore",
+            post(contents::v1_contents_restore::<S, U>),
+        )
+        .route(
+            "/contents/{id}/archive",
+            post(contents::v1_contents_archive::<S, U>),
+        )
         .route(
             "/contents/{id}/unarchive",
             post(contents::v1_contents_unarchive::<S, U>),
@@ -49,7 +64,8 @@ where
         // Content-Tags endpoints
         .route(
             "/contents/{id}/tags",
-            get(content_tags::v1_content_tags_list::<S, U>).post(content_tags::v1_content_tags_attach::<S, U>),
+            get(content_tags::v1_content_tags_list::<S, U>)
+                .post(content_tags::v1_content_tags_attach::<S, U>),
         )
         .route(
             "/contents/{id}/tags/{tag_id}",
@@ -74,12 +90,22 @@ where
             get(groups::v1_groups_get::<S, U>).patch(groups::v1_groups_update::<S, U>),
         )
         .route("/groups/{id}/trash", post(groups::v1_groups_trash::<S, U>))
-        .route("/groups/{id}/restore", post(groups::v1_groups_restore::<S, U>))
-        .route("/groups/{id}/archive", post(groups::v1_groups_archive::<S, U>))
-        .route("/groups/{id}/unarchive", post(groups::v1_groups_unarchive::<S, U>))
+        .route(
+            "/groups/{id}/restore",
+            post(groups::v1_groups_restore::<S, U>),
+        )
+        .route(
+            "/groups/{id}/archive",
+            post(groups::v1_groups_archive::<S, U>),
+        )
+        .route(
+            "/groups/{id}/unarchive",
+            post(groups::v1_groups_unarchive::<S, U>),
+        )
         .route(
             "/groups/{id}/contents",
-            get(groups::v1_groups_contents_list::<S, U>).post(groups::v1_groups_contents_add::<S, U>),
+            get(groups::v1_groups_contents_list::<S, U>)
+                .post(groups::v1_groups_contents_add::<S, U>),
         )
         .route(
             "/groups/{id}/contents/{content_id}",

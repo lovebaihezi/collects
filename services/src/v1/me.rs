@@ -32,7 +32,10 @@ use super::types::V1MeResponse;
 /// # Errors
 ///
 /// - 401 Unauthorized: Missing or invalid token
-pub async fn v1_me<S, U>(State(_state): State<AppState<S, U>>, auth: RequireAuth) -> impl IntoResponse
+pub async fn v1_me<S, U>(
+    State(_state): State<AppState<S, U>>,
+    auth: RequireAuth,
+) -> impl IntoResponse
 where
     S: SqlStorage,
     U: UserStorage,

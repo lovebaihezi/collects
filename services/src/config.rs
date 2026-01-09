@@ -129,10 +129,14 @@ mod tests {
             ("JWT_SECRET", "test-jwt-secret"),
             ("CF_ACCESS_TEAM_DOMAIN", "myteam.cloudflareaccess.com"),
             ("CF_ACCESS_AUD", "test-audience"),
+            ("CF_ACCOUNT_ID", "test-account-id"),
+            ("CF_ACCESS_KEY_ID", "test-access-key-id"),
+            ("CF_SECRET_ACCESS_KEY", "test-secret-access-key"),
+            ("CF_BUCKET", "test-bucket"),
         ])
         .expect("RawConfig should deserialize");
 
-        let config = Config::from_raw(raw).expect("internal config should build with Zero Trust");
+        let config = Config::from_raw(raw).expect("internal config should build with Zero Trust and R2 credentials");
         assert_eq!(
             config.cf_access_team_domain(),
             Some("myteam.cloudflareaccess.com")

@@ -26,6 +26,7 @@
 //! - Have a valid `exp` (expiration) claim
 //! - Have a `sub` (subject) claim containing the username
 //! - Have an `iss` (issuer) claim matching our ISSUER constant
+//! - Not be in the revoked tokens list
 
 use axum::{
     Json,
@@ -33,10 +34,24 @@ use axum::{
     http::{StatusCode, header::AUTHORIZATION, request::Parts},
     response::{IntoResponse, Response},
 };
+use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode};
 use serde::Serialize;
+use sha2::{Digest, Sha256};
 
 use super::otp::{ISSUER, SessionClaims};
-use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode};
+use crate::database::SqlStorage;
+use crate::users::routes::AppState;
+use crate::users::storage::UserStorage;
+
+/// Compute SHA256 hash of a token for revocation lookups.
+///
+/// Tokens are stored as hashes in the database for security - we never store
+/// the actual JWT, only its hash.
+pub fn hash_token(token: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(token.as_bytes());
+    format!("{:x}", hasher.finalize())
+}
 
 /// Authenticated user context extracted from a valid session JWT.
 ///
@@ -51,6 +66,7 @@ use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode};
 /// - Token signature is invalid
 /// - Token has expired
 /// - Token issuer doesn't match
+/// - Token has been revoked
 #[derive(Debug, Clone)]
 pub struct RequireAuth {
     /// The validated JWT claims
@@ -84,7 +100,7 @@ impl RequireAuth {
         use std::time::{SystemTime, UNIX_EPOCH};
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .unwrap()
+            .expect("Time went backwards")
             .as_secs() as i64;
 
         Self {
@@ -124,6 +140,13 @@ impl SessionAuthError {
         Self {
             error: "invalid_token".to_string(),
             message: reason.into(),
+        }
+    }
+
+    fn revoked_token() -> Self {
+        Self {
+            error: "revoked_token".to_string(),
+            message: "Token has been revoked".to_string(),
         }
     }
 
@@ -169,19 +192,23 @@ fn validate_session_token(token: &str, jwt_secret: &str) -> Result<SessionClaims
         jsonwebtoken::errors::ErrorKind::ExpiredSignature => "Token has expired".to_string(),
         jsonwebtoken::errors::ErrorKind::InvalidSignature => "Invalid token signature".to_string(),
         jsonwebtoken::errors::ErrorKind::InvalidIssuer => "Invalid token issuer".to_string(),
-        _ => format!("Token validation failed: {}", e),
+        _ => format!("Token validation failed: {e}"),
     })?;
 
     Ok(token_data.claims)
 }
 
-impl<S> FromRequestParts<S> for RequireAuth
+impl<S, U> FromRequestParts<AppState<S, U>> for RequireAuth
 where
-    S: Send + Sync,
+    S: SqlStorage,
+    U: UserStorage,
 {
     type Rejection = SessionAuthError;
 
-    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &AppState<S, U>,
+    ) -> Result<Self, Self::Rejection> {
         // Get JWT secret from request extensions (set via Extension layer)
         let config = parts
             .extensions
@@ -203,6 +230,42 @@ where
         // Validate the token
         let claims =
             validate_session_token(token, jwt_secret).map_err(SessionAuthError::invalid_token)?;
+
+        // Check if token has been revoked
+        // First check the in-memory cache for fast path, then fall back to database
+        let token_hash = hash_token(token);
+
+        // Fast path: check in-memory cache first
+        if state.revocation_cache.is_revoked(&token_hash) {
+            tracing::debug!(username = %claims.sub, "Token revoked (cache hit)");
+            return Err(SessionAuthError::revoked_token());
+        }
+
+        // Slow path: check database
+        match state
+            .sql_storage
+            .revoked_tokens_is_revoked(&token_hash)
+            .await
+        {
+            Ok(true) => {
+                // Token is revoked in DB but wasn't in cache - add to cache for future lookups
+                state.revocation_cache.add_revoked(&token_hash);
+                tracing::debug!(username = %claims.sub, "Token revoked (db hit, cached)");
+                return Err(SessionAuthError::revoked_token());
+            }
+            Ok(false) => {
+                // Token not revoked, continue
+            }
+            Err(e) => {
+                // Log error but don't fail authentication - revocation check is best-effort
+                // This prevents a database issue from blocking all authenticated requests
+                tracing::warn!(
+                    error = %e,
+                    username = %claims.sub,
+                    "Failed to check token revocation status"
+                );
+            }
+        }
 
         Ok(RequireAuth { claims })
     }
@@ -313,5 +376,38 @@ mod tests {
 
         let missing_config = SessionAuthError::missing_config();
         assert_eq!(missing_config.error, "server_error");
+
+        let revoked = SessionAuthError::revoked_token();
+        assert_eq!(revoked.error, "revoked_token");
+        assert_eq!(revoked.message, "Token has been revoked");
+    }
+
+    #[test]
+    fn test_hash_token() {
+        // Test that hash_token produces consistent results
+        let token = "my-test-token-123";
+        let hash1 = hash_token(token);
+        let hash2 = hash_token(token);
+
+        assert_eq!(hash1, hash2, "Same token should produce same hash");
+        assert_eq!(hash1.len(), 64, "SHA256 hex hash should be 64 characters");
+
+        // Test that different tokens produce different hashes
+        let different_hash = hash_token("different-token");
+        assert_ne!(
+            hash1, different_hash,
+            "Different tokens should produce different hashes"
+        );
+    }
+
+    #[test]
+    fn test_hash_token_known_value() {
+        // SHA256 of "test" is known
+        let hash = hash_token("test");
+        // SHA256("test") = 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08
+        assert_eq!(
+            hash,
+            "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+        );
     }
 }

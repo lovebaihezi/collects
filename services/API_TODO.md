@@ -119,7 +119,12 @@ R2 credentials (`CF_ACCOUNT_ID`, `CF_ACCESS_KEY_ID`, `CF_SECRET_ACCESS_KEY`, `CF
 
 ## Priority 2: Auth Completion
 
-- [ ] `POST /v1/auth/logout` — invalidate session
+- [x] `POST /auth/logout` — invalidate session (stateful token revocation)
+  - Migration: `20260109113800_add-revoked-tokens.sql`
+  - `revoked_tokens` table stores SHA256 hashes of revoked JWTs
+  - `RequireAuth` extractor checks revocation (cache first, then DB)
+  - In-memory cache via `foyer` for fast revocation lookups (10K capacity, LRU eviction)
+  - Requires: run migration + `just services::prepare <env>` to update SQLx cache
 - [ ] Successful OTP resets lockout impact (optional policy)
 - [ ] Auth event auditing (`audit_logs` entries for `auth.*` events)
 - [ ] `PATCH /internal/users/:id/status` — set `active|suspended|archived`

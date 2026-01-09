@@ -21,6 +21,11 @@
       "filename": "20260109101346_add-text-content-support.sql",
       "sha256": "03ff48348ad17ca0cd452ea8138fd82982ddd3e4f4ab1a15930bb3a3635fd334",
       "lockedAt": "2026-01-09T10:28:44.257Z"
+    },
+    {
+      "filename": "20260109113800_add-revoked-tokens.sql",
+      "sha256": "e7d7ad9d0dad257dd4926c113aedba3f9a39b12cd150d2b6b7ddd3d8eab98aa8",
+      "lockedAt": "2026-01-09T11:49:47.843Z"
     }
   ]
 }

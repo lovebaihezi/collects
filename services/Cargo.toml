@@ -21,6 +21,8 @@ opendal = { workspace = true }
 reqwest = { workspace = true }
 serde = { workspace = true }
 serde-env = { workspace = true }
+sha2 = { workspace = true }
+foyer = { workspace = true }
 ipnet = "2.11"
 tower = { workspace = true }
 tower-http = { workspace = true }

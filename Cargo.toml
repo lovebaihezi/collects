@@ -35,6 +35,8 @@ tracing-opentelemetry = "0.23"
 opentelemetry = "0.22"
 opentelemetry_sdk = "0.22"
 uuid = { version = "1", features = ["serde", "v7"] }
+sha2 = "0.10"
+foyer = "0.21"
 
 ehttp = { version = "0.5", features = ["json", "streaming", "native-async", "multipart"] }
 flume = "0.11"

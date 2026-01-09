@@ -255,6 +255,30 @@ pub trait SqlStorage: Clone + Send + Sync + 'static {
         ip_address: Option<IpAddr>,
         config: &OtpRateLimitConfig,
     ) -> impl Future<Output = Result<bool, SqlStorageError>> + Send;
+
+    // -------------------------------------------------------------------------
+    // Token revocation (logout support)
+    // -------------------------------------------------------------------------
+
+    /// Add a token to the revocation list.
+    ///
+    /// Called when a user logs out to invalidate their JWT session token.
+    /// The token_hash should be a SHA256 hex digest of the JWT.
+    fn revoked_tokens_add(
+        &self,
+        token_hash: &str,
+        username: &str,
+        expires_at: chrono::DateTime<chrono::Utc>,
+    ) -> impl Future<Output = Result<(), SqlStorageError>> + Send;
+
+    /// Check if a token has been revoked.
+    ///
+    /// Returns `true` if the token hash exists in the revoked_tokens table
+    /// and hasn't expired yet.
+    fn revoked_tokens_is_revoked(
+        &self,
+        token_hash: &str,
+    ) -> impl Future<Output = Result<bool, SqlStorageError>> + Send;
 }
 
 /// Minimal error type for SQL storage operations.
@@ -1953,5 +1977,45 @@ impl SqlStorage for PgStorage {
         }
 
         Ok(false)
+    }
+
+    async fn revoked_tokens_add(
+        &self,
+        token_hash: &str,
+        username: &str,
+        expires_at: chrono::DateTime<chrono::Utc>,
+    ) -> Result<(), SqlStorageError> {
+        sqlx::query!(
+            r#"
+            INSERT INTO revoked_tokens (token_hash, username, expires_at)
+            VALUES ($1, $2, $3)
+            "#,
+            token_hash,
+            username,
+            expires_at
+        )
+        .execute(&self.pool)
+        .await
+        .map_err(|e| SqlStorageError::Db(e.to_string()))?;
+
+        Ok(())
+    }
+
+    async fn revoked_tokens_is_revoked(&self, token_hash: &str) -> Result<bool, SqlStorageError> {
+        let is_revoked = sqlx::query_scalar!(
+            r#"
+            SELECT EXISTS(
+                SELECT 1 FROM revoked_tokens
+                WHERE token_hash = $1
+                  AND expires_at > now()
+            ) as "exists!"
+            "#,
+            token_hash
+        )
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| SqlStorageError::Db(e.to_string()))?;
+
+        Ok(is_revoked)
     }
 }

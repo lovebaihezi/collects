@@ -8,7 +8,6 @@ include = ["LICENSE", "**/*.rs", "Cargo.toml"]
 
 [features]
 default = []
-openapi = ["utoipa", "utoipa-axum", "utoipa-scalar"]
 
 [dependencies]
 anyhow = { workspace = true}
@@ -39,9 +38,9 @@ mimalloc = { workspace = true }
 totp-rs = { version = "5.7.0", features = ["otpauth", "gen_secret"] }
 collects-utils = { path = "../utils" }
 uuid = { workspace = true }
-utoipa = { version = "5.3", features = ["axum_extras", "chrono", "uuid"], optional = true }
-utoipa-axum = { version = "0.2", optional = true }
-utoipa-scalar = { version = "0.3", features = ["axum"], optional = true }
+utoipa = { version = "5.3", features = ["axum_extras", "chrono", "uuid"] }
+utoipa-axum = "0.2"
+utoipa-scalar = { version = "0.3", features = ["axum"] }
 
 [dev-dependencies]
 axum-test = "18.1.0"

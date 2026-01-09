@@ -177,12 +177,10 @@ mod tests {
             &self,
             id: uuid::Uuid,
         ) -> Result<Option<crate::database::ContentRow>, crate::database::SqlStorageError> {
-            // Return mock content for the test UUID (accept any user_id since we can't predict it in tests)
-            if id == uuid::Uuid::parse_str("00000000-0000-0000-0000-000000000000").unwrap() {
+            // Return mock content for the test UUID
+            if id == test_content_id() {
                 Ok(Some(crate::database::ContentRow {
                     id,
-                    // Use the first byte repeated as UUID so any test user will match
-                    // This is a hack for testing - the actual user_id will be verified by the handler
                     user_id: test_user_id(),
                     title: "Test Content".to_string(),
                     description: Some("Test description".to_string()),
@@ -524,6 +522,11 @@ mod tests {
         uuid::Uuid::parse_str("11111111-1111-1111-1111-111111111111").unwrap()
     }
 
+    // Fixed test content ID for consistent testing
+    fn test_content_id() -> uuid::Uuid {
+        uuid::Uuid::parse_str("00000000-0000-0000-0000-000000000000").unwrap()
+    }
+
     // Helper to create mock user storage with a fixed test user ID
     fn test_user_storage() -> MockUserStorage {
         MockUserStorage::with_users_and_ids([(test_user_id(), "testuser", "test-secret")])
@@ -555,7 +558,8 @@ mod tests {
     #[tokio::test]
     async fn test_v1_me_with_valid_auth() {
         let sql_storage = MockSqlStorage { is_connected: true };
-        let user_storage = MockUserStorage::new();
+        // Using test_user_storage for consistency, though /v1/me doesn't query storage
+        let user_storage = test_user_storage();
         let config = Config::new_for_test();
         let app = routes(sql_storage, user_storage, config).await;
 

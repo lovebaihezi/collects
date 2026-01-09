@@ -154,6 +154,12 @@ mod tests {
     };
     use tower::ServiceExt;
 
+    // Test user ID constant for consistent mocking
+    const TEST_USER_ID: uuid::Uuid = uuid::Uuid::from_bytes([
+        0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77,
+        0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff,
+    ]);
+
     #[derive(Clone)]
     struct MockSqlStorage {
         is_connected: bool,
@@ -175,9 +181,31 @@ mod tests {
 
         async fn contents_get(
             &self,
-            _id: uuid::Uuid,
-        ) -> Result<Option<crate::database::ContentRow>, crate::database::SqlStorageError> {
-            Ok(None)
+            id: uuid::Uuid,
+            ) -> Result<Option<crate::database::ContentRow>, crate::database::SqlStorageError> {
+            // Mock: Return a test content if the ID is the all-zeros UUID
+            if id == uuid::Uuid::nil() {
+                // Return a mock content owned by TEST_USER_ID
+                Ok(Some(crate::database::ContentRow {
+                    id,
+                    user_id: TEST_USER_ID,
+                    title: "Test Content".to_string(),
+                    description: None,
+                    storage_backend: "r2".to_string(),
+                    storage_profile: "default".to_string(),
+                    storage_key: "test/file.jpg".to_string(),
+                    content_type: "image/jpeg".to_string(),
+                    file_size: 1024,
+                    status: "active".to_string(),
+                    visibility: "private".to_string(),
+                    trashed_at: None,
+                    archived_at: None,
+                    created_at: chrono::Utc::now(),
+                    updated_at: chrono::Utc::now(),
+                }))
+            } else {
+                Ok(None)
+            }
         }
 
         async fn contents_list_for_user(
@@ -434,11 +462,22 @@ mod tests {
 
         async fn uploads_create(
             &self,
-            _input: crate::database::UploadInsert,
+            input: crate::database::UploadInsert,
         ) -> Result<crate::database::UploadRow, crate::database::SqlStorageError> {
-            Err(crate::database::SqlStorageError::Db(
-                "MockSqlStorage.uploads_create: unimplemented".to_string(),
-            ))
+            // Mock: Return a successful upload record
+            Ok(crate::database::UploadRow {
+                id: uuid::Uuid::new_v4(),
+                user_id: input.user_id,
+                storage_backend: input.storage_backend,
+                storage_profile: input.storage_profile,
+                storage_key: input.storage_key,
+                content_type: input.content_type,
+                file_size: input.file_size,
+                status: "pending".to_string(),
+                expires_at: input.expires_at,
+                created_at: chrono::Utc::now(),
+                completed_at: None,
+            })
         }
 
         async fn uploads_get(
@@ -484,6 +523,13 @@ mod tests {
             "test-jwt-secret-key-for-local-development",
         )
         .unwrap()
+    }
+
+    // Helper to create a MockUserStorage with a test user with predictable ID
+    fn create_test_user_storage() -> MockUserStorage {
+        use crate::users::storage::StoredUser;
+        let user = StoredUser::with_id(TEST_USER_ID, "testuser", "test-secret");
+        MockUserStorage::with_stored_users(vec![user])
     }
 
     // MVP v1 API: Protected endpoints require Bearer token authentication.
@@ -567,7 +613,7 @@ mod tests {
     #[tokio::test]
     async fn test_v1_uploads_init_with_valid_auth() {
         let sql_storage = MockSqlStorage { is_connected: true };
-        let user_storage = MockUserStorage::new();
+        let user_storage = create_test_user_storage();
         let config = Config::new_for_test();
         let app = routes(sql_storage, user_storage, config).await;
 
@@ -617,7 +663,7 @@ mod tests {
     #[tokio::test]
     async fn test_v1_contents_view_url_with_valid_auth() {
         let sql_storage = MockSqlStorage { is_connected: true };
-        let user_storage = MockUserStorage::new();
+        let user_storage = create_test_user_storage();
         let config = Config::new_for_test();
         let app = routes(sql_storage, user_storage, config).await;
 

@@ -330,6 +330,27 @@ impl MockUserStorage {
         }
     }
 
+    /// Creates a `MockUserStorage` pre-populated with the given `StoredUser` instances.
+    ///
+    /// This is useful for tests that need specific user IDs.
+    ///
+    /// # Arguments
+    ///
+    /// * `users` - An iterator of `StoredUser` instances.
+    pub fn with_stored_users<I>(users: I) -> Self
+    where
+        I: IntoIterator<Item = StoredUser>,
+    {
+        let map: std::collections::HashMap<String, StoredUser> = users
+            .into_iter()
+            .map(|user| (user.username.clone(), user))
+            .collect();
+
+        Self {
+            users: std::sync::Arc::new(std::sync::RwLock::new(map)),
+        }
+    }
+
     /// Returns the number of users in the storage.
     pub fn len(&self) -> usize {
         self.users.read().expect("lock poisoned").len()

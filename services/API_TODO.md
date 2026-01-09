@@ -66,8 +66,8 @@ Lifecycle endpoints (`trash`, `restore`, `archive`, `unarchive`) share a helper:
 async fn v1_contents_set_status<S, U>(state, auth, id, new_status: ContentStatus) -> impl IntoResponse
 ```
 
-### 7) OpenAPI Documentation (feature-gated)
-Types use `#[cfg_attr(feature = "openapi", derive(ToSchema))]` for utoipa integration.
+### 7) OpenAPI Documentation
+Types derive `ToSchema` for utoipa integration. Routes are enabled at runtime only for internal environments.
 
 ---
 
@@ -222,5 +222,5 @@ TODO:
 **Infrastructure**
 - SQL queries via `SqlStorage` trait + `PgStorage` impl
 - Handler extraction into `src/v1/` submodules
-- OpenAPI documentation (utoipa, feature-gated)
+- OpenAPI documentation (utoipa, runtime-gated for internal environments)
 - Migration integrity checks (`.checksums.json`)

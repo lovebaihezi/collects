@@ -382,7 +382,7 @@ Any state intended to be updated from async completion must:
 - [ ] Update UI frame loop to use async sync
 
 ### Phase 6 — Rule checks / enforcement
-- [ ] Add CI checks to ban `Dep::state_mut`
+- [x] Add CI checks to ban `Dep::state_mut`
 - [ ] Add CI checks to enforce async trait usage
 - [ ] Document Send-safe state boundary
 

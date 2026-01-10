@@ -1,0 +1,55 @@
+id: no-dep-state-mut
+snapshots:
+  ? |
+    fn chained_call(dep: Dep) {
+        dep.state_mut::<Counter>().increment();
+    }
+  : labels:
+    - source: dep.state_mut::<Counter>()
+      style: primary
+      start: 32
+      end: 58
+  ? |
+    fn closure_usage(dep: Dep) {
+        let f = || {
+            dep.state_mut::<MyState>().value = 1;
+        };
+        f();
+    }
+  : labels:
+    - source: dep.state_mut::<MyState>()
+      style: primary
+      start: 54
+      end: 80
+  ? |
+    fn mutate_dep(dep: Dep) {
+        let state = dep.state_mut::<MyState>();
+        state.value = 42;
+    }
+  : labels:
+    - source: dep.state_mut::<MyState>()
+      style: primary
+      start: 42
+      end: 68
+  ? |
+    fn mutate_dep_no_turbofish(dep: Dep) {
+        let state: &mut MyState = dep.state_mut();
+        state.value = 42;
+    }
+  : labels:
+    - source: dep.state_mut()
+      style: primary
+      start: 69
+      end: 84
+  ? |
+    impl MyCommand {
+        fn execute(&self, dep: Dep) {
+            let state = dep.state_mut::<MyState>();
+            state.count += 1;
+        }
+    }
+  : labels:
+    - source: dep.state_mut::<MyState>()
+      style: primary
+      start: 71
+      end: 97

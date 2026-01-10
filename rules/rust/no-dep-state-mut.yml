@@ -1,0 +1,41 @@
+# Rule: no-dep-state-mut
+# Ban Dep::state_mut usage - commands must not mutate live state through Dep
+#
+# This rule enforces the async-safe command execution model:
+# - Commands read only from snapshots (owned clones) via CommandSnapshot
+# - Commands write only via queued mechanisms (Updater::set, Updater::set_state)
+# - Dep::state_mut is deprecated and restricted to crate-internal use only
+#
+# See TODO.md section 1.4 and docs/ai/state-model.md for details.
+
+id: no-dep-state-mut
+language: Rust
+severity: error
+message: "Dep::state_mut is banned - commands must not mutate live state through Dep"
+note: |
+  The `Dep::state_mut()` method is deprecated and restricted.
+  Commands must not mutate live state through `Dep`.
+  
+  Instead, commands should:
+  - Read state from `CommandSnapshot` (owned clones): `snap.state::<T>()`
+  - Write updates via queued mechanisms: `Updater::set()`, `Updater::set_state()`
+  
+  This restriction supports async-safe command execution where:
+  - Commands execute at end-of-frame from a queue
+  - Commands read only snapshot clones (not live references)
+  - Multiple async jobs can run concurrently without data races
+  
+  See TODO.md section 1.4 and docs/ai/state-model.md for details.
+
+rule:
+  any:
+    # Match method call .state_mut() on identifier 'dep' (the conventional name)
+    - pattern: dep.state_mut()
+    - pattern: dep.state_mut::<$TYPE>()
+    # Match explicit Dep::state_mut calls
+    - pattern: Dep::state_mut($$$)
+
+# Exclude the states crate itself where state_mut is intentionally defined
+# and the internal test that documents the restriction
+ignores:
+  - "**/states/src/**"

@@ -1,0 +1,100 @@
+# Test cases for no-dep-state-mut rule
+id: no-dep-state-mut
+
+valid:
+  # Using CommandSnapshot for reads is allowed
+  - |
+    fn process(snap: CommandSnapshot) {
+        let state: &MyState = snap.state();
+        println!("{:?}", state);
+    }
+  # Using Updater for writes is allowed
+  - |
+    fn update_state(updater: Updater) {
+        updater.set(MyCompute { value: 42 });
+    }
+  # Using Updater::set_state is allowed
+  - |
+    fn update_via_updater(updater: Updater) {
+        updater.set_state(MyState { value: 10 });
+    }
+  # Using get_state_ref (read-only) on Dep is allowed
+  - |
+    fn read_dep(dep: Dep) {
+        let state = dep.get_state_ref::<MyState>();
+        println!("{:?}", state);
+    }
+  # Using get_compute_ref (read-only) on Dep is allowed
+  - |
+    fn read_compute(dep: Dep) {
+        let compute = dep.get_compute_ref::<MyCompute>();
+        println!("{:?}", compute);
+    }
+  # StateCtx::state_mut is allowed for UI-only state (actual usage from modals.rs)
+  - |
+    fn update_qr_texture(state_ctx: &StateCtx, ui: &egui::Ui) {
+        let state = state_ctx.state_mut::<InternalUsersState>();
+        state.qr_texture = Some(ui.ctx().load_texture(
+            "qr_code",
+            qr_image,
+            egui::TextureOptions::NEAREST,
+        ));
+    }
+  # StateCtx::state_mut for ImagePreviewState (actual usage from app.rs)
+  - |
+    fn handle_paste(ctx: &egui::Context, state_ctx: &StateCtx) {
+        let image_state = state_ctx.state_mut::<ImagePreviewState>();
+        image_state.set_image_rgba(ctx, width, height, bytes);
+    }
+  # self.state.ctx.state_mut pattern (actual usage from app.rs)
+  - |
+    fn process_clipboard(&mut self, ctx: &egui::Context) {
+        let image_state = self.state.ctx.state_mut::<ImagePreviewState>();
+        image_state.set_image_rgba(ctx, width, height, bytes);
+    }
+  # Test harness state_mut (actual usage from tests)
+  - |
+    fn test_example() {
+        let state = harness.state_mut();
+        state.ctx.sync_computes();
+    }
+  # Using state_mut on a completely different type is allowed
+  - |
+    fn other_state_mut(cell: RefCell<MyState>) {
+        let state_mut = cell.borrow_mut();
+    }
+
+invalid:
+  # Basic Dep::state_mut call
+  - |
+    fn mutate_dep(dep: Dep) {
+        let state = dep.state_mut::<MyState>();
+        state.value = 42;
+    }
+  # Dep::state_mut without turbofish
+  - |
+    fn mutate_dep_no_turbofish(dep: Dep) {
+        let state: &mut MyState = dep.state_mut();
+        state.value = 42;
+    }
+  # Chained state_mut call
+  - |
+    fn chained_call(dep: Dep) {
+        dep.state_mut::<Counter>().increment();
+    }
+  # Dep::state_mut in a closure
+  - |
+    fn closure_usage(dep: Dep) {
+        let f = || {
+            dep.state_mut::<MyState>().value = 1;
+        };
+        f();
+    }
+  # Dep::state_mut in impl block
+  - |
+    impl MyCommand {
+        fn execute(&self, dep: Dep) {
+            let state = dep.state_mut::<MyState>();
+            state.count += 1;
+        }
+    }

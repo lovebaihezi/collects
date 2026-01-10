@@ -18,8 +18,20 @@ use super::types::{
 };
 
 /// List groups for the authenticated user.
-///
-/// GET /v1/groups?limit=50&offset=0&status=active
+#[utoipa::path(
+    get,
+    path = "/v1/groups",
+    tag = "groups",
+    params(V1GroupsListQuery),
+    responses(
+        (status = 200, description = "List of groups", body = V1GroupsListResponse),
+        (status = 401, description = "Unauthorized", body = V1ErrorResponse),
+        (status = 500, description = "Internal server error", body = V1ErrorResponse),
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn v1_groups_list<S, U>(
     State(state): State<AppState<S, U>>,
     auth: RequireAuth,
@@ -88,8 +100,21 @@ where
 }
 
 /// Create a new group.
-///
-/// POST /v1/groups
+#[utoipa::path(
+    post,
+    path = "/v1/groups",
+    tag = "groups",
+    request_body = V1GroupCreateRequest,
+    responses(
+        (status = 201, description = "Group created", body = V1GroupItem),
+        (status = 400, description = "Bad request", body = V1ErrorResponse),
+        (status = 401, description = "Unauthorized", body = V1ErrorResponse),
+        (status = 500, description = "Internal server error", body = V1ErrorResponse),
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn v1_groups_create<S, U>(
     State(state): State<AppState<S, U>>,
     auth: RequireAuth,
@@ -165,8 +190,24 @@ where
 }
 
 /// Get a specific group by ID.
-///
-/// GET /v1/groups/:id
+#[utoipa::path(
+    get,
+    path = "/v1/groups/{id}",
+    tag = "groups",
+    params(
+        ("id" = String, Path, description = "Group ID (UUID)")
+    ),
+    responses(
+        (status = 200, description = "Group item", body = V1GroupItem),
+        (status = 400, description = "Invalid group ID format", body = V1ErrorResponse),
+        (status = 401, description = "Unauthorized", body = V1ErrorResponse),
+        (status = 404, description = "Group not found", body = V1ErrorResponse),
+        (status = 500, description = "Internal server error", body = V1ErrorResponse),
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn v1_groups_get<S, U>(
     State(state): State<AppState<S, U>>,
     auth: RequireAuth,
@@ -237,8 +278,25 @@ where
 }
 
 /// Update a group.
-///
-/// PATCH /v1/groups/:id
+#[utoipa::path(
+    patch,
+    path = "/v1/groups/{id}",
+    tag = "groups",
+    params(
+        ("id" = String, Path, description = "Group ID (UUID)")
+    ),
+    request_body = V1GroupUpdateRequest,
+    responses(
+        (status = 200, description = "Group updated", body = V1GroupItem),
+        (status = 400, description = "Bad request", body = V1ErrorResponse),
+        (status = 401, description = "Unauthorized", body = V1ErrorResponse),
+        (status = 404, description = "Group not found", body = V1ErrorResponse),
+        (status = 500, description = "Internal server error", body = V1ErrorResponse),
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn v1_groups_update<S, U>(
     State(state): State<AppState<S, U>>,
     auth: RequireAuth,
@@ -383,8 +441,25 @@ where
 }
 
 /// Trash a group.
-///
-/// POST /v1/groups/:id/trash
+#[utoipa::path(
+    post,
+    path = "/v1/groups/{id}/trash",
+    tag = "groups",
+    params(
+        ("id" = String, Path, description = "Group ID (UUID)")
+    ),
+    responses(
+        (status = 200, description = "Group trashed", body = V1GroupItem),
+        (status = 400, description = "Invalid group ID format", body = V1ErrorResponse),
+        (status = 401, description = "Unauthorized", body = V1ErrorResponse),
+        (status = 403, description = "Forbidden", body = V1ErrorResponse),
+        (status = 404, description = "Group not found", body = V1ErrorResponse),
+        (status = 500, description = "Internal server error", body = V1ErrorResponse),
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn v1_groups_trash<S, U>(
     State(state): State<AppState<S, U>>,
     auth: RequireAuth,
@@ -430,8 +505,25 @@ where
 }
 
 /// Restore a group from trash.
-///
-/// POST /v1/groups/:id/restore
+#[utoipa::path(
+    post,
+    path = "/v1/groups/{id}/restore",
+    tag = "groups",
+    params(
+        ("id" = String, Path, description = "Group ID (UUID)")
+    ),
+    responses(
+        (status = 200, description = "Group restored", body = V1GroupItem),
+        (status = 400, description = "Invalid group ID format", body = V1ErrorResponse),
+        (status = 401, description = "Unauthorized", body = V1ErrorResponse),
+        (status = 403, description = "Forbidden", body = V1ErrorResponse),
+        (status = 404, description = "Group not found", body = V1ErrorResponse),
+        (status = 500, description = "Internal server error", body = V1ErrorResponse),
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn v1_groups_restore<S, U>(
     State(state): State<AppState<S, U>>,
     auth: RequireAuth,
@@ -477,8 +569,25 @@ where
 }
 
 /// Archive a group.
-///
-/// POST /v1/groups/:id/archive
+#[utoipa::path(
+    post,
+    path = "/v1/groups/{id}/archive",
+    tag = "groups",
+    params(
+        ("id" = String, Path, description = "Group ID (UUID)")
+    ),
+    responses(
+        (status = 200, description = "Group archived", body = V1GroupItem),
+        (status = 400, description = "Invalid group ID format", body = V1ErrorResponse),
+        (status = 401, description = "Unauthorized", body = V1ErrorResponse),
+        (status = 403, description = "Forbidden", body = V1ErrorResponse),
+        (status = 404, description = "Group not found", body = V1ErrorResponse),
+        (status = 500, description = "Internal server error", body = V1ErrorResponse),
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn v1_groups_archive<S, U>(
     State(state): State<AppState<S, U>>,
     auth: RequireAuth,
@@ -524,8 +633,25 @@ where
 }
 
 /// Unarchive a group.
-///
-/// POST /v1/groups/:id/unarchive
+#[utoipa::path(
+    post,
+    path = "/v1/groups/{id}/unarchive",
+    tag = "groups",
+    params(
+        ("id" = String, Path, description = "Group ID (UUID)")
+    ),
+    responses(
+        (status = 200, description = "Group unarchived", body = V1GroupItem),
+        (status = 400, description = "Invalid group ID format", body = V1ErrorResponse),
+        (status = 401, description = "Unauthorized", body = V1ErrorResponse),
+        (status = 403, description = "Forbidden", body = V1ErrorResponse),
+        (status = 404, description = "Group not found", body = V1ErrorResponse),
+        (status = 500, description = "Internal server error", body = V1ErrorResponse),
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn v1_groups_unarchive<S, U>(
     State(state): State<AppState<S, U>>,
     auth: RequireAuth,
@@ -571,8 +697,24 @@ where
 }
 
 /// List contents in a group.
-///
-/// GET /v1/groups/:id/contents
+#[utoipa::path(
+    get,
+    path = "/v1/groups/{id}/contents",
+    tag = "groups",
+    params(
+        ("id" = String, Path, description = "Group ID (UUID)")
+    ),
+    responses(
+        (status = 200, description = "List of group contents", body = V1GroupContentsListResponse),
+        (status = 400, description = "Invalid group ID format", body = V1ErrorResponse),
+        (status = 401, description = "Unauthorized", body = V1ErrorResponse),
+        (status = 404, description = "Group not found", body = V1ErrorResponse),
+        (status = 500, description = "Internal server error", body = V1ErrorResponse),
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn v1_groups_contents_list<S, U>(
     State(state): State<AppState<S, U>>,
     auth: RequireAuth,
@@ -667,8 +809,25 @@ where
 }
 
 /// Add content to a group.
-///
-/// POST /v1/groups/:id/contents
+#[utoipa::path(
+    post,
+    path = "/v1/groups/{id}/contents",
+    tag = "groups",
+    params(
+        ("id" = String, Path, description = "Group ID (UUID)")
+    ),
+    request_body = V1GroupAddContentRequest,
+    responses(
+        (status = 204, description = "Content added to group"),
+        (status = 400, description = "Bad request", body = V1ErrorResponse),
+        (status = 401, description = "Unauthorized", body = V1ErrorResponse),
+        (status = 404, description = "Group or content not found", body = V1ErrorResponse),
+        (status = 500, description = "Internal server error", body = V1ErrorResponse),
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn v1_groups_contents_add<S, U>(
     State(state): State<AppState<S, U>>,
     auth: RequireAuth,
@@ -801,8 +960,25 @@ where
 }
 
 /// Remove content from a group.
-///
-/// DELETE /v1/groups/:id/contents/:content_id
+#[utoipa::path(
+    delete,
+    path = "/v1/groups/{id}/contents/{content_id}",
+    tag = "groups",
+    params(
+        ("id" = String, Path, description = "Group ID (UUID)"),
+        ("content_id" = String, Path, description = "Content ID (UUID)")
+    ),
+    responses(
+        (status = 204, description = "Content removed from group"),
+        (status = 400, description = "Bad request", body = V1ErrorResponse),
+        (status = 401, description = "Unauthorized", body = V1ErrorResponse),
+        (status = 404, description = "Group or content not found", body = V1ErrorResponse),
+        (status = 500, description = "Internal server error", body = V1ErrorResponse),
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn v1_groups_contents_remove<S, U>(
     State(state): State<AppState<S, U>>,
     auth: RequireAuth,
@@ -909,8 +1085,25 @@ where
 }
 
 /// Reorder contents in a group.
-///
-/// PATCH /v1/groups/:id/contents/reorder
+#[utoipa::path(
+    patch,
+    path = "/v1/groups/{id}/contents/reorder",
+    tag = "groups",
+    params(
+        ("id" = String, Path, description = "Group ID (UUID)")
+    ),
+    request_body = V1GroupReorderRequest,
+    responses(
+        (status = 204, description = "Group contents reordered"),
+        (status = 400, description = "Bad request", body = V1ErrorResponse),
+        (status = 401, description = "Unauthorized", body = V1ErrorResponse),
+        (status = 404, description = "Group not found", body = V1ErrorResponse),
+        (status = 500, description = "Internal server error", body = V1ErrorResponse),
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn v1_groups_contents_reorder<S, U>(
     State(state): State<AppState<S, U>>,
     auth: RequireAuth,

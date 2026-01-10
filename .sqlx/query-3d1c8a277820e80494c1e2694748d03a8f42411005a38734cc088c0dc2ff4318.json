@@ -1,0 +1,184 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT\n                c.id as content_id,\n                c.user_id as content_user_id,\n                c.title,\n                c.description,\n                c.storage_backend,\n                c.storage_profile,\n                c.storage_key,\n                c.content_type,\n                c.file_size,\n                c.status as content_status,\n                c.visibility,\n                c.kind,\n                c.body,\n                c.trashed_at,\n                c.archived_at,\n                c.created_at as content_created_at,\n                c.updated_at,\n                sl.id as share_link_id,\n                sl.owner_id,\n                sl.token,\n                sl.name as share_link_name,\n                sl.permission,\n                sl.password_hash,\n                sl.max_access_count,\n                sl.access_count,\n                sl.expires_at,\n                sl.is_active,\n                sl.created_at as share_link_created_at\n            FROM share_links sl\n            JOIN content_shares cs ON cs.share_link_id = sl.id\n            JOIN contents c ON c.id = cs.content_id\n            WHERE sl.token = $1 AND c.status = 'active'\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "content_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "content_user_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "title",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 3,
+        "name": "description",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "storage_backend",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "storage_profile",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
+        "name": "storage_key",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 7,
+        "name": "content_type",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 8,
+        "name": "file_size",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 9,
+        "name": "content_status",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 10,
+        "name": "visibility",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 11,
+        "name": "kind",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 12,
+        "name": "body",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 13,
+        "name": "trashed_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 14,
+        "name": "archived_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 15,
+        "name": "content_created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 16,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 17,
+        "name": "share_link_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 18,
+        "name": "owner_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 19,
+        "name": "token",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 20,
+        "name": "share_link_name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 21,
+        "name": "permission",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 22,
+        "name": "password_hash",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 23,
+        "name": "max_access_count",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 24,
+        "name": "access_count",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 25,
+        "name": "expires_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 26,
+        "name": "is_active",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 27,
+        "name": "share_link_created_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      true,
+      true,
+      false,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "3d1c8a277820e80494c1e2694748d03a8f42411005a38734cc088c0dc2ff4318"
+}

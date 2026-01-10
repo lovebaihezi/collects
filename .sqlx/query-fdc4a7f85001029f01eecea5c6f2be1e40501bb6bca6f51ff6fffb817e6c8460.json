@@ -1,0 +1,95 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE share_links\n            SET\n                name = CASE WHEN $3 THEN $4 ELSE name END,\n                permission = CASE WHEN $5 THEN $6 ELSE permission END,\n                password_hash = CASE WHEN $7 THEN $8 ELSE password_hash END,\n                expires_at = CASE WHEN $9 THEN $10 ELSE expires_at END,\n                max_access_count = CASE WHEN $11 THEN $12 ELSE max_access_count END,\n                is_active = CASE WHEN $13 THEN $14 ELSE is_active END\n            WHERE id = $1 AND owner_id = $2\n            RETURNING\n                id, owner_id, token, name, permission, password_hash,\n                max_access_count, access_count, expires_at, is_active, created_at\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "owner_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "token",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 3,
+        "name": "name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 4,
+        "name": "permission",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 5,
+        "name": "password_hash",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
+        "name": "max_access_count",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 7,
+        "name": "access_count",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 8,
+        "name": "expires_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 9,
+        "name": "is_active",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 10,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Bool",
+        "Varchar",
+        "Bool",
+        "Varchar",
+        "Bool",
+        "Text",
+        "Bool",
+        "Timestamptz",
+        "Bool",
+        "Int4",
+        "Bool",
+        "Bool"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      false,
+      true,
+      true,
+      false,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "fdc4a7f85001029f01eecea5c6f2be1e40501bb6bca6f51ff6fffb817e6c8460"
+}

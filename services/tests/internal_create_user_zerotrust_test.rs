@@ -17,8 +17,8 @@ use collects_services::{
         ContentGroupItemRow, ContentGroupRow, ContentGroupShareRow, ContentRow, ContentShareRow,
         ContentStatus, ContentsInsert, ContentsListParams, ContentsUpdate, GroupCreate,
         GroupShareCreateForLink, GroupShareCreateForUser, GroupStatus, GroupUpdate,
-        GroupsListParams, ShareLinkCreate, ShareLinkRow, SqlStorage, SqlStorageError, TagCreate,
-        TagRow, TagUpdate, UploadInsert, UploadRow,
+        GroupsListParams, ShareLinkCreate, ShareLinkRow, ShareLinkUpdate, SqlStorage,
+        SqlStorageError, TagCreate, TagRow, TagUpdate, UploadInsert, UploadRow,
     },
     internal,
     users::AppState,
@@ -235,6 +235,67 @@ impl SqlStorage for MockSqlStorage {
         _share_link_id: uuid::Uuid,
     ) -> Result<bool, SqlStorageError> {
         Ok(false)
+    }
+
+    async fn share_links_get(
+        &self,
+        _id: uuid::Uuid,
+        _owner_id: uuid::Uuid,
+    ) -> Result<Option<ShareLinkRow>, SqlStorageError> {
+        Ok(None)
+    }
+
+    async fn share_links_update(
+        &self,
+        _id: uuid::Uuid,
+        _owner_id: uuid::Uuid,
+        _input: ShareLinkUpdate,
+    ) -> Result<Option<ShareLinkRow>, SqlStorageError> {
+        Ok(None)
+    }
+
+    async fn share_links_delete(
+        &self,
+        _id: uuid::Uuid,
+        _owner_id: uuid::Uuid,
+    ) -> Result<bool, SqlStorageError> {
+        Ok(false)
+    }
+
+    async fn share_links_increment_access(&self, _id: uuid::Uuid) -> Result<(), SqlStorageError> {
+        Ok(())
+    }
+
+    async fn content_shares_attach_link(
+        &self,
+        _content_id: uuid::Uuid,
+        _share_link_id: uuid::Uuid,
+        _created_by: uuid::Uuid,
+    ) -> Result<(), SqlStorageError> {
+        Ok(())
+    }
+
+    async fn group_shares_attach_link(
+        &self,
+        _group_id: uuid::Uuid,
+        _share_link_id: uuid::Uuid,
+        _created_by: uuid::Uuid,
+    ) -> Result<(), SqlStorageError> {
+        Ok(())
+    }
+
+    async fn contents_get_by_share_token(
+        &self,
+        _token: &str,
+    ) -> Result<Option<(ContentRow, ShareLinkRow)>, SqlStorageError> {
+        Ok(None)
+    }
+
+    async fn groups_get_by_share_token(
+        &self,
+        _token: &str,
+    ) -> Result<Option<(ContentGroupRow, ShareLinkRow, i64)>, SqlStorageError> {
+        Ok(None)
     }
 
     async fn content_shares_create_for_user(

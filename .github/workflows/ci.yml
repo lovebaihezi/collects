@@ -48,6 +48,9 @@ jobs:
 
       - name: Cache Rust dependencies
         uses: swatinem/rust-cache@v2
+        with:
+          # Only cache ~/.cargo registry and git, not target/
+          cache-targets: false
 
       - name: Install services dependencies (Bun)
         working-directory: scripts/services
@@ -92,6 +95,8 @@ jobs:
 
       - name: Cache Rust dependencies
         uses: swatinem/rust-cache@v2
+        with:
+          cache-targets: false
 
       - name: Setup Just
         uses: extractions/setup-just@v2
@@ -148,6 +153,8 @@ jobs:
 
       - name: Cache Rust dependencies
         uses: swatinem/rust-cache@v2
+        with:
+          cache-targets: false
 
       - name: Install scripts dependencies (Bun)
         working-directory: scripts
@@ -321,6 +328,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Free Disk Space
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: false
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: false # Keep clang linker needed for Rust
+          docker-images: true
+          swap-storage: true
+
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
@@ -346,6 +364,8 @@ jobs:
 
       - name: Cache Rust dependencies
         uses: swatinem/rust-cache@v2
+        with:
+          cache-targets: false
 
       - name: Run Services Tests
         run: just services::test-unit
@@ -357,12 +377,34 @@ jobs:
           github-token: ${{ secrets.COPILOT_INVOKER_TOKEN }}
           job-name: "Test: Services Unit Tests"
 
-  test:
-    name: "Test: UI Unit Tests"
+  # Matrix strategy for UI tests - each feature set gets its own runner
+  test-ui:
+    name: "Test: UI (${{ matrix.test-type }})"
     runs-on: ubuntu-latest
     needs: [format, lint, typos, migration-check, ast-grep]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - test-type: "default"
+            features: ""
+            cargo-args: ""
+          - test-type: "all-features"
+            features: "--all-features"
+            cargo-args: ""
     steps:
       - uses: actions/checkout@v4
+
+      - name: Free Disk Space
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: false
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: false # Keep clang linker needed for Rust
+          docker-images: true
+          swap-storage: true
 
       - name: Install System Dependencies
         run: |
@@ -394,21 +436,21 @@ jobs:
 
       - name: Cache Rust dependencies
         uses: swatinem/rust-cache@v2
+        with:
+          cache-targets: false
+          # Use matrix key to avoid cache collisions between feature sets
+          key: ${{ matrix.test-type }}
 
-      - name: Run Non-Internal Tests
+      - name: Run UI Tests (${{ matrix.test-type }})
         working-directory: ui
-        run: cargo test
-
-      - name: Run Internal Tests (all features)
-        working-directory: ui
-        run: cargo test --all-features
+        run: cargo test ${{ matrix.features }} ${{ matrix.cargo-args }}
 
       - name: Post CI Feedback on Failure
         if: failure() && github.event_name == 'pull_request'
         uses: ./.github/actions/ci-feedback
         with:
           github-token: ${{ secrets.COPILOT_INVOKER_TOKEN }}
-          job-name: "Test: UI Unit Tests"
+          job-name: "Test: UI (${{ matrix.test-type }})"
 
   build:
     name: "Build: UI Native"
@@ -417,6 +459,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Free Disk Space
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: false
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: false # Keep clang linker needed for Rust
+          docker-images: true
+          swap-storage: true
+
       - name: Install System Dependencies
         run: |
           sudo apt-get update
@@ -447,6 +500,8 @@ jobs:
 
       - name: Cache Rust dependencies
         uses: swatinem/rust-cache@v2
+        with:
+          cache-targets: false
 
       - name: Build UI
         run: just ui::release
@@ -465,6 +520,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Free Disk Space
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: false
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: false # Keep clang linker needed for Rust
+          docker-images: true
+          swap-storage: true
+
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
@@ -490,6 +556,8 @@ jobs:
 
       - name: Cache Rust dependencies
         uses: swatinem/rust-cache@v2
+        with:
+          cache-targets: false
 
       - name: Verify Services Build (sqlx offline mode)
         env:

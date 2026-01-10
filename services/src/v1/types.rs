@@ -1,8 +1,8 @@
 //! Shared types for the v1 API endpoints.
 
-use crate::database::{self, ContentRow, Visibility};
+use crate::database::{self, ContentRow, ShareLinkRow, SharePermission, Visibility};
 use serde::{Deserialize, Serialize};
-use utoipa::ToSchema;
+use utoipa::{IntoParams, ToSchema};
 
 // =============================================================================
 // Generic Error Response
@@ -45,7 +45,7 @@ impl V1ErrorResponse {
 // =============================================================================
 
 /// Query parameters for listing contents.
-#[derive(Debug, Deserialize, Default, ToSchema)]
+#[derive(Debug, Deserialize, Default, ToSchema, IntoParams)]
 pub struct V1ContentsListQuery {
     /// Maximum number of results to return (default: 50, max: 100)
     #[serde(default)]
@@ -264,7 +264,7 @@ pub struct V1ContentTagsAttachRequest {
 // =============================================================================
 
 /// Query parameters for listing groups.
-#[derive(Debug, Deserialize, Default, ToSchema)]
+#[derive(Debug, Deserialize, Default, ToSchema, IntoParams)]
 pub struct V1GroupsListQuery {
     /// Maximum number of results to return (default: 50, max: 100)
     #[serde(default)]
@@ -498,4 +498,214 @@ pub fn parse_visibility(s: &str) -> Option<Visibility> {
         "restricted" => Some(Visibility::Restricted),
         _ => None,
     }
+}
+
+/// Parse permission string to SharePermission enum.
+pub fn parse_share_permission(s: &str) -> Option<SharePermission> {
+    match s.to_lowercase().as_str() {
+        "view" => Some(SharePermission::View),
+        "download" => Some(SharePermission::Download),
+        _ => None,
+    }
+}
+
+// =============================================================================
+// Share Links API Types
+// =============================================================================
+
+fn default_view_permission() -> String {
+    "view".to_string()
+}
+
+/// Request body for creating a share link.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct V1ShareLinkCreateRequest {
+    /// Optional friendly name for the share link.
+    #[serde(default)]
+    pub name: Option<String>,
+    /// Permission level: "view" or "download". Default: "view".
+    #[serde(default = "default_view_permission")]
+    pub permission: String,
+    /// Optional password to protect the share link.
+    #[serde(default)]
+    pub password: Option<String>,
+    /// Optional expiration timestamp (ISO 8601 format).
+    #[serde(default)]
+    pub expires_at: Option<String>,
+    /// Optional maximum number of times the link can be accessed.
+    #[serde(default)]
+    pub max_access_count: Option<i32>,
+}
+
+/// Request body for updating a share link.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct V1ShareLinkUpdateRequest {
+    /// New name (optional, pass null to clear).
+    #[serde(default)]
+    pub name: Option<Option<String>>,
+    /// New permission level: "view" or "download".
+    #[serde(default)]
+    pub permission: Option<String>,
+    /// New password (optional, empty string removes password).
+    #[serde(default)]
+    pub password: Option<String>,
+    /// New expiration (optional, pass null to clear).
+    #[serde(default)]
+    pub expires_at: Option<Option<String>>,
+    /// New max access count (optional, pass null to clear).
+    #[serde(default)]
+    pub max_access_count: Option<Option<i32>>,
+    /// Whether the link is active.
+    #[serde(default)]
+    pub is_active: Option<bool>,
+}
+
+/// A share link in API responses.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct V1ShareLinkResponse {
+    /// Unique identifier (UUID).
+    pub id: String,
+    /// Unique share token for URLs.
+    pub token: String,
+    /// Optional friendly name.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    /// Permission level: "view" or "download".
+    pub permission: String,
+    /// Whether the link is password protected.
+    pub has_password: bool,
+    /// Expiration timestamp (ISO 8601 format).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expires_at: Option<String>,
+    /// Maximum number of accesses allowed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_access_count: Option<i32>,
+    /// Current access count.
+    pub access_count: i32,
+    /// Whether the link is currently active.
+    pub is_active: bool,
+    /// Timestamp when the link was created (ISO 8601 format).
+    pub created_at: String,
+    /// Full shareable URL.
+    pub share_url: String,
+}
+
+impl V1ShareLinkResponse {
+    /// Create a response from a ShareLinkRow with a base URL for constructing share URLs.
+    pub fn from_row(row: ShareLinkRow, base_url: &str) -> Self {
+        Self {
+            id: row.id.to_string(),
+            token: row.token.clone(),
+            name: row.name,
+            permission: row.permission,
+            has_password: row.password_hash.is_some(),
+            expires_at: row.expires_at.map(|t| t.to_rfc3339()),
+            max_access_count: row.max_access_count,
+            access_count: row.access_count,
+            is_active: row.is_active,
+            created_at: row.created_at.to_rfc3339(),
+            share_url: format!("{}/s/{}", base_url, row.token),
+        }
+    }
+}
+
+/// Response for listing share links.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct V1ShareLinksListResponse {
+    /// List of share links.
+    pub share_links: Vec<V1ShareLinkResponse>,
+}
+
+/// Request for creating a share link attached to a content item.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct V1ContentShareLinkCreateRequest {
+    /// Optional friendly name for the share link.
+    #[serde(default)]
+    pub name: Option<String>,
+    /// Permission level: "view" or "download". Default: "view".
+    #[serde(default = "default_view_permission")]
+    pub permission: String,
+    /// Optional password to protect the share link.
+    #[serde(default)]
+    pub password: Option<String>,
+    /// Optional expiration timestamp (ISO 8601 format).
+    #[serde(default)]
+    pub expires_at: Option<String>,
+    /// Optional maximum number of times the link can be accessed.
+    #[serde(default)]
+    pub max_access_count: Option<i32>,
+}
+
+/// Request for creating a share link attached to a group.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct V1GroupShareLinkCreateRequest {
+    /// Optional friendly name for the share link.
+    #[serde(default)]
+    pub name: Option<String>,
+    /// Permission level: "view" or "download". Default: "view".
+    #[serde(default = "default_view_permission")]
+    pub permission: String,
+    /// Optional password to protect the share link.
+    #[serde(default)]
+    pub password: Option<String>,
+    /// Optional expiration timestamp (ISO 8601 format).
+    #[serde(default)]
+    pub expires_at: Option<String>,
+    /// Optional maximum number of times the link can be accessed.
+    #[serde(default)]
+    pub max_access_count: Option<i32>,
+}
+
+// =============================================================================
+// Public Access API Types
+// =============================================================================
+
+/// Request body with password for accessing a protected share link.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct V1SharePasswordRequest {
+    /// Password for the share link.
+    pub password: String,
+}
+
+/// Response for public share link metadata.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct V1PublicShareResponse {
+    /// Type of shared content: "content" or "group".
+    pub content_type: String,
+    /// Title of the content or group.
+    pub title: String,
+    /// Optional description.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// Permission level: "view" or "download".
+    pub permission: String,
+    /// Number of files in the group (only for groups).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file_count: Option<i64>,
+    /// Whether this share link requires a password.
+    pub requires_password: bool,
+}
+
+/// Response containing a presigned view URL.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct V1PublicViewUrlResponse {
+    /// Presigned URL for viewing/downloading content.
+    pub url: String,
+    /// URL expiration timestamp (ISO 8601 format).
+    pub expires_at: String,
+}
+
+/// Request for getting a view URL from a public share.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct V1PublicViewUrlRequest {
+    /// Password if the share link is protected.
+    #[serde(default)]
+    pub password: Option<String>,
+    /// Content disposition: "inline" or "attachment".
+    #[serde(default = "default_inline_disposition")]
+    pub disposition: String,
+}
+
+fn default_inline_disposition() -> String {
+    "inline".to_string()
 }

@@ -117,7 +117,7 @@ R2 credentials (`CF_ACCOUNT_ID`, `CF_ACCESS_KEY_ID`, `CF_SECRET_ACCESS_KEY`, `CF
 
 ---
 
-## Priority 2: Auth Completion
+## Priority 2: Auth Completion ✅
 
 - [x] `POST /auth/logout` — invalidate session (stateful token revocation)
   - Migration: `20260109113800_add-revoked-tokens.sql`
@@ -125,28 +125,45 @@ R2 credentials (`CF_ACCOUNT_ID`, `CF_ACCESS_KEY_ID`, `CF_SECRET_ACCESS_KEY`, `CF
   - `RequireAuth` extractor checks revocation (cache first, then DB)
   - In-memory cache via `foyer` for fast revocation lookups (10K capacity, LRU eviction)
   - Requires: run migration + `just services::prepare <env>` to update SQLx cache
-- [ ] Successful OTP resets lockout impact (optional policy)
-- [ ] Auth event auditing (`audit_logs` entries for `auth.*` events)
-- [ ] `PATCH /internal/users/:id/status` — set `active|suspended|archived`
+
+**Deferred (not needed for MVP):**
+- OTP lockout policy, auth event auditing, user status management
 
 ---
 
-## Priority 3: Internal API Security
+## Priority 3: Internal API Security ✅
 
-Current gaps:
-- Zero Trust + JWT both required but NOT enforced together
-- Internal routes compiled in all builds (should be feature-gated)
+Internal routes (`/internal/*`) are protected by **Zero Trust only** (Cloudflare Access).
+No JWT session token is required — the CF Access identity is sufficient for admin operations.
 
-TODO:
-- [ ] Require BOTH Zero Trust token + JWT on `/internal/*`
-- [ ] Conditional compilation: `#[cfg(feature = "internal")]` for internal routes
-- [ ] Reject JWT-only requests to internal endpoints
-- [ ] Reject Zero-Trust-only requests (need JWT to identify user)
+**Implemented:**
+- [x] Zero Trust middleware applied via `create_internal_routes()` in `src/internal.rs`
+- [x] CF Access JWT validation with JWKS key resolution
+- [x] `ZeroTrustAuth` extractor available for handlers needing identity info
+
+**Remaining (optional hardening):**
+- [ ] Conditional compilation: `#[cfg(feature = "internal")]` to exclude internal routes from public builds
+- [ ] Audit logging for all internal API calls (who did what, when)
 
 ---
 
-## Priority 4: Authorization Rules
+## Priority 4: Sharing API
 
+**Share Links CRUD**
+- [ ] `POST /v1/share-links` — create link with `name`, `permission`, `password`, `expires_at`, `max_access_count`
+- [ ] `GET /v1/share-links` — list user's share links
+- [ ] `PATCH /v1/share-links/:id` — update/disable
+- [ ] `DELETE /v1/share-links/:id`
+
+**Attach Shares to Resources**
+- [ ] `POST /v1/contents/:id/share-link` — create share link for content
+- [ ] `POST /v1/groups/:id/share-link` — create share link for group
+
+**Public Access (unauthenticated)**
+- [ ] `GET /v1/public/share/:token` — verify link, return metadata
+- [ ] `POST /v1/public/share/:token/view-url` — return signed URL for download
+
+**Authorization Rules** (implements with sharing)
 - [ ] Owner-can-access rule for all private assets
 - [ ] Shares grant view/download permissions
 - [ ] Visibility enforcement:
@@ -156,29 +173,35 @@ TODO:
 
 ---
 
-## Priority 5: Sharing API
+## Priority 5: Upload Limits & Validation
 
-**Share Links**
-- [ ] `POST /v1/share-links` — create link with `name`, `permission`, `password`, `expires_at`, `max_access_count`
-- [ ] `GET /v1/share-links` — list user's share links
-- [ ] `PATCH /v1/share-links/:id` — update/disable
-- [ ] `DELETE /v1/share-links/:id`
+**Configuration:**
+- Max upload size: **5 GB**
+- Allowed MIME types:
 
-**Attach Shares**
-- [ ] `POST /v1/contents/:id/share-link`
-- [ ] `POST /v1/groups/:id/share-link`
+| Category | Types |
+|----------|-------|
+| Images | `image/png`, `image/jpeg`, `image/heic`, `image/heif` |
+| RAW Photos | `image/x-adobe-dng`, `image/dng` |
+| iOS Live Photo | `image/heic` + `video/quicktime` pair |
+| Video | `video/mp4`, `video/quicktime`, `video/x-msvideo`, `video/webm`, `video/x-matroska` |
+| Documents | `application/pdf`, `application/epub+zip`, `text/plain` |
+| Archives | `application/zip`, `application/x-cbz`, `application/gzip`, `application/x-tar` |
 
-**Public Access**
-- [ ] `GET /v1/public/share/:token` — verify link, return metadata
-- [ ] `POST /v1/public/share/:token/view-url` — return signed URL
+**Implementation:**
+- [ ] Add `max_upload_size` and `allowed_mime_types` to `Config`
+- [ ] Validate in `v1_uploads_init`:
+  - Reject if `file_size > 5GB` → 413 Payload Too Large
+  - Reject if `content_type` not in allowed list → 415 Unsupported Media Type
+- [ ] Structured logging for upload init/complete, view-url generation
 
 ---
 
-## Priority 6: Observability & Safety
+## Priority 6: Content Deletion & Cleanup
 
-- [ ] Upload limits (max file size, allowed MIME types in config)
-- [ ] Structured logging for upload init/complete, view-url generation
-- [ ] `DELETE /v1/contents/:id` — hard delete + storage object removal
+- [ ] `DELETE /v1/contents/:id` — hard delete content + R2 object removal
+- [ ] `DELETE /v1/groups/:id` — hard delete group (contents remain orphaned or cascade?)
+- [ ] Cleanup job for orphaned uploads (expired, never completed)
 
 ---
 

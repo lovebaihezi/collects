@@ -51,8 +51,19 @@ fn parse_datetime(s: &str) -> Option<chrono::DateTime<chrono::Utc>> {
 }
 
 /// List share links for the authenticated user.
-///
-/// GET /v1/share-links
+#[utoipa::path(
+    get,
+    path = "/v1/share-links",
+    tag = "share-links",
+    responses(
+        (status = 200, description = "List of share links", body = V1ShareLinksListResponse),
+        (status = 401, description = "Unauthorized", body = V1ErrorResponse),
+        (status = 500, description = "Internal server error", body = V1ErrorResponse),
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn v1_share_links_list<S, U>(
     State(state): State<AppState<S, U>>,
     auth: RequireAuth,
@@ -107,8 +118,21 @@ where
 }
 
 /// Create a new share link.
-///
-/// POST /v1/share-links
+#[utoipa::path(
+    post,
+    path = "/v1/share-links",
+    tag = "share-links",
+    request_body = V1ShareLinkCreateRequest,
+    responses(
+        (status = 201, description = "Share link created", body = V1ShareLinkResponse),
+        (status = 400, description = "Bad request", body = V1ErrorResponse),
+        (status = 401, description = "Unauthorized", body = V1ErrorResponse),
+        (status = 500, description = "Internal server error", body = V1ErrorResponse),
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn v1_share_links_create<S, U>(
     State(state): State<AppState<S, U>>,
     auth: RequireAuth,
@@ -207,8 +231,24 @@ where
 }
 
 /// Get a specific share link by ID.
-///
-/// GET /v1/share-links/{id}
+#[utoipa::path(
+    get,
+    path = "/v1/share-links/{id}",
+    tag = "share-links",
+    params(
+        ("id" = String, Path, description = "Share link ID (UUID)")
+    ),
+    responses(
+        (status = 200, description = "Share link details", body = V1ShareLinkResponse),
+        (status = 400, description = "Invalid share link ID format", body = V1ErrorResponse),
+        (status = 401, description = "Unauthorized", body = V1ErrorResponse),
+        (status = 404, description = "Share link not found", body = V1ErrorResponse),
+        (status = 500, description = "Internal server error", body = V1ErrorResponse),
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn v1_share_links_get<S, U>(
     State(state): State<AppState<S, U>>,
     auth: RequireAuth,
@@ -277,8 +317,25 @@ where
 }
 
 /// Update a share link.
-///
-/// PATCH /v1/share-links/{id}
+#[utoipa::path(
+    patch,
+    path = "/v1/share-links/{id}",
+    tag = "share-links",
+    params(
+        ("id" = String, Path, description = "Share link ID (UUID)")
+    ),
+    request_body = V1ShareLinkUpdateRequest,
+    responses(
+        (status = 200, description = "Share link updated", body = V1ShareLinkResponse),
+        (status = 400, description = "Bad request", body = V1ErrorResponse),
+        (status = 401, description = "Unauthorized", body = V1ErrorResponse),
+        (status = 404, description = "Share link not found", body = V1ErrorResponse),
+        (status = 500, description = "Internal server error", body = V1ErrorResponse),
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn v1_share_links_update<S, U>(
     State(state): State<AppState<S, U>>,
     auth: RequireAuth,
@@ -406,8 +463,24 @@ where
 }
 
 /// Delete a share link.
-///
-/// DELETE /v1/share-links/{id}
+#[utoipa::path(
+    delete,
+    path = "/v1/share-links/{id}",
+    tag = "share-links",
+    params(
+        ("id" = String, Path, description = "Share link ID (UUID)")
+    ),
+    responses(
+        (status = 204, description = "Share link deleted"),
+        (status = 400, description = "Invalid share link ID format", body = V1ErrorResponse),
+        (status = 401, description = "Unauthorized", body = V1ErrorResponse),
+        (status = 404, description = "Share link not found", body = V1ErrorResponse),
+        (status = 500, description = "Internal server error", body = V1ErrorResponse),
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn v1_share_links_delete<S, U>(
     State(state): State<AppState<S, U>>,
     auth: RequireAuth,
@@ -474,8 +547,25 @@ where
 }
 
 /// Create a share link and attach it to a content item.
-///
-/// POST /v1/contents/{id}/share-link
+#[utoipa::path(
+    post,
+    path = "/v1/contents/{id}/share-link",
+    tag = "share-links",
+    params(
+        ("id" = String, Path, description = "Content ID (UUID)")
+    ),
+    request_body = V1ContentShareLinkCreateRequest,
+    responses(
+        (status = 201, description = "Share link created and attached to content", body = V1ShareLinkResponse),
+        (status = 400, description = "Bad request", body = V1ErrorResponse),
+        (status = 401, description = "Unauthorized", body = V1ErrorResponse),
+        (status = 404, description = "Content not found", body = V1ErrorResponse),
+        (status = 500, description = "Internal server error", body = V1ErrorResponse),
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn v1_contents_share_link_create<S, U>(
     State(state): State<AppState<S, U>>,
     auth: RequireAuth,
@@ -642,8 +732,25 @@ where
 }
 
 /// Create a share link and attach it to a group.
-///
-/// POST /v1/groups/{id}/share-link
+#[utoipa::path(
+    post,
+    path = "/v1/groups/{id}/share-link",
+    tag = "share-links",
+    params(
+        ("id" = String, Path, description = "Group ID (UUID)")
+    ),
+    request_body = V1GroupShareLinkCreateRequest,
+    responses(
+        (status = 201, description = "Share link created and attached to group", body = V1ShareLinkResponse),
+        (status = 400, description = "Bad request", body = V1ErrorResponse),
+        (status = 401, description = "Unauthorized", body = V1ErrorResponse),
+        (status = 404, description = "Group not found", body = V1ErrorResponse),
+        (status = 500, description = "Internal server error", body = V1ErrorResponse),
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn v1_groups_share_link_create<S, U>(
     State(state): State<AppState<S, U>>,
     auth: RequireAuth,

@@ -2,7 +2,7 @@
 
 use crate::database::{self, ContentRow, ShareLinkRow, SharePermission, Visibility};
 use serde::{Deserialize, Serialize};
-use utoipa::ToSchema;
+use utoipa::{IntoParams, ToSchema};
 
 // =============================================================================
 // Generic Error Response
@@ -45,7 +45,7 @@ impl V1ErrorResponse {
 // =============================================================================
 
 /// Query parameters for listing contents.
-#[derive(Debug, Deserialize, Default, ToSchema)]
+#[derive(Debug, Deserialize, Default, ToSchema, IntoParams)]
 pub struct V1ContentsListQuery {
     /// Maximum number of results to return (default: 50, max: 100)
     #[serde(default)]
@@ -264,7 +264,7 @@ pub struct V1ContentTagsAttachRequest {
 // =============================================================================
 
 /// Query parameters for listing groups.
-#[derive(Debug, Deserialize, Default, ToSchema)]
+#[derive(Debug, Deserialize, Default, ToSchema, IntoParams)]
 pub struct V1GroupsListQuery {
     /// Maximum number of results to return (default: 50, max: 100)
     #[serde(default)]

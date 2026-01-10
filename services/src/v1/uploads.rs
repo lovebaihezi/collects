@@ -14,11 +14,23 @@ use super::types::{
 
 /// Initialize an upload.
 ///
-/// POST /v1/uploads/init
-///
 /// This endpoint generates a presigned PUT URL for direct upload to R2.
 /// The client should use this URL to upload the file directly, then call
 /// `/v1/uploads/complete` to finalize the upload.
+#[utoipa::path(
+    post,
+    path = "/v1/uploads/init",
+    tag = "uploads",
+    request_body = V1UploadsInitRequest,
+    responses(
+        (status = 201, description = "Upload initialized", body = V1UploadsInitResponse),
+        (status = 401, description = "Unauthorized", body = V1ErrorResponse),
+        (status = 500, description = "Internal server error", body = V1ErrorResponse),
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn v1_uploads_init<S, U>(
     State(state): State<AppState<S, U>>,
     presigner: Option<axum::Extension<R2Presigner>>,
@@ -123,10 +135,24 @@ where
 
 /// Complete an upload after the file has been uploaded to R2.
 ///
-/// POST /v1/uploads/complete
-///
 /// This endpoint verifies the file exists in R2, creates the content record,
 /// and returns the created content.
+#[utoipa::path(
+    post,
+    path = "/v1/uploads/complete",
+    tag = "uploads",
+    request_body = V1UploadsCompleteRequest,
+    responses(
+        (status = 201, description = "Upload completed", body = V1UploadsCompleteResponse),
+        (status = 400, description = "Bad request", body = V1ErrorResponse),
+        (status = 401, description = "Unauthorized", body = V1ErrorResponse),
+        (status = 404, description = "Upload not found", body = V1ErrorResponse),
+        (status = 500, description = "Internal server error", body = V1ErrorResponse),
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn v1_uploads_complete<S, U>(
     State(state): State<AppState<S, U>>,
     presigner: Option<axum::Extension<R2Presigner>>,

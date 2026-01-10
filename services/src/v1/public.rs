@@ -45,11 +45,23 @@ fn validate_share_link(share_link: &ShareLinkRow) -> Result<(), (StatusCode, &'s
 
 /// Get public share metadata.
 ///
-/// GET /v1/public/share/{token}
-///
 /// Returns metadata about the shared content without requiring authentication.
 /// If the share link is password protected, the response will indicate that
 /// a password is required.
+#[utoipa::path(
+    get,
+    path = "/v1/public/share/{token}",
+    tag = "public",
+    params(
+        ("token" = String, Path, description = "Share link token")
+    ),
+    responses(
+        (status = 200, description = "Share metadata", body = V1PublicShareResponse),
+        (status = 404, description = "Share link not found", body = V1ErrorResponse),
+        (status = 410, description = "Share link is no longer active", body = V1ErrorResponse),
+        (status = 500, description = "Internal server error", body = V1ErrorResponse),
+    )
+)]
 pub async fn v1_public_share_get<S, U>(
     State(state): State<AppState<S, U>>,
     Path(token): Path<String>,
@@ -130,10 +142,25 @@ where
 
 /// Get a view URL for shared content.
 ///
-/// POST /v1/public/share/{token}/view-url
-///
 /// Returns a presigned URL for viewing/downloading shared content.
 /// If the share link is password protected, the password must be provided.
+#[utoipa::path(
+    post,
+    path = "/v1/public/share/{token}/view-url",
+    tag = "public",
+    params(
+        ("token" = String, Path, description = "Share link token")
+    ),
+    request_body = V1PublicViewUrlRequest,
+    responses(
+        (status = 200, description = "View URL generated", body = V1PublicViewUrlResponse),
+        (status = 400, description = "Bad request (e.g., group share, invalid disposition)", body = V1ErrorResponse),
+        (status = 401, description = "Unauthorized - password required or invalid", body = V1ErrorResponse),
+        (status = 404, description = "Share link not found", body = V1ErrorResponse),
+        (status = 410, description = "Share link is no longer active", body = V1ErrorResponse),
+        (status = 500, description = "Internal server error", body = V1ErrorResponse),
+    )
+)]
 pub async fn v1_public_share_view_url<S, U>(
     State(state): State<AppState<S, U>>,
     presigner: Option<axum::Extension<R2Presigner>>,

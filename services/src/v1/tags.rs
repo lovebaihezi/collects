@@ -16,8 +16,19 @@ use super::types::{
 };
 
 /// List tags for the authenticated user.
-///
-/// GET /v1/tags
+#[utoipa::path(
+    get,
+    path = "/v1/tags",
+    tag = "tags",
+    responses(
+        (status = 200, description = "List of tags", body = V1TagsListResponse),
+        (status = 401, description = "Unauthorized", body = V1ErrorResponse),
+        (status = 500, description = "Internal server error", body = V1ErrorResponse),
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn v1_tags_list<S, U>(
     State(state): State<AppState<S, U>>,
     auth: RequireAuth,
@@ -64,8 +75,22 @@ where
 }
 
 /// Create a new tag.
-///
-/// POST /v1/tags
+#[utoipa::path(
+    post,
+    path = "/v1/tags",
+    tag = "tags",
+    request_body = V1TagCreateRequest,
+    responses(
+        (status = 201, description = "Tag created", body = V1TagItem),
+        (status = 400, description = "Bad request", body = V1ErrorResponse),
+        (status = 401, description = "Unauthorized", body = V1ErrorResponse),
+        (status = 409, description = "Conflict - tag name already exists", body = V1ErrorResponse),
+        (status = 500, description = "Internal server error", body = V1ErrorResponse),
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn v1_tags_create<S, U>(
     State(state): State<AppState<S, U>>,
     auth: RequireAuth,
@@ -133,8 +158,26 @@ where
 }
 
 /// Update a tag.
-///
-/// PATCH /v1/tags/:id
+#[utoipa::path(
+    patch,
+    path = "/v1/tags/{id}",
+    tag = "tags",
+    params(
+        ("id" = String, Path, description = "Tag ID (UUID)")
+    ),
+    request_body = V1TagUpdateRequest,
+    responses(
+        (status = 200, description = "Tag updated", body = V1TagItem),
+        (status = 400, description = "Bad request", body = V1ErrorResponse),
+        (status = 401, description = "Unauthorized", body = V1ErrorResponse),
+        (status = 404, description = "Tag not found", body = V1ErrorResponse),
+        (status = 409, description = "Conflict - tag name already exists", body = V1ErrorResponse),
+        (status = 500, description = "Internal server error", body = V1ErrorResponse),
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn v1_tags_update<S, U>(
     State(state): State<AppState<S, U>>,
     auth: RequireAuth,
@@ -220,8 +263,24 @@ where
 }
 
 /// Delete a tag.
-///
-/// DELETE /v1/tags/:id
+#[utoipa::path(
+    delete,
+    path = "/v1/tags/{id}",
+    tag = "tags",
+    params(
+        ("id" = String, Path, description = "Tag ID (UUID)")
+    ),
+    responses(
+        (status = 204, description = "Tag deleted"),
+        (status = 400, description = "Bad request", body = V1ErrorResponse),
+        (status = 401, description = "Unauthorized", body = V1ErrorResponse),
+        (status = 404, description = "Tag not found", body = V1ErrorResponse),
+        (status = 500, description = "Internal server error", body = V1ErrorResponse),
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn v1_tags_delete<S, U>(
     State(state): State<AppState<S, U>>,
     auth: RequireAuth,

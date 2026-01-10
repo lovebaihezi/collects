@@ -15,9 +15,7 @@ use crate::config::{Config, Env};
 use crate::database::SqlStorage;
 use crate::users::routes::AppState;
 use crate::users::storage::UserStorage;
-use crate::v1::{
-    content_tags, contents, groups, me, public, share_links, tags, types, uploads,
-};
+use crate::v1::{content_tags, contents, groups, me, public, share_links, tags, types, uploads};
 
 /// OpenAPI documentation structure.
 #[derive(OpenApi)]
@@ -291,11 +289,23 @@ mod tests {
         assert!(json.contains("bearer_auth"));
         // Verify paths are included
         assert!(json.contains("/v1/me"), "Should include /v1/me path");
-        assert!(json.contains("/v1/contents"), "Should include /v1/contents path");
+        assert!(
+            json.contains("/v1/contents"),
+            "Should include /v1/contents path"
+        );
         assert!(json.contains("/v1/tags"), "Should include /v1/tags path");
-        assert!(json.contains("/v1/groups"), "Should include /v1/groups path");
-        assert!(json.contains("/v1/uploads/init"), "Should include /v1/uploads/init path");
-        assert!(json.contains("/v1/share-links"), "Should include /v1/share-links path");
+        assert!(
+            json.contains("/v1/groups"),
+            "Should include /v1/groups path"
+        );
+        assert!(
+            json.contains("/v1/uploads/init"),
+            "Should include /v1/uploads/init path"
+        );
+        assert!(
+            json.contains("/v1/share-links"),
+            "Should include /v1/share-links path"
+        );
         assert!(
             json.contains("/v1/public/share/{token}"),
             "Should include /v1/public/share/{{token}} path"

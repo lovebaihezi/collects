@@ -1,5 +1,6 @@
 use collects_business::ApiStatus;
 use collects_business::BusinessConfig;
+use collects_business::FetchApiStatusCommand;
 use collects_business::ImageDiagState;
 use collects_business::Route;
 use collects_business::ToggleApiStatusCommand;
@@ -10,8 +11,8 @@ use collects_business::{
 #[cfg(any(feature = "env_internal", feature = "env_test_internal"))]
 use collects_business::{
     CFTokenCompute, CFTokenInput, CreateUserCommand, CreateUserCompute, CreateUserInput,
-    InternalApiStatus, InternalUsersListUsersCompute, InternalUsersListUsersInput,
-    RefreshInternalUsersCommand, SetCFTokenCommand,
+    FetchInternalApiStatusCommand, InternalApiStatus, InternalUsersListUsersCompute,
+    InternalUsersListUsersInput, RefreshInternalUsersCommand, SetCFTokenCommand,
 };
 use collects_states::{StateCtx, Time};
 use serde::{Deserialize, Serialize};
@@ -39,6 +40,7 @@ impl Default for State {
         ctx.add_state(Route::default());
         ctx.record_compute(ApiStatus::default());
         ctx.record_command(ToggleApiStatusCommand);
+        ctx.record_command(FetchApiStatusCommand);
 
         // Add login states and commands
         ctx.add_state(LoginInput::default());
@@ -75,6 +77,7 @@ impl Default for State {
             ctx.record_compute(InternalApiStatus::default());
             ctx.record_compute(CreateUserCompute::default());
             ctx.record_command(CreateUserCommand);
+            ctx.record_command(FetchInternalApiStatusCommand);
 
             // Internal users state
             ctx.add_state(InternalUsersState::new());
@@ -101,6 +104,7 @@ impl State {
         ctx.add_state(Route::default());
         ctx.record_compute(ApiStatus::default());
         ctx.record_command(ToggleApiStatusCommand);
+        ctx.record_command(FetchApiStatusCommand);
 
         // Add login states and commands
         ctx.add_state(LoginInput::default());
@@ -137,6 +141,7 @@ impl State {
             ctx.record_compute(InternalApiStatus::default());
             ctx.record_compute(CreateUserCompute::default());
             ctx.record_command(CreateUserCommand);
+            ctx.record_command(FetchInternalApiStatusCommand);
 
             // Internal users state
             ctx.add_state(InternalUsersState::new());

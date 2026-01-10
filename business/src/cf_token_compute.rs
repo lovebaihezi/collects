@@ -164,29 +164,36 @@ impl State for CFTokenCompute {
 pub struct SetCFTokenCommand;
 
 impl Command for SetCFTokenCommand {
-    fn run(&self, snap: CommandSnapshot, updater: Updater) {
-        let input: &CFTokenInput = snap.state();
+    fn run(
+        &self,
+        snap: CommandSnapshot,
+        updater: Updater,
+        _cancel: tokio_util::sync::CancellationToken,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> {
+        let input: CFTokenInput = snap.state::<CFTokenInput>().clone();
 
-        let token = input
-            .token
-            .as_deref()
-            .map(str::trim)
-            .filter(|t| !t.is_empty())
-            .map(str::to_string);
+        Box::pin(async move {
+            let token = input
+                .token
+                .as_deref()
+                .map(str::trim)
+                .filter(|t| !t.is_empty())
+                .map(str::to_string);
 
-        match token {
-            Some(token) => {
-                info!("SetCFTokenCommand: token set ({} chars)", token.len());
-                updater.set(CFTokenCompute {
-                    result: CFTokenResult::Set(token),
-                });
+            match token {
+                Some(token) => {
+                    info!("SetCFTokenCommand: token set ({} chars)", token.len());
+                    updater.set(CFTokenCompute {
+                        result: CFTokenResult::Set(token),
+                    });
+                }
+                None => {
+                    info!("SetCFTokenCommand: token cleared");
+                    updater.set(CFTokenCompute {
+                        result: CFTokenResult::Idle,
+                    });
+                }
             }
-            None => {
-                info!("SetCFTokenCommand: token cleared");
-                updater.set(CFTokenCompute {
-                    result: CFTokenResult::Idle,
-                });
-            }
-        }
+        })
     }
 }

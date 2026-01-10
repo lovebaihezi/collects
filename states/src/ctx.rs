@@ -303,8 +303,11 @@ impl StateCtx {
         self.command_queue.len()
     }
 
-    /// Executes a single command immediately by TypeId.
-    fn execute_command_by_id(&self, id: &TypeId) {
+    /// Executes a single command by spawning it as an async task.
+    ///
+    /// The command is given a snapshot of current state/compute values and a cancellation token.
+    /// Results are delivered via the Updater channel and applied during subsequent sync_computes() calls.
+    fn execute_command_by_id(&mut self, id: &TypeId) {
         let Some(cell) = self.commands.get(id) else {
             panic!("No command found for id: {id:?}");
         };
@@ -315,10 +318,17 @@ impl StateCtx {
         // the snapshot from what's available in this context at execution time.
         // Only states/computes that implement SnapshotClone::clone_boxed will be included.
         let snapshot = self.create_command_snapshot();
+        let updater = self.updater();
+
+        // Create a cancellation token for this command execution
+        let cancel = CancellationToken::new();
 
         let borrowed = cell.borrow();
         trace!("Executing command: id={:?}", id);
-        borrowed.run(snapshot, self.updater());
+
+        // Spawn the command as an async task
+        let future = borrowed.run(snapshot, updater, cancel);
+        self.task_set.spawn(future);
     }
 
     /// Creates a `CommandSnapshot` from the current states and computes.
@@ -577,6 +587,19 @@ This is a programmer error (e.g. a Command called `Updater::set_state(...)` for 
 
                         // Propagate dirty to dependent computes
                         self.propagate_dirty_from(&id);
+                    }
+                    UpdateMessage::EnqueueCommand(id) => {
+                        // Enqueue command requested by a Compute via Updater.
+                        // This allows Computes to trigger commands without doing IO themselves.
+                        if !self.commands.contains_key(&id) {
+                            panic!(
+                                "Received enqueue request for an unregistered command id={:?}. \
+This is a programmer error (e.g. a Compute called `Updater::enqueue_command::<T>()` for a command type that was never `record_command(...)`).",
+                                id
+                            );
+                        }
+                        trace!("Enqueue command from Updater: id={:?}", id);
+                        self.command_queue.push_back(id);
                     }
                 }
             }

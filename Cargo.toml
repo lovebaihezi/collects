@@ -11,13 +11,13 @@ eframe = { version = "0.33", default-features = false, features = [
     "persistence",   # Enable restoring app state when restarting the app.
 ] }
 anyhow = "1"
-async-trait = "0.1"
 axum = "0.8"
 axum-extra = { version = "0.12", features = ["typed-header"] }
 http = "1"
 jsonwebtoken = "9"
+async-trait = "0.1"
 opendal = { version = "0.54", features = ["services-s3", "services-gcs"] }
-reqwest = { version = "0.12", default-features = false, features = ["json"] }
+reqwest = { version = "0.13", default-features = false, features = ["json", "cookies", "zstd", "multipart", "stream", "http2", "default-tls", "charset"] }
 chrono = { version = "0.4", features = ["serde"] }
 serde = { version = "1", features = ["derive"] }
 serde-env = "0.2"
@@ -38,7 +38,6 @@ uuid = { version = "1", features = ["serde", "v7"] }
 sha2 = "0.10"
 foyer = "0.21"
 
-ehttp = { version = "0.5", features = ["json", "streaming", "native-async", "multipart"] }
 flume = "0.11"
 mimalloc = { version = "0.1", default-features = false }
 wasm-bindgen = "0.2"

@@ -155,42 +155,43 @@ impl State for InternalUsersListUsersInput {
 pub struct RefreshInternalUsersCommand;
 
 impl Command for RefreshInternalUsersCommand {
-    fn run(&self, snap: CommandSnapshot, updater: Updater) {
+    fn run(
+        &self,
+        snap: CommandSnapshot,
+        updater: Updater,
+        _cancel: tokio_util::sync::CancellationToken,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> {
         // Read inputs/config.
-        let input: &InternalUsersListUsersInput = snap.state();
-        let config: &BusinessConfig = snap.state();
-        let cf_token: &CFTokenCompute = snap.compute();
+        let input: InternalUsersListUsersInput =
+            snap.state::<InternalUsersListUsersInput>().clone();
+        let config: BusinessConfig = snap.state::<BusinessConfig>().clone();
+        let cf_token: CFTokenCompute = snap.compute::<CFTokenCompute>().clone();
 
-        // Determine base URL:
-        // - Prefer explicit input when set (UI/tests can override).
-        // - Fall back to `BusinessConfig::api_url()` (the canonical base for `/api`).
-        let api_base_url: String = match input.api_base_url.as_ref() {
-            Some(u) => u.as_str().to_string(),
-            None => config.api_url().as_str().to_string(),
-        };
+        Box::pin(async move {
+            // Determine base URL:
+            // - Prefer explicit input when set (UI/tests can override).
+            // - Fall back to `BusinessConfig::api_url()` (the canonical base for `/api`).
+            let api_base_url: String = match input.api_base_url.as_ref() {
+                Some(u) => u.as_str().to_string(),
+                None => config.api_url().as_str().to_string(),
+            };
 
-        if api_base_url.trim().is_empty() {
+            if api_base_url.trim().is_empty() {
+                updater.set(InternalUsersListUsersCompute {
+                    result: InternalUsersListUsersResult::Error(
+                        "RefreshInternalUsersCommand: missing api_base_url (set InternalUsersListUsersInput.api_base_url or BusinessConfig.api_base_url)".to_string(),
+                    ),
+                });
+                return;
+            }
+
+            // Set loading immediately.
             updater.set(InternalUsersListUsersCompute {
-                result: InternalUsersListUsersResult::Error(
-                    "RefreshInternalUsersCommand: missing api_base_url (set InternalUsersListUsersInput.api_base_url or BusinessConfig.api_base_url)".to_string(),
-                ),
+                result: InternalUsersListUsersResult::Loading,
             });
-            return;
-        }
 
-        // Set loading immediately.
-        updater.set(InternalUsersListUsersCompute {
-            result: InternalUsersListUsersResult::Loading,
-        });
-
-        // Clone cf_token for async use
-        let cf_token_clone = cf_token.clone();
-
-        // Kick off async request; update compute on completion.
-        internal_users_api::list_users(
-            &api_base_url,
-            &cf_token_clone,
-            move |result| match result {
+            // Kick off async request; update compute on completion.
+            match internal_users_api::list_users(&api_base_url, &cf_token).await {
                 Ok(users) => {
                     updater.set(InternalUsersListUsersCompute {
                         result: InternalUsersListUsersResult::Loaded(users),
@@ -201,7 +202,7 @@ impl Command for RefreshInternalUsersCommand {
                         result: InternalUsersListUsersResult::Error(err.to_string()),
                     });
                 }
-            },
-        );
+            }
+        })
     }
 }

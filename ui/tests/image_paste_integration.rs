@@ -17,6 +17,7 @@ mod common;
 #[cfg(not(any(feature = "env_internal", feature = "env_test_internal")))]
 mod home_page_tests {
     use crate::common::TestCtx;
+    use crate::common::yield_wait_for_network;
     use collects_business::{AuthCompute, AuthStatus};
     use collects_ui::state::State;
     use collects_ui::widgets::ImagePreviewState;
@@ -52,7 +53,7 @@ mod home_page_tests {
             harness.step();
         }
         // Wait for async operations
-        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        yield_wait_for_network(200).await;
         for _ in 0..5 {
             harness.step();
         }
@@ -83,7 +84,7 @@ mod home_page_tests {
             harness.step();
         }
         // Wait for async operations
-        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        yield_wait_for_network(200).await;
         for _ in 0..5 {
             harness.step();
         }
@@ -190,7 +191,7 @@ mod home_page_tests {
             harness.step();
         }
         // Wait for async operations
-        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        yield_wait_for_network(200).await;
         for _ in 0..5 {
             harness.step();
         }
@@ -235,7 +236,7 @@ mod home_page_tests {
             harness.step();
         }
         // Wait for async operations
-        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        yield_wait_for_network(200).await;
         for _ in 0..5 {
             harness.step();
         }
@@ -293,7 +294,7 @@ mod home_page_tests {
             harness.step();
         }
         // Wait for async operations
-        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        yield_wait_for_network(200).await;
         for _ in 0..5 {
             harness.step();
         }
@@ -346,7 +347,7 @@ mod home_page_tests {
             harness.step();
         }
         // Wait for async operations
-        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        yield_wait_for_network(200).await;
         for _ in 0..5 {
             harness.step();
         }
@@ -389,7 +390,7 @@ mod home_page_tests {
             harness.step();
         }
         // Wait for async operations
-        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        yield_wait_for_network(200).await;
         for _ in 0..5 {
             harness.step();
         }
@@ -452,7 +453,7 @@ mod home_page_tests {
             harness.step();
         }
         // Wait for async operations
-        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        yield_wait_for_network(200).await;
         for _ in 0..5 {
             harness.step();
         }
@@ -511,6 +512,7 @@ mod home_page_tests {
 #[cfg(not(any(feature = "env_internal", feature = "env_test_internal")))]
 mod login_page_tests {
     use crate::common::TestCtx;
+    use crate::common::yield_wait_for_network;
     use kittest::Queryable;
 
     #[tokio::test]
@@ -524,7 +526,7 @@ mod login_page_tests {
             harness.step();
         }
         // Wait for async operations
-        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        yield_wait_for_network(200).await;
         for _ in 0..5 {
             harness.step();
         }

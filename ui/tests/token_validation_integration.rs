@@ -9,6 +9,7 @@
 #![cfg(not(any(feature = "env_internal", feature = "env_test_internal")))]
 
 mod common;
+use common::yield_wait_for_network;
 
 use collects_business::{AuthCompute, AuthStatus, PendingTokenValidation, ValidateTokenCommand};
 use collects_ui::state::State;
@@ -112,7 +113,7 @@ async fn test_validate_token_success() {
     harness.step();
 
     // Wait for async response
-    tokio::time::sleep(std::time::Duration::from_millis(API_RESPONSE_WAIT_MS)).await;
+    yield_wait_for_network(API_RESPONSE_WAIT_MS).await;
 
     // Sync computes to get the result
     {
@@ -185,7 +186,7 @@ async fn test_validate_token_invalid() {
     harness.step();
 
     // Wait for async response
-    tokio::time::sleep(std::time::Duration::from_millis(API_RESPONSE_WAIT_MS)).await;
+    yield_wait_for_network(API_RESPONSE_WAIT_MS).await;
 
     // Sync computes to get the result
     {
@@ -252,7 +253,7 @@ async fn test_validate_token_expired() {
     harness.step();
 
     // Wait for async response
-    tokio::time::sleep(std::time::Duration::from_millis(API_RESPONSE_WAIT_MS)).await;
+    yield_wait_for_network(API_RESPONSE_WAIT_MS).await;
 
     // Sync computes to get the result
     {
@@ -361,7 +362,7 @@ async fn test_validate_token_server_error() {
     harness.step();
 
     // Wait for async response
-    tokio::time::sleep(std::time::Duration::from_millis(API_RESPONSE_WAIT_MS)).await;
+    yield_wait_for_network(API_RESPONSE_WAIT_MS).await;
 
     // Sync computes to get the result
     {

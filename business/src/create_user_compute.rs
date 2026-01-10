@@ -176,94 +176,115 @@ impl State for CreateUserCompute {
 pub struct CreateUserCommand;
 
 impl Command for CreateUserCommand {
-    fn run(&self, snap: CommandSnapshot, updater: Updater) {
-        let input: &CreateUserInput = snap.state();
-        let config: &BusinessConfig = snap.state();
-        let cf_token: &CFTokenCompute = snap.compute();
+    fn run(
+        &self,
+        snap: CommandSnapshot,
+        updater: Updater,
+        _cancel: tokio_util::sync::CancellationToken,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> {
+        let input: CreateUserInput = snap.state::<CreateUserInput>().clone();
+        let config: BusinessConfig = snap.state::<BusinessConfig>().clone();
+        let cf_token: CFTokenCompute = snap.compute::<CFTokenCompute>().clone();
 
-        let username = match &input.username {
-            Some(name) if !name.trim().is_empty() => name.trim().to_string(),
-            _ => {
-                info!("CreateUserCommand: No username set, skipping");
-                return;
+        Box::pin(async move {
+            let username = match &input.username {
+                Some(name) if !name.trim().is_empty() => name.trim().to_string(),
+                _ => {
+                    info!("CreateUserCommand: No username set, skipping");
+                    return;
+                }
+            };
+
+            info!("CreateUserCommand: Creating user '{}'", username);
+
+            // Update cache to pending immediately.
+            updater.set(CreateUserCompute {
+                result: CreateUserResult::Pending,
+            });
+
+            let url = format!("{}/internal/users", config.api_url().as_str());
+            let body = match serde_json::to_vec(&CreateUserRequest {
+                username: username.clone(),
+            }) {
+                Ok(body) => body,
+                Err(e) => {
+                    error!(
+                        "CreateUserCommand: Failed to serialize CreateUserRequest: {}",
+                        e
+                    );
+                    updater.set(CreateUserCompute {
+                        result: CreateUserResult::Error(format!("Serialization error: {e}")),
+                    });
+                    return;
+                }
+            };
+
+            let client = reqwest::Client::new();
+            let mut request_builder = client
+                .post(&url)
+                .header("Content-Type", "application/json")
+                .body(body);
+
+            // Cloudflare Zero Trust token (internal env):
+            // If configured, attach it as `cf-authorization` so `/internal/*` routes pass middleware.
+            if let Some(token) = cf_token.token() {
+                request_builder = request_builder.header("cf-authorization", token);
             }
-        };
 
-        info!("CreateUserCommand: Creating user '{}'", username);
-
-        // Update cache to pending immediately.
-        updater.set(CreateUserCompute {
-            result: CreateUserResult::Pending,
-        });
-
-        let url = format!("{}/internal/users", config.api_url().as_str());
-        let body = match serde_json::to_vec(&CreateUserRequest {
-            username: username.clone(),
-        }) {
-            Ok(body) => body,
-            Err(e) => {
-                error!(
-                    "CreateUserCommand: Failed to serialize CreateUserRequest: {}",
-                    e
-                );
-                updater.set(CreateUserCompute {
-                    result: CreateUserResult::Error(format!("Serialization error: {e}")),
-                });
-                return;
-            }
-        };
-
-        let mut request = ehttp::Request::post(&url, body);
-        request.headers.insert("Content-Type", "application/json");
-
-        // Cloudflare Zero Trust token (internal env):
-        // If configured, attach it as `cf-authorization` so `/internal/*` routes pass middleware.
-        if let Some(token) = cf_token.token() {
-            request.headers.insert("cf-authorization", token);
-        }
-
-        // Perform the IO side effect and update the compute cache with the result.
-        //
-        // NOTE: This uses `ehttp` callback style. If you later migrate this to tokio/reqwest,
-        // keep the same pattern: spawn async work, then `updater.set(...)` on completion.
-        ehttp::fetch(request, move |result| match result {
-            Ok(response) => {
-                if response.status == 201 {
-                    match serde_json::from_slice::<CreateUserResponse>(&response.bytes) {
-                        Ok(create_response) => {
-                            info!(
-                                "CreateUserCommand: User '{}' created successfully",
-                                username
-                            );
-                            updater.set(CreateUserCompute {
-                                result: CreateUserResult::Success(create_response),
-                            });
+            match request_builder.send().await {
+                Ok(response) => {
+                    let status = response.status();
+                    if status.as_u16() == 201 {
+                        match response.bytes().await {
+                            Ok(bytes) => {
+                                match serde_json::from_slice::<CreateUserResponse>(&bytes) {
+                                    Ok(create_response) => {
+                                        info!(
+                                            "CreateUserCommand: User '{}' created successfully",
+                                            username
+                                        );
+                                        updater.set(CreateUserCompute {
+                                            result: CreateUserResult::Success(create_response),
+                                        });
+                                    }
+                                    Err(e) => {
+                                        error!(
+                                            "CreateUserCommand: Failed to parse CreateUserResponse: {}",
+                                            e
+                                        );
+                                        updater.set(CreateUserCompute {
+                                            result: CreateUserResult::Error(format!(
+                                                "Parse error: {e}"
+                                            )),
+                                        });
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                error!("CreateUserCommand: Failed to read response body: {}", e);
+                                updater.set(CreateUserCompute {
+                                    result: CreateUserResult::Error(format!(
+                                        "Failed to read response: {e}"
+                                    )),
+                                });
+                            }
                         }
-                        Err(e) => {
-                            error!(
-                                "CreateUserCommand: Failed to parse CreateUserResponse: {}",
-                                e
-                            );
-                            updater.set(CreateUserCompute {
-                                result: CreateUserResult::Error(format!("Parse error: {e}")),
-                            });
-                        }
+                    } else {
+                        let error_msg = format!("API returned status: {}", status);
+                        error!("CreateUserCommand: {}", error_msg);
+                        updater.set(CreateUserCompute {
+                            result: CreateUserResult::Error(error_msg),
+                        });
                     }
-                } else {
-                    let error_msg = format!("API returned status: {}", response.status);
-                    error!("CreateUserCommand: {}", error_msg);
+                }
+                Err(err) => {
+                    let error_msg = err.to_string();
+                    error!("CreateUserCommand: Request failed: {}", error_msg);
                     updater.set(CreateUserCompute {
                         result: CreateUserResult::Error(error_msg),
                     });
                 }
             }
-            Err(err) => {
-                let error_msg = err.to_string();
-                error!("CreateUserCommand: Request failed: {}", error_msg);
-                updater.set(CreateUserCompute {
-                    result: CreateUserResult::Error(error_msg),
-                });
-            }
-        });
+        })
     }
 }

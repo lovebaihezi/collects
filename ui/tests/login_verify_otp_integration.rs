@@ -8,6 +8,9 @@
 
 #![cfg(not(any(feature = "env_internal", feature = "env_test_internal")))]
 
+mod common;
+use common::{DEFAULT_NETWORK_WAIT_MS, yield_wait_for_network};
+
 use collects_business::{AuthCompute, AuthStatus, LoginCommand, LoginInput};
 use collects_ui::state::State;
 use egui_kittest::Harness;
@@ -248,7 +251,7 @@ async fn test_login_success_flow() {
     harness.step();
 
     // Wait for async response
-    tokio::time::sleep(std::time::Duration::from_millis(API_RESPONSE_WAIT_MS)).await;
+    yield_wait_for_network(API_RESPONSE_WAIT_MS).await;
 
     // Sync computes to get the result
     {
@@ -317,7 +320,7 @@ async fn test_login_invalid_otp_flow() {
     harness.step();
 
     // Wait for async response
-    tokio::time::sleep(std::time::Duration::from_millis(API_RESPONSE_WAIT_MS)).await;
+    yield_wait_for_network(API_RESPONSE_WAIT_MS).await;
 
     // Sync computes to get the result
     {
@@ -390,7 +393,7 @@ async fn test_login_unauthorized_flow() {
     harness.step();
 
     // Wait for async response
-    tokio::time::sleep(std::time::Duration::from_millis(API_RESPONSE_WAIT_MS)).await;
+    yield_wait_for_network(API_RESPONSE_WAIT_MS).await;
 
     // Sync computes to get the result
     {
@@ -459,7 +462,7 @@ async fn test_login_server_error_flow() {
     harness.step();
 
     // Wait for async response
-    tokio::time::sleep(std::time::Duration::from_millis(API_RESPONSE_WAIT_MS)).await;
+    yield_wait_for_network(API_RESPONSE_WAIT_MS).await;
 
     // Sync computes to get the result
     {
@@ -517,6 +520,9 @@ async fn test_login_empty_username_fails() {
         state.ctx.flush_commands();
     }
 
+    // Wait for async command to complete
+    yield_wait_for_network(DEFAULT_NETWORK_WAIT_MS).await;
+
     // Sync computes
     {
         let state = harness.state_mut();
@@ -573,6 +579,9 @@ async fn test_login_empty_otp_fails() {
         state.ctx.flush_commands();
     }
 
+    // Wait for async command to complete
+    yield_wait_for_network(DEFAULT_NETWORK_WAIT_MS).await;
+
     // Sync computes
     {
         let state = harness.state_mut();
@@ -628,6 +637,9 @@ async fn test_login_invalid_otp_format_fails() {
         state.ctx.enqueue_command::<LoginCommand>();
         state.ctx.flush_commands();
     }
+
+    // Wait for async command to complete
+    yield_wait_for_network(DEFAULT_NETWORK_WAIT_MS).await;
 
     // Sync computes
     {
@@ -687,6 +699,9 @@ async fn test_login_non_numeric_otp_fails() {
         state.ctx.enqueue_command::<LoginCommand>();
         state.ctx.flush_commands();
     }
+
+    // Wait for async command to complete
+    yield_wait_for_network(DEFAULT_NETWORK_WAIT_MS).await;
 
     // Sync computes
     {
@@ -767,7 +782,7 @@ async fn test_auth_compute_helper_methods() {
     harness.step();
 
     // Wait for async response
-    tokio::time::sleep(std::time::Duration::from_millis(API_RESPONSE_WAIT_MS)).await;
+    yield_wait_for_network(API_RESPONSE_WAIT_MS).await;
 
     // Sync computes to get the result
     {

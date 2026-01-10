@@ -8,10 +8,10 @@
 
 #![cfg(any(feature = "env_internal", feature = "env_test_internal"))]
 
-use crate::common::TestCtx;
-use kittest::Queryable;
-
 mod common;
+
+use crate::common::{TestCtx, yield_wait_for_network};
+use kittest::Queryable;
 
 // ===========================================
 // Integration tests using real CollectsApp
@@ -129,7 +129,7 @@ async fn test_user_data_with_profile_fields_displayed() {
     }
 
     // Wait for async API response to be processed
-    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    yield_wait_for_network(300).await;
 
     // Run more frames to process the response and update the UI
     for _ in 0..10 {

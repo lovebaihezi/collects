@@ -7,12 +7,11 @@
 
 #![cfg(any(feature = "env_internal", feature = "env_test_internal"))]
 
+mod common;
+
+use crate::common::{DEFAULT_NETWORK_WAIT_MS, TestCtx, yield_wait_for_network};
 use collects_business::{InternalUsersListUsersCompute, InternalUsersListUsersResult};
 use kittest::Queryable;
-
-use crate::common::TestCtx;
-
-mod common;
 
 /// Tests that users are automatically fetched when the app starts in internal environment.
 ///
@@ -30,7 +29,7 @@ async fn test_auto_fetch_users_on_startup() {
     }
 
     // Wait for async API call to complete
-    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    yield_wait_for_network(200).await;
 
     // Sync computes to get the result
     {
@@ -77,8 +76,7 @@ async fn test_auto_fetched_users_displayed_in_table() {
         harness.step();
     }
 
-    // Wait for async API call to complete
-    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    yield_wait_for_network(DEFAULT_NETWORK_WAIT_MS).await;
 
     // Sync computes to get the result
     {
@@ -89,7 +87,10 @@ async fn test_auto_fetched_users_displayed_in_table() {
     // Run more frames to render the table with users
     for _ in 0..10 {
         harness.step();
+        yield_wait_for_network(DEFAULT_NETWORK_WAIT_MS).await;
     }
+
+    yield_wait_for_network(DEFAULT_NETWORK_WAIT_MS).await;
 
     // Verify that user "alice" is displayed in the table
     assert!(
@@ -114,6 +115,7 @@ async fn test_auto_fetch_shows_loading_state() {
     // but not enough time for the async response to complete
     for _ in 0..3 {
         harness.step();
+        yield_wait_for_network(DEFAULT_NETWORK_WAIT_MS).await;
     }
 
     // Sync computes immediately to capture the loading state
@@ -121,6 +123,7 @@ async fn test_auto_fetch_shows_loading_state() {
         let state = harness.state_mut();
         state.state.ctx.sync_computes();
     }
+    yield_wait_for_network(DEFAULT_NETWORK_WAIT_MS).await;
 
     harness.step();
 

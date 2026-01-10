@@ -8,10 +8,10 @@
 //! Note: Shift+F1 is used instead of F1 to avoid browser default behavior
 //! (e.g., Chrome help page) in WASM builds.
 
-use crate::common::TestCtx;
-use kittest::Queryable;
-
 mod common;
+
+use crate::common::{TestCtx, yield_wait_for_network};
+use kittest::Queryable;
 
 // =============================================================================
 // HELPER FUNCTION
@@ -54,7 +54,7 @@ async fn test_f1_key_shows_api_status() {
         harness.step();
     }
     // Wait for async API fetch to complete
-    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    yield_wait_for_network(200).await;
     for _ in 0..5 {
         harness.step();
     }
@@ -71,7 +71,7 @@ async fn test_f1_key_shows_api_status() {
     harness.step();
 
     // Wait for async command to complete
-    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    yield_wait_for_network(50).await;
     harness.step();
 
     // Should now be visible - query for the "API Status" label
@@ -92,7 +92,7 @@ async fn test_f1_key_hides_api_status() {
         harness.step();
     }
     // Wait for async API fetch to complete
-    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    yield_wait_for_network(200).await;
     for _ in 0..5 {
         harness.step();
     }
@@ -109,7 +109,7 @@ async fn test_f1_key_hides_api_status() {
     harness.step();
 
     // Wait for async command to complete
-    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    yield_wait_for_network(50).await;
     harness.step();
 
     // Verify visible
@@ -124,7 +124,7 @@ async fn test_f1_key_hides_api_status() {
     harness.step();
 
     // Wait for async command to complete
-    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    yield_wait_for_network(50).await;
     harness.step();
 
     // Should now be hidden
@@ -145,7 +145,7 @@ async fn test_multiple_f1_toggles() {
         harness.step();
     }
     // Wait for async API fetch to complete
-    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    yield_wait_for_network(200).await;
     for _ in 0..5 {
         harness.step();
     }
@@ -163,7 +163,7 @@ async fn test_multiple_f1_toggles() {
         harness.step();
 
         // Wait for async command to complete
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        yield_wait_for_network(50).await;
         harness.step();
 
         let expected_visible = (i + 1) % 2 == 1; // odd iterations: visible, even: hidden

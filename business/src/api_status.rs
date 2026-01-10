@@ -85,7 +85,6 @@ impl Compute for ApiStatus {
 
         let config = deps.get_state_ref::<BusinessConfig>();
         let url = Ustr::from(format!("{}/is-health", config.api_url().as_str()).as_str());
-        let request = ehttp::Request::get(url);
         let now = deps.get_state_ref::<Time>().as_ref().to_utc();
         let current_retry_count = self.retry_count;
         let current_show_status = self.show_status;
@@ -139,47 +138,54 @@ impl Compute for ApiStatus {
                 show_status: current_show_status,
                 is_fetching: true,
             });
-            ehttp::fetch(request, move |res| match res {
-                Ok(response) => {
-                    let service_version = response
-                        .headers
-                        .get(SERVICE_VERSION_HEADER)
-                        .map(String::from);
-                    if response.status == 200 {
-                        debug!("BackEnd Available, checked at {:?}", now);
+
+            let url_string = url.to_string();
+            tokio::spawn(async move {
+                let client = reqwest::Client::new();
+                match client.get(&url_string).send().await {
+                    Ok(response) => {
+                        let service_version = response
+                            .headers()
+                            .get(SERVICE_VERSION_HEADER)
+                            .and_then(|v| v.to_str().ok())
+                            .map(String::from);
+                        let status = response.status();
+                        if status.is_success() {
+                            debug!("BackEnd Available, checked at {:?}", now);
+                            let api_status = ApiStatus {
+                                last_update_time: Some(now),
+                                last_error: None,
+                                service_version,
+                                retry_count: 0, // Reset retry count on success
+                                show_status: current_show_status,
+                                is_fetching: false,
+                            };
+                            updater.set(api_status);
+                        } else {
+                            info!("BackEnd Return with status code: {:?}", status);
+                            let api_status = ApiStatus {
+                                last_update_time: Some(now),
+                                last_error: Some(format!("API Health: {}", status)),
+                                service_version,
+                                retry_count: current_retry_count.saturating_add(1),
+                                show_status: current_show_status,
+                                is_fetching: false,
+                            };
+                            updater.set(api_status);
+                        }
+                    }
+                    Err(err) => {
+                        warn!("API status check failed: {:?}", err);
                         let api_status = ApiStatus {
                             last_update_time: Some(now),
-                            last_error: None,
-                            service_version,
-                            retry_count: 0, // Reset retry count on success
-                            show_status: current_show_status,
-                            is_fetching: false,
-                        };
-                        updater.set(api_status);
-                    } else {
-                        info!("BackEnd Return with status code: {:?}", response.status);
-                        let api_status = ApiStatus {
-                            last_update_time: Some(now),
-                            last_error: Some(format!("API Health: {}", response.status)),
-                            service_version,
+                            last_error: Some(err.to_string()),
+                            service_version: None,
                             retry_count: current_retry_count.saturating_add(1),
                             show_status: current_show_status,
                             is_fetching: false,
                         };
                         updater.set(api_status);
                     }
-                }
-                Err(err) => {
-                    warn!("API status check failed: {:?}", err);
-                    let api_status = ApiStatus {
-                        last_update_time: Some(now),
-                        last_error: Some(err.to_string()),
-                        service_version: None,
-                        retry_count: current_retry_count.saturating_add(1),
-                        show_status: current_show_status,
-                        is_fetching: false,
-                    };
-                    updater.set(api_status);
                 }
             });
         }

@@ -1,4 +1,4 @@
-use crate::common::TestCtx;
+use crate::common::{TestCtx, yield_wait_for_network};
 
 mod common;
 
@@ -11,7 +11,7 @@ async fn test_api_status_with_200() {
     // Render the first frame
     harness.step();
 
-    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    yield_wait_for_network(100).await;
 
     harness.step();
 
@@ -28,7 +28,7 @@ async fn test_api_status_with_404() {
     // Render the first frame
     harness.step();
 
-    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    yield_wait_for_network(100).await;
 
     harness.step();
 
@@ -44,7 +44,7 @@ async fn test_api_status_with_500() {
     // Render the first frame
     harness.step();
 
-    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    yield_wait_for_network(100).await;
 
     harness.step();
 

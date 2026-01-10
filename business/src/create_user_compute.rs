@@ -219,44 +219,58 @@ impl Command for CreateUserCommand {
                 }
             };
 
-            let mut request = ehttp::Request::post(&url, body);
-            request.headers.insert("Content-Type", "application/json");
+            let client = reqwest::Client::new();
+            let mut request_builder = client
+                .post(&url)
+                .header("Content-Type", "application/json")
+                .body(body);
 
             // Cloudflare Zero Trust token (internal env):
             // If configured, attach it as `cf-authorization` so `/internal/*` routes pass middleware.
             if let Some(token) = cf_token.token() {
-                request.headers.insert("cf-authorization", token);
+                request_builder = request_builder.header("cf-authorization", token);
             }
 
-            // Perform the IO side effect and update the compute cache with the result.
-            //
-            // NOTE: This uses `ehttp` callback style. If you later migrate this to tokio/reqwest,
-            // keep the same pattern: spawn async work, then `updater.set(...)` on completion.
-            ehttp::fetch(request, move |result| match result {
+            match request_builder.send().await {
                 Ok(response) => {
-                    if response.status == 201 {
-                        match serde_json::from_slice::<CreateUserResponse>(&response.bytes) {
-                            Ok(create_response) => {
-                                info!(
-                                    "CreateUserCommand: User '{}' created successfully",
-                                    username
-                                );
-                                updater.set(CreateUserCompute {
-                                    result: CreateUserResult::Success(create_response),
-                                });
+                    let status = response.status();
+                    if status.as_u16() == 201 {
+                        match response.bytes().await {
+                            Ok(bytes) => {
+                                match serde_json::from_slice::<CreateUserResponse>(&bytes) {
+                                    Ok(create_response) => {
+                                        info!(
+                                            "CreateUserCommand: User '{}' created successfully",
+                                            username
+                                        );
+                                        updater.set(CreateUserCompute {
+                                            result: CreateUserResult::Success(create_response),
+                                        });
+                                    }
+                                    Err(e) => {
+                                        error!(
+                                            "CreateUserCommand: Failed to parse CreateUserResponse: {}",
+                                            e
+                                        );
+                                        updater.set(CreateUserCompute {
+                                            result: CreateUserResult::Error(format!(
+                                                "Parse error: {e}"
+                                            )),
+                                        });
+                                    }
+                                }
                             }
                             Err(e) => {
-                                error!(
-                                    "CreateUserCommand: Failed to parse CreateUserResponse: {}",
-                                    e
-                                );
+                                error!("CreateUserCommand: Failed to read response body: {}", e);
                                 updater.set(CreateUserCompute {
-                                    result: CreateUserResult::Error(format!("Parse error: {e}")),
+                                    result: CreateUserResult::Error(format!(
+                                        "Failed to read response: {e}"
+                                    )),
                                 });
                             }
                         }
                     } else {
-                        let error_msg = format!("API returned status: {}", response.status);
+                        let error_msg = format!("API returned status: {}", status);
                         error!("CreateUserCommand: {}", error_msg);
                         updater.set(CreateUserCompute {
                             result: CreateUserResult::Error(error_msg),
@@ -270,7 +284,7 @@ impl Command for CreateUserCommand {
                         result: CreateUserResult::Error(error_msg),
                     });
                 }
-            });
+            }
         })
     }
 }

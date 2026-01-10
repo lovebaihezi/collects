@@ -12,7 +12,6 @@ targets = ["x86_64-unknown-linux-gnu", "wasm32-unknown-unknown"]
 [dependencies]
 egui = { workspace = true }
 egui_extras = { workspace = true }
-ehttp = { workspace = true }
 flume = { workspace = true }
 chrono = { workspace = true }
 wasm-bindgen = { workspace = true }

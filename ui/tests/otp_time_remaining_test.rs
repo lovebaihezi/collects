@@ -8,6 +8,9 @@
 //! This file is only compiled for internal/test-internal environments.
 #![cfg(any(feature = "env_internal", feature = "env_test_internal"))]
 
+mod common;
+use common::yield_wait_for_network;
+
 use chrono::{Duration, Utc};
 use collects_business::InternalUsersListUsersCompute;
 use collects_states::Time;
@@ -99,14 +102,14 @@ async fn test_time_remaining_decreases_with_time() {
     // Initial render and fetch
     harness.step();
     run_compute_only(harness);
-    tokio::time::sleep(std::time::Duration::from_millis(API_RESPONSE_WAIT_MS)).await;
+    yield_wait_for_network(API_RESPONSE_WAIT_MS).await;
 
     // Run several frames to let initial fetch complete
     for _ in 0..5 {
         harness.step();
         run_compute_only(harness);
     }
-    tokio::time::sleep(std::time::Duration::from_millis(API_RESPONSE_WAIT_MS)).await;
+    yield_wait_for_network(API_RESPONSE_WAIT_MS).await;
     for _ in 0..3 {
         harness.step();
         run_compute_only(harness);
@@ -179,14 +182,14 @@ async fn test_otp_auto_refresh_on_cycle_boundary() {
     // Initial render and fetch
     harness.step();
     run_compute_only(&mut harness);
-    tokio::time::sleep(std::time::Duration::from_millis(API_RESPONSE_WAIT_MS)).await;
+    yield_wait_for_network(API_RESPONSE_WAIT_MS).await;
 
     // Run several frames to let initial fetch complete
     for _ in 0..5 {
         harness.step();
         run_compute_only(&mut harness);
     }
-    tokio::time::sleep(std::time::Duration::from_millis(API_RESPONSE_WAIT_MS)).await;
+    yield_wait_for_network(API_RESPONSE_WAIT_MS).await;
     for _ in 0..3 {
         harness.step();
         run_compute_only(&mut harness);
@@ -199,7 +202,7 @@ async fn test_otp_auto_refresh_on_cycle_boundary() {
     // Render the panel again - this should detect stale OTP and trigger refresh
     harness.step();
     run_compute_only(&mut harness);
-    tokio::time::sleep(std::time::Duration::from_millis(API_RESPONSE_WAIT_MS)).await;
+    yield_wait_for_network(API_RESPONSE_WAIT_MS).await;
 
     // Run more frames to process the refresh
     for _ in 0..5 {
@@ -220,14 +223,14 @@ async fn test_time_remaining_wraps_after_full_cycle() {
     // Initial render and fetch
     harness.step();
     run_compute_only(harness);
-    tokio::time::sleep(std::time::Duration::from_millis(API_RESPONSE_WAIT_MS)).await;
+    yield_wait_for_network(API_RESPONSE_WAIT_MS).await;
 
     // Run several frames to let initial fetch complete
     for _ in 0..5 {
         harness.step();
         run_compute_only(harness);
     }
-    tokio::time::sleep(std::time::Duration::from_millis(API_RESPONSE_WAIT_MS)).await;
+    yield_wait_for_network(API_RESPONSE_WAIT_MS).await;
     for _ in 0..3 {
         harness.step();
         run_compute_only(harness);

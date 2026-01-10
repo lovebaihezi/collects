@@ -5,6 +5,9 @@
 //! 2. On failure, max 3 retries before waiting for the full interval
 //! 3. Time mocking works correctly for testing time-dependent behavior
 
+mod common;
+use common::yield_wait_for_network;
+
 use chrono::{Duration, Utc};
 use collects_business::{APIAvailability, ApiStatus};
 use collects_states::Time;
@@ -70,7 +73,7 @@ async fn setup_api_status_test<'a>(
 async fn run_compute_cycle(harness: &mut Harness<'_, State>) {
     harness.state_mut().ctx.run_all_dirty();
     // Wait for async HTTP response
-    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    yield_wait_for_network(50).await;
     harness.state_mut().ctx.sync_computes();
 }
 
@@ -626,7 +629,7 @@ async fn test_no_duplicate_requests_during_in_flight_fetch() {
     run_compute_only(harness);
 
     // Wait for async response
-    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    yield_wait_for_network(50).await;
     harness.state_mut().ctx.sync_computes();
 
     // Should only have 1 request despite multiple compute cycles

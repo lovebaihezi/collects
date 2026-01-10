@@ -12,10 +12,13 @@
 
 mod common;
 
+use crate::common::yield_wait_for_network;
+
 /// Tests that only run on non-internal builds (home page specific tests).
 /// Internal builds route authenticated users to the internal table, not home page.
 #[cfg(not(any(feature = "env_internal", feature = "env_test_internal")))]
 mod home_page_tests {
+    use super::yield_wait_for_network;
     use crate::common::TestCtx;
     use collects_business::{AuthCompute, AuthStatus};
     use collects_ui::state::State;
@@ -46,7 +49,7 @@ mod home_page_tests {
             harness.step();
         }
         // Wait for async operations
-        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        yield_wait_for_network(200).await;
         for _ in 0..5 {
             harness.step();
         }
@@ -111,7 +114,7 @@ mod home_page_tests {
             harness.step();
         }
         // Wait for async operations
-        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        yield_wait_for_network(200).await;
         for _ in 0..5 {
             harness.step();
         }
@@ -186,7 +189,7 @@ mod home_page_tests {
             harness.step();
         }
         // Wait for async operations
-        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        yield_wait_for_network(200).await;
         for _ in 0..5 {
             harness.step();
         }
@@ -232,7 +235,7 @@ mod home_page_tests {
             harness.step();
         }
         // Wait for async operations
-        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        yield_wait_for_network(200).await;
         for _ in 0..5 {
             harness.step();
         }
@@ -285,7 +288,7 @@ mod home_page_tests {
             harness.step();
         }
         // Wait for async operations
-        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        yield_wait_for_network(200).await;
         for _ in 0..5 {
             harness.step();
         }

@@ -1,9 +1,40 @@
+use std::time::Duration;
+
 use collects_ui::CollectsApp;
 use collects_ui::state::State;
 use egui_kittest::Harness;
+use tokio::task::yield_now;
 use wiremock::Mock;
 use wiremock::matchers::{method, path};
 use wiremock::{MockServer, ResponseTemplate};
+
+/// Default network wait time in milliseconds.
+#[allow(unused)]
+pub const DEFAULT_NETWORK_WAIT_MS: u64 = 10;
+
+/// Yields to other tasks and waits for network I/O to complete.
+///
+/// This combines `tokio::task::yield_now()` with a configurable sleep to give
+/// async HTTP requests (via `reqwest`) time to complete their I/O operations.
+///
+/// # Arguments
+/// * `wait_ms` - Duration in milliseconds to wait for network I/O
+///
+/// # Example
+/// ```ignore
+/// // Wait with default duration
+/// yield_wait_for_network(DEFAULT_NETWORK_WAIT_MS).await;
+///
+/// // Wait with custom duration for slower operations
+/// yield_wait_for_network(50).await;
+/// ```
+#[allow(unused)]
+pub async fn yield_wait_for_network(wait_ms: u64) {
+    tokio::join!(
+        yield_now(),
+        tokio::time::sleep(Duration::from_millis(wait_ms))
+    );
+}
 
 pub struct TestCtx<'a, T = State> {
     _mock_server: MockServer,

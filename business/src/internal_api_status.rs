@@ -70,7 +70,6 @@ impl Compute for InternalApiStatus {
 
         let config = deps.get_state_ref::<BusinessConfig>();
         let url = Ustr::from(format!("{}/internal/users", config.api_url().as_str()).as_str());
-        let request = ehttp::Request::get(url);
         let now = deps.get_state_ref::<Time>().as_ref().to_utc();
         let current_retry_count = self.retry_count;
 
@@ -119,40 +118,43 @@ impl Compute for InternalApiStatus {
                 retry_count: current_retry_count,
                 is_fetching: true,
             });
-            ehttp::fetch(request, move |res| match res {
-                Ok(response) => {
-                    if response.status == 200 {
-                        debug!("Internal API Available, checked at {:?}", now);
+
+            let url_string = url.to_string();
+            tokio::spawn(async move {
+                let client = reqwest::Client::new();
+                match client.get(&url_string).send().await {
+                    Ok(response) => {
+                        let status = response.status();
+                        if status.is_success() {
+                            debug!("Internal API Available, checked at {:?}", now);
+                            let api_status = InternalApiStatus {
+                                last_update_time: Some(now),
+                                last_error: None,
+                                retry_count: 0, // Reset retry count on success
+                                is_fetching: false,
+                            };
+                            updater.set(api_status);
+                        } else {
+                            info!("Internal API Return with status code: {:?}", status);
+                            let api_status = InternalApiStatus {
+                                last_update_time: Some(now),
+                                last_error: Some(format!("Internal API: {}", status)),
+                                retry_count: current_retry_count.saturating_add(1),
+                                is_fetching: false,
+                            };
+                            updater.set(api_status);
+                        }
+                    }
+                    Err(err) => {
+                        warn!("Internal API status check failed: {:?}", err);
                         let api_status = InternalApiStatus {
                             last_update_time: Some(now),
-                            last_error: None,
-                            retry_count: 0, // Reset retry count on success
-                            is_fetching: false,
-                        };
-                        updater.set(api_status);
-                    } else {
-                        info!(
-                            "Internal API Return with status code: {:?}",
-                            response.status
-                        );
-                        let api_status = InternalApiStatus {
-                            last_update_time: Some(now),
-                            last_error: Some(format!("Internal API: {}", response.status)),
+                            last_error: Some(err.to_string()),
                             retry_count: current_retry_count.saturating_add(1),
                             is_fetching: false,
                         };
                         updater.set(api_status);
                     }
-                }
-                Err(err) => {
-                    warn!("Internal API status check failed: {:?}", err);
-                    let api_status = InternalApiStatus {
-                        last_update_time: Some(now),
-                        last_error: Some(err.to_string()),
-                        retry_count: current_retry_count.saturating_add(1),
-                        is_fetching: false,
-                    };
-                    updater.set(api_status);
                 }
             });
         }

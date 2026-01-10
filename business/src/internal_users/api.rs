@@ -12,6 +12,7 @@
 //! This module intentionally contains *no egui memory plumbing*; that belongs in
 //! UI code. Callers should map results into state/compute updates.
 
+use crate::CLIENT;
 use crate::cf_token_compute::CFTokenCompute;
 use crate::internal::{
     CreateUserRequest, CreateUserResponse, DeleteUserResponse, GetUserResponse, InternalUserItem,
@@ -19,10 +20,6 @@ use crate::internal::{
     UpdateUsernameRequest, UpdateUsernameResponse,
 };
 use reqwest::header::{CONTENT_TYPE, HeaderMap, HeaderValue};
-use std::sync::LazyLock;
-
-/// Shared HTTP client for connection pooling across API calls.
-static CLIENT: LazyLock<reqwest::Client> = LazyLock::new(reqwest::Client::new);
 
 /// Minimal error wrapper for API calls.
 #[derive(Debug, Clone, PartialEq, Eq)]

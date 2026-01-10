@@ -347,9 +347,9 @@ impl<P: PasteHandler, D: DropHandler> eframe::App for CollectsApp<P, D> {
         }
 
         // Update Time state when second changes (chrono::Utc::now() is WASM-compatible)
-        // This enables real-time updates for OTP countdown timers while avoiding
-        // updates on every frame. Time-dependent computes (ApiStatus, InternalApiStatus)
-        // have internal throttling to avoid unnecessary network requests.
+        // This enables real-time updates for OTP countdown timers.
+        // Time-dependent computes (ApiStatus, InternalApiStatus) will automatically
+        // enqueue their fetch commands via Updater when conditions are met.
         let now = Utc::now();
         let current_time = self.state.ctx.state::<Time>();
         let current_second = current_time.as_ref().second();
@@ -360,7 +360,14 @@ impl<P: PasteHandler, D: DropHandler> eframe::App for CollectsApp<P, D> {
             });
         }
 
-        // Sync Compute for render
+        // Sync computes - this processes any enqueued commands from computes
+        // (e.g., FetchApiStatusCommand enqueued by ApiStatus::compute())
+        self.state.ctx.sync_computes();
+
+        // Flush any commands that were enqueued during sync_computes
+        self.state.ctx.flush_commands();
+
+        // Sync again to apply results from flushed commands
         self.state.ctx.sync_computes();
 
         // Update route based on authentication state

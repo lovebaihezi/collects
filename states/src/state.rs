@@ -85,6 +85,11 @@ pub enum UpdateMessage {
     Compute(TypeId, Box<dyn Any + Send>),
     /// Update a State type.
     State(TypeId, Box<dyn Any + Send>),
+    /// Enqueue a command to be executed at end-of-frame.
+    ///
+    /// This allows Computes to request command execution without doing IO themselves.
+    /// The command will be added to the command queue during `sync_computes()`.
+    EnqueueCommand(TypeId),
 }
 
 pub struct Updater {
@@ -117,6 +122,34 @@ impl Updater {
         let id = TypeId::of::<T>();
         let boxed: Box<dyn Any + Send> = Box::new(state);
         self.send.send(UpdateMessage::State(id, boxed)).unwrap();
+    }
+
+    /// Enqueue a command to be executed at end-of-frame.
+    ///
+    /// This allows Computes to request command execution without performing IO themselves.
+    /// The command will be added to the command queue during the next `sync_computes()` call
+    /// and executed during `flush_commands()`.
+    ///
+    /// This is the recommended way for Computes to trigger async operations:
+    /// - Compute checks conditions (e.g., time elapsed, retry logic)
+    /// - If action needed, calls `updater.enqueue_command::<FetchCommand>()`
+    /// - Command performs the actual network IO
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// impl Compute for ApiStatus {
+    ///     fn compute(&self, deps: Dep, updater: Updater) {
+    ///         let now = deps.get_state_ref::<Time>().as_ref().to_utc();
+    ///         if self.should_fetch(now) {
+    ///             updater.enqueue_command::<FetchApiStatusCommand>();
+    ///         }
+    ///     }
+    /// }
+    /// ```
+    pub fn enqueue_command<T: crate::Command + 'static>(&self) {
+        let id = TypeId::of::<T>();
+        self.send.send(UpdateMessage::EnqueueCommand(id)).unwrap();
     }
 }
 

@@ -588,6 +588,19 @@ This is a programmer error (e.g. a Command called `Updater::set_state(...)` for 
                         // Propagate dirty to dependent computes
                         self.propagate_dirty_from(&id);
                     }
+                    UpdateMessage::EnqueueCommand(id) => {
+                        // Enqueue command requested by a Compute via Updater.
+                        // This allows Computes to trigger commands without doing IO themselves.
+                        if !self.commands.contains_key(&id) {
+                            panic!(
+                                "Received enqueue request for an unregistered command id={:?}. \
+This is a programmer error (e.g. a Compute called `Updater::enqueue_command::<T>()` for a command type that was never `record_command(...)`).",
+                                id
+                            );
+                        }
+                        trace!("Enqueue command from Updater: id={:?}", id);
+                        self.command_queue.push_back(id);
+                    }
                 }
             }
         }

@@ -14,7 +14,7 @@ pub mod route;
 // Re-export version_info from collects-utils for backward compatibility
 pub use collects_utils::version_info;
 
-pub use api_status::{APIAvailability, ApiStatus, ToggleApiStatusCommand};
+pub use api_status::{APIAvailability, ApiStatus, FetchApiStatusCommand, ToggleApiStatusCommand};
 pub use cf_token_compute::{CFTokenCompute, CFTokenInput, CFTokenResult, SetCFTokenCommand};
 pub use config::BusinessConfig;
 pub use create_user_compute::{
@@ -25,7 +25,9 @@ pub use internal::{
     ListUsersResponse, RevokeOtpResponse, UpdateProfileRequest, UpdateProfileResponse,
     UpdateUsernameRequest, UpdateUsernameResponse, is_internal_build,
 };
-pub use internal_api_status::{InternalAPIAvailability, InternalApiStatus};
+pub use internal_api_status::{
+    FetchInternalApiStatusCommand, InternalAPIAvailability, InternalApiStatus,
+};
 
 pub use image_diag::{
     ClipboardAccessResult, DiagLogEntry, DiagLogType, DropEntry, DropHoverEvent, DropResult,

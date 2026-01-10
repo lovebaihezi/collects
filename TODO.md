@@ -170,9 +170,10 @@ Suggested first command to migrate:
 
 ---
 
-## Phase 3 — Full Async Migration (AGGRESSIVE - NO BACKWARD COMPAT)
+## Phase 3 — Async Commands + Pure Computes (Option B)
 
-> This phase converts everything to async. No sync APIs preserved.
+> **Architecture Decision**: Keep `Compute::compute()` synchronous and pure.
+> Network IO moved from computes to commands, following state-model.md guidelines.
 
 ### 3.1 Add `tokio` + `tokio_util` dependencies
 
@@ -181,9 +182,6 @@ In `collects/states/Cargo.toml`:
 tokio = { version = "1", features = ["rt", "sync", "macros"] }
 tokio_util = { version = "0.7", features = ["rt"] }
 ```
-
-> Note: The `async-trait` crate is no longer needed since Rust 1.75+ supports async fn in traits natively.
-> We use `impl Future<Output = ...>` return type syntax instead.
 
 ### 3.2 Implement TaskHandle + CancellationToken
 
@@ -207,26 +205,42 @@ impl StateCtx {
 }
 ```
 
-### 3.4 Convert `Compute` trait to async
+### 3.4 Keep `Compute` trait synchronous and pure (with Updater.enqueue_command)
 
-> Note: Using `impl Future<Output = ...>` return type (Rust 1.75+) instead of `#[async_trait]` macro.
+> **Decision**: Computes remain pure derived computations or caches updated by commands.
+> This follows state-model.md rule: "Compute::compute() must not perform network IO or spawn async."
+
+**Key addition**: `Updater::enqueue_command<T>()` allows computes to request command execution
+without doing IO themselves. The pattern:
+
+1. Compute checks conditions in `compute()` (e.g., time elapsed, retry logic)
+2. If action needed, calls `updater.enqueue_command::<FetchCommand>()`
+3. `sync_computes()` processes the enqueue request, adding to command queue
+4. `flush_commands()` executes the command (network IO happens here)
+5. Command updates compute via `Updater::set()`
 
 ```rust
-pub trait Compute: Debug + Any + SnapshotClone + Send + Sync {
-    fn compute(&self, deps: Dep, updater: Updater, cancel: CancellationToken) -> impl Future<Output = ()> + Send;
-    fn deps(&self) -> ComputeDeps;
-    fn as_any(&self) -> &dyn Any;
-    fn assign_box(&mut self, new_self: Box<dyn Any + Send>);
+impl Compute for ApiStatus {
+    fn compute(&self, deps: Dep, updater: Updater) {
+        let now = deps.get_state_ref::<Time>().as_ref().to_utc();
+        if self.should_fetch(now) {
+            updater.enqueue_command::<FetchApiStatusCommand>();
+        }
+    }
 }
 ```
 
-### 3.5 Convert `Command` trait to async
+This keeps:
+- Scheduling/timing logic in the compute (which has access to dependencies like Time)
+- Network IO in commands (following state-model.md)
+- UI clean (just calls `sync_computes()` and `flush_commands()`)
 
-> Note: Using `impl Future<Output = ...>` return type (Rust 1.75+) instead of `#[async_trait]` macro.
+### 3.5 Convert `Command` trait to async
 
 ```rust
 pub trait Command: Debug + Any + Send + Sync {
-    fn run(&self, snap: CommandSnapshot, updater: Updater, cancel: CancellationToken) -> impl Future<Output = ()> + Send;
+    fn run(&self, snap: CommandSnapshot, updater: Updater, cancel: CancellationToken) 
+        -> Pin<Box<dyn Future<Output = ()> + Send>>;
 }
 ```
 
@@ -333,7 +347,7 @@ Any state intended to be updated from async completion must:
 - [x] Implement UI command queue and flush once per frame
 - [x] Migrate `ToggleApiStatusCommand` to confirm pipeline
 
-### Phase 3 — Full Async Migration
+### Phase 3 — Async Commands + Pure Computes (Option B)
 - [x] Add `tokio`, `tokio_util` dependencies to `collects/states`
 - [x] Implement `TaskHandle` with `CancellationToken`
 - [x] Implement `TaskId` type
@@ -341,19 +355,23 @@ Any state intended to be updated from async completion must:
 - [x] Add `StateCtx::spawn_task<T>()` method
 - [x] Add `StateCtx::cancel_task()` method
 - [x] Add `StateCtx::shutdown()` async method
-- [ ] Convert `Compute` trait to async
+- [x] Keep `Compute` trait synchronous and pure (Option B decision)
 - [x] Convert `Command` trait to async
-- [ ] Update all existing computes to async
+- [x] Add `Updater::enqueue_command<T>()` for compute-to-command scheduling
+- [x] Add `UpdateMessage::EnqueueCommand` variant and process in `sync_computes()`
+- [x] Refactor `ApiStatus` to use `updater.enqueue_command::<FetchApiStatusCommand>()`
+- [x] Refactor `InternalApiStatus` to use `updater.enqueue_command::<FetchInternalApiStatusCommand>()`
+- [x] Update UI frame loop: `sync_computes()` → `flush_commands()` → `sync_computes()`
 - [x] Update all existing commands to async
 
 ### Phase 4 — Replace ehttp with reqwest
-- [ ] Remove `ehttp` dependency from `collects/business`
-- [ ] Add `reqwest` dependency with async features
-- [ ] Migrate `ApiStatus` compute HTTP calls
-- [ ] Migrate `InternalApiStatus` compute HTTP calls
-- [ ] Migrate `LoginCommand` HTTP calls
-- [ ] Migrate `ValidateTokenCommand` HTTP calls
-- [ ] Migrate `CreateUserCommand` HTTP calls
+- [x] Remove `ehttp` dependency from `collects/business`
+- [x] Add `reqwest` dependency with async features
+- [x] Migrate `ApiStatus` compute HTTP calls (uses tokio::spawn + reqwest internally)
+- [x] Migrate `InternalApiStatus` compute HTTP calls (uses tokio::spawn + reqwest internally)
+- [x] Migrate `LoginCommand` HTTP calls
+- [x] Migrate `ValidateTokenCommand` HTTP calls
+- [x] Migrate `CreateUserCommand` HTTP calls
 - [x] Migrate `RefreshInternalUsersCommand` HTTP calls
 - [x] Migrate internal users action commands HTTP calls (UpdateUsername, UpdateProfile, DeleteUser, RevokeOtp, GetUserQr)
 

@@ -335,7 +335,7 @@ jobs:
           android: true
           dotnet: true
           haskell: true
-          large-packages: true
+          large-packages: false # Keep clang linker needed for Rust
           docker-images: true
           swap-storage: true
 
@@ -402,7 +402,7 @@ jobs:
           android: true
           dotnet: true
           haskell: true
-          large-packages: true
+          large-packages: false # Keep clang linker needed for Rust
           docker-images: true
           swap-storage: true
 
@@ -466,7 +466,7 @@ jobs:
           android: true
           dotnet: true
           haskell: true
-          large-packages: true
+          large-packages: false # Keep clang linker needed for Rust
           docker-images: true
           swap-storage: true
 
@@ -527,7 +527,7 @@ jobs:
           android: true
           dotnet: true
           haskell: true
-          large-packages: true
+          large-packages: false # Keep clang linker needed for Rust
           docker-images: true
           swap-storage: true
 

@@ -9,7 +9,7 @@
 #![cfg(not(any(feature = "env_internal", feature = "env_test_internal")))]
 
 mod common;
-use common::yield_wait_for_network;
+use common::{DEFAULT_NETWORK_WAIT_MS, yield_wait_for_network};
 
 use collects_business::{AuthCompute, AuthStatus, LoginCommand, LoginInput};
 use collects_ui::state::State;
@@ -520,6 +520,9 @@ async fn test_login_empty_username_fails() {
         state.ctx.flush_commands();
     }
 
+    // Wait for async command to complete
+    yield_wait_for_network(DEFAULT_NETWORK_WAIT_MS).await;
+
     // Sync computes
     {
         let state = harness.state_mut();
@@ -576,6 +579,9 @@ async fn test_login_empty_otp_fails() {
         state.ctx.flush_commands();
     }
 
+    // Wait for async command to complete
+    yield_wait_for_network(DEFAULT_NETWORK_WAIT_MS).await;
+
     // Sync computes
     {
         let state = harness.state_mut();
@@ -631,6 +637,9 @@ async fn test_login_invalid_otp_format_fails() {
         state.ctx.enqueue_command::<LoginCommand>();
         state.ctx.flush_commands();
     }
+
+    // Wait for async command to complete
+    yield_wait_for_network(DEFAULT_NETWORK_WAIT_MS).await;
 
     // Sync computes
     {
@@ -690,6 +699,9 @@ async fn test_login_non_numeric_otp_fails() {
         state.ctx.enqueue_command::<LoginCommand>();
         state.ctx.flush_commands();
     }
+
+    // Wait for async command to complete
+    yield_wait_for_network(DEFAULT_NETWORK_WAIT_MS).await;
 
     // Sync computes
     {

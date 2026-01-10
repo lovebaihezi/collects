@@ -289,5 +289,16 @@ mod tests {
         let json = serde_json::to_string_pretty(&doc).expect("Should serialize to JSON");
         assert!(json.contains("Collects API"));
         assert!(json.contains("bearer_auth"));
+        // Verify paths are included
+        assert!(json.contains("/v1/me"), "Should include /v1/me path");
+        assert!(json.contains("/v1/contents"), "Should include /v1/contents path");
+        assert!(json.contains("/v1/tags"), "Should include /v1/tags path");
+        assert!(json.contains("/v1/groups"), "Should include /v1/groups path");
+        assert!(json.contains("/v1/uploads/init"), "Should include /v1/uploads/init path");
+        assert!(json.contains("/v1/share-links"), "Should include /v1/share-links path");
+        assert!(
+            json.contains("/v1/public/share/{token}"),
+            "Should include /v1/public/share/{{token}} path"
+        );
     }
 }

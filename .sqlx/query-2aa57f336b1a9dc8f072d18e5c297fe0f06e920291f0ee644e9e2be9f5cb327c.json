@@ -1,0 +1,148 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT\n                g.id as group_id,\n                g.user_id as group_user_id,\n                g.name,\n                g.description,\n                g.visibility,\n                g.status as group_status,\n                g.trashed_at,\n                g.archived_at,\n                g.created_at as group_created_at,\n                g.updated_at,\n                sl.id as share_link_id,\n                sl.owner_id,\n                sl.token,\n                sl.name as share_link_name,\n                sl.permission,\n                sl.password_hash,\n                sl.max_access_count,\n                sl.access_count,\n                sl.expires_at,\n                sl.is_active,\n                sl.created_at as share_link_created_at,\n                (SELECT COUNT(*) FROM content_group_items WHERE group_id = g.id) as \"file_count!\"\n            FROM share_links sl\n            JOIN content_group_shares cgs ON cgs.share_link_id = sl.id\n            JOIN content_groups g ON g.id = cgs.group_id\n            WHERE sl.token = $1 AND g.status = 'active'\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "group_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "group_user_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 3,
+        "name": "description",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "visibility",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 5,
+        "name": "group_status",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 6,
+        "name": "trashed_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 7,
+        "name": "archived_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 8,
+        "name": "group_created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 9,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 10,
+        "name": "share_link_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 11,
+        "name": "owner_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 12,
+        "name": "token",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 13,
+        "name": "share_link_name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 14,
+        "name": "permission",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 15,
+        "name": "password_hash",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 16,
+        "name": "max_access_count",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 17,
+        "name": "access_count",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 18,
+        "name": "expires_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 19,
+        "name": "is_active",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 20,
+        "name": "share_link_created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 21,
+        "name": "file_count!",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      true,
+      true,
+      false,
+      true,
+      false,
+      false,
+      null
+    ]
+  },
+  "hash": "2aa57f336b1a9dc8f072d18e5c297fe0f06e920291f0ee644e9e2be9f5cb327c"
+}

@@ -1499,6 +1499,82 @@ mod tests {
             Ok(false)
         }
 
+        async fn share_links_get(
+            &self,
+            _id: uuid::Uuid,
+            _owner_id: uuid::Uuid,
+        ) -> Result<Option<crate::database::ShareLinkRow>, crate::database::SqlStorageError>
+        {
+            Ok(None)
+        }
+
+        async fn share_links_update(
+            &self,
+            _id: uuid::Uuid,
+            _owner_id: uuid::Uuid,
+            _input: crate::database::ShareLinkUpdate,
+        ) -> Result<Option<crate::database::ShareLinkRow>, crate::database::SqlStorageError>
+        {
+            Ok(None)
+        }
+
+        async fn share_links_delete(
+            &self,
+            _id: uuid::Uuid,
+            _owner_id: uuid::Uuid,
+        ) -> Result<bool, crate::database::SqlStorageError> {
+            Ok(false)
+        }
+
+        async fn share_links_increment_access(
+            &self,
+            _id: uuid::Uuid,
+        ) -> Result<(), crate::database::SqlStorageError> {
+            Ok(())
+        }
+
+        async fn content_shares_attach_link(
+            &self,
+            _content_id: uuid::Uuid,
+            _share_link_id: uuid::Uuid,
+            _created_by: uuid::Uuid,
+        ) -> Result<(), crate::database::SqlStorageError> {
+            Ok(())
+        }
+
+        async fn group_shares_attach_link(
+            &self,
+            _group_id: uuid::Uuid,
+            _share_link_id: uuid::Uuid,
+            _created_by: uuid::Uuid,
+        ) -> Result<(), crate::database::SqlStorageError> {
+            Ok(())
+        }
+
+        async fn contents_get_by_share_token(
+            &self,
+            _token: &str,
+        ) -> Result<
+            Option<(crate::database::ContentRow, crate::database::ShareLinkRow)>,
+            crate::database::SqlStorageError,
+        > {
+            Ok(None)
+        }
+
+        async fn groups_get_by_share_token(
+            &self,
+            _token: &str,
+        ) -> Result<
+            Option<(
+                crate::database::ContentGroupRow,
+                crate::database::ShareLinkRow,
+                i64,
+            )>,
+            crate::database::SqlStorageError,
+        > {
+            Ok(None)
+        }
+
         async fn content_shares_create_for_user(
             &self,
             _input: crate::database::ContentShareCreateForUser,

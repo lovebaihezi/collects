@@ -190,6 +190,54 @@ pub trait SqlStorage: Clone + Send + Sync + 'static {
         share_link_id: uuid::Uuid,
     ) -> impl Future<Output = Result<bool, SqlStorageError>> + Send;
 
+    fn share_links_get(
+        &self,
+        id: uuid::Uuid,
+        owner_id: uuid::Uuid,
+    ) -> impl Future<Output = Result<Option<ShareLinkRow>, SqlStorageError>> + Send;
+
+    fn share_links_update(
+        &self,
+        id: uuid::Uuid,
+        owner_id: uuid::Uuid,
+        input: ShareLinkUpdate,
+    ) -> impl Future<Output = Result<Option<ShareLinkRow>, SqlStorageError>> + Send;
+
+    fn share_links_delete(
+        &self,
+        id: uuid::Uuid,
+        owner_id: uuid::Uuid,
+    ) -> impl Future<Output = Result<bool, SqlStorageError>> + Send;
+
+    fn share_links_increment_access(
+        &self,
+        id: uuid::Uuid,
+    ) -> impl Future<Output = Result<(), SqlStorageError>> + Send;
+
+    fn content_shares_attach_link(
+        &self,
+        content_id: uuid::Uuid,
+        share_link_id: uuid::Uuid,
+        created_by: uuid::Uuid,
+    ) -> impl Future<Output = Result<(), SqlStorageError>> + Send;
+
+    fn group_shares_attach_link(
+        &self,
+        group_id: uuid::Uuid,
+        share_link_id: uuid::Uuid,
+        created_by: uuid::Uuid,
+    ) -> impl Future<Output = Result<(), SqlStorageError>> + Send;
+
+    fn contents_get_by_share_token(
+        &self,
+        token: &str,
+    ) -> impl Future<Output = Result<Option<(ContentRow, ShareLinkRow)>, SqlStorageError>> + Send;
+
+    fn groups_get_by_share_token(
+        &self,
+        token: &str,
+    ) -> impl Future<Output = Result<Option<(ContentGroupRow, ShareLinkRow, i64)>, SqlStorageError>> + Send;
+
     fn content_shares_create_for_user(
         &self,
         input: ContentShareCreateForUser,
@@ -530,6 +578,18 @@ pub struct ShareLinkCreate {
     pub password_hash: Option<String>,
     pub max_access_count: Option<i32>,
     pub expires_at: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct ShareLinkUpdate {
+    /// None=no change, Some(None)=clear, Some(Some(v))=set
+    pub name: Option<Option<String>>,
+    pub permission: Option<SharePermission>,
+    /// None=no change, Some(None)=remove password, Some(Some(v))=set password hash
+    pub password_hash: Option<Option<String>>,
+    pub expires_at: Option<Option<chrono::DateTime<chrono::Utc>>>,
+    pub max_access_count: Option<Option<i32>>,
+    pub is_active: Option<bool>,
 }
 
 #[derive(Debug, Clone)]
@@ -1631,6 +1691,357 @@ impl SqlStorage for PgStorage {
         .map_err(|e| SqlStorageError::Db(e.to_string()))?;
 
         Ok(res.rows_affected() > 0)
+    }
+
+    async fn share_links_get(
+        &self,
+        id: uuid::Uuid,
+        owner_id: uuid::Uuid,
+    ) -> Result<Option<ShareLinkRow>, SqlStorageError> {
+        let rec = sqlx::query!(
+            r#"
+            SELECT
+                id, owner_id, token, name, permission, password_hash,
+                max_access_count, access_count, expires_at, is_active, created_at
+            FROM share_links
+            WHERE id = $1 AND owner_id = $2
+            "#,
+            id,
+            owner_id
+        )
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| SqlStorageError::Db(e.to_string()))?;
+
+        Ok(rec.map(|rec| ShareLinkRow {
+            id: rec.id,
+            owner_id: rec.owner_id,
+            token: rec.token,
+            name: rec.name,
+            permission: rec.permission,
+            password_hash: rec.password_hash,
+            max_access_count: rec.max_access_count,
+            access_count: rec.access_count,
+            expires_at: rec.expires_at,
+            is_active: rec.is_active,
+            created_at: rec.created_at,
+        }))
+    }
+
+    async fn share_links_update(
+        &self,
+        id: uuid::Uuid,
+        owner_id: uuid::Uuid,
+        input: ShareLinkUpdate,
+    ) -> Result<Option<ShareLinkRow>, SqlStorageError> {
+        // Build dynamic update query based on which fields are set
+        // We use COALESCE pattern to only update fields that are explicitly set
+        let rec = sqlx::query!(
+            r#"
+            UPDATE share_links
+            SET
+                name = CASE WHEN $3 THEN $4 ELSE name END,
+                permission = CASE WHEN $5 THEN $6 ELSE permission END,
+                password_hash = CASE WHEN $7 THEN $8 ELSE password_hash END,
+                expires_at = CASE WHEN $9 THEN $10 ELSE expires_at END,
+                max_access_count = CASE WHEN $11 THEN $12 ELSE max_access_count END,
+                is_active = CASE WHEN $13 THEN $14 ELSE is_active END
+            WHERE id = $1 AND owner_id = $2
+            RETURNING
+                id, owner_id, token, name, permission, password_hash,
+                max_access_count, access_count, expires_at, is_active, created_at
+            "#,
+            id,
+            owner_id,
+            input.name.is_some(),
+            input.name.flatten(),
+            input.permission.is_some(),
+            input.permission.map(|p| p.as_db_str().to_string()),
+            input.password_hash.is_some(),
+            input.password_hash.flatten(),
+            input.expires_at.is_some(),
+            input.expires_at.flatten(),
+            input.max_access_count.is_some(),
+            input.max_access_count.flatten(),
+            input.is_active.is_some(),
+            input.is_active.unwrap_or(true),
+        )
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| SqlStorageError::Db(e.to_string()))?;
+
+        Ok(rec.map(|rec| ShareLinkRow {
+            id: rec.id,
+            owner_id: rec.owner_id,
+            token: rec.token,
+            name: rec.name,
+            permission: rec.permission,
+            password_hash: rec.password_hash,
+            max_access_count: rec.max_access_count,
+            access_count: rec.access_count,
+            expires_at: rec.expires_at,
+            is_active: rec.is_active,
+            created_at: rec.created_at,
+        }))
+    }
+
+    async fn share_links_delete(
+        &self,
+        id: uuid::Uuid,
+        owner_id: uuid::Uuid,
+    ) -> Result<bool, SqlStorageError> {
+        let res = sqlx::query!(
+            r#"
+            DELETE FROM share_links
+            WHERE id = $1 AND owner_id = $2
+            "#,
+            id,
+            owner_id
+        )
+        .execute(&self.pool)
+        .await
+        .map_err(|e| SqlStorageError::Db(e.to_string()))?;
+
+        Ok(res.rows_affected() > 0)
+    }
+
+    async fn share_links_increment_access(&self, id: uuid::Uuid) -> Result<(), SqlStorageError> {
+        sqlx::query!(
+            r#"
+            UPDATE share_links
+            SET access_count = access_count + 1
+            WHERE id = $1
+            "#,
+            id
+        )
+        .execute(&self.pool)
+        .await
+        .map_err(|e| SqlStorageError::Db(e.to_string()))?;
+
+        Ok(())
+    }
+
+    async fn content_shares_attach_link(
+        &self,
+        content_id: uuid::Uuid,
+        share_link_id: uuid::Uuid,
+        created_by: uuid::Uuid,
+    ) -> Result<(), SqlStorageError> {
+        // Get the permission from the share link
+        let share_link = sqlx::query!(
+            r#"
+            SELECT permission FROM share_links WHERE id = $1
+            "#,
+            share_link_id
+        )
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| SqlStorageError::Db(e.to_string()))?
+        .ok_or(SqlStorageError::NotFound)?;
+
+        sqlx::query!(
+            r#"
+            INSERT INTO content_shares (content_id, share_link_id, permission, created_by)
+            VALUES ($1, $2, $3, $4)
+            "#,
+            content_id,
+            share_link_id,
+            share_link.permission,
+            created_by
+        )
+        .execute(&self.pool)
+        .await
+        .map_err(|e| SqlStorageError::Db(e.to_string()))?;
+
+        Ok(())
+    }
+
+    async fn group_shares_attach_link(
+        &self,
+        group_id: uuid::Uuid,
+        share_link_id: uuid::Uuid,
+        created_by: uuid::Uuid,
+    ) -> Result<(), SqlStorageError> {
+        // Get the permission from the share link
+        let share_link = sqlx::query!(
+            r#"
+            SELECT permission FROM share_links WHERE id = $1
+            "#,
+            share_link_id
+        )
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| SqlStorageError::Db(e.to_string()))?
+        .ok_or(SqlStorageError::NotFound)?;
+
+        sqlx::query!(
+            r#"
+            INSERT INTO content_group_shares (group_id, share_link_id, permission, created_by)
+            VALUES ($1, $2, $3, $4)
+            "#,
+            group_id,
+            share_link_id,
+            share_link.permission,
+            created_by
+        )
+        .execute(&self.pool)
+        .await
+        .map_err(|e| SqlStorageError::Db(e.to_string()))?;
+
+        Ok(())
+    }
+
+    async fn contents_get_by_share_token(
+        &self,
+        token: &str,
+    ) -> Result<Option<(ContentRow, ShareLinkRow)>, SqlStorageError> {
+        let rec = sqlx::query!(
+            r#"
+            SELECT
+                c.id as content_id,
+                c.user_id as content_user_id,
+                c.title,
+                c.description,
+                c.storage_backend,
+                c.storage_profile,
+                c.storage_key,
+                c.content_type,
+                c.file_size,
+                c.status as content_status,
+                c.visibility,
+                c.kind,
+                c.body,
+                c.trashed_at,
+                c.archived_at,
+                c.created_at as content_created_at,
+                c.updated_at,
+                sl.id as share_link_id,
+                sl.owner_id,
+                sl.token,
+                sl.name as share_link_name,
+                sl.permission,
+                sl.password_hash,
+                sl.max_access_count,
+                sl.access_count,
+                sl.expires_at,
+                sl.is_active,
+                sl.created_at as share_link_created_at
+            FROM share_links sl
+            JOIN content_shares cs ON cs.share_link_id = sl.id
+            JOIN contents c ON c.id = cs.content_id
+            WHERE sl.token = $1 AND c.status = 'active'
+            "#,
+            token
+        )
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| SqlStorageError::Db(e.to_string()))?;
+
+        Ok(rec.map(|rec| {
+            let content = ContentRow {
+                id: rec.content_id,
+                user_id: rec.content_user_id,
+                title: rec.title,
+                description: rec.description,
+                storage_backend: rec.storage_backend,
+                storage_profile: rec.storage_profile,
+                storage_key: rec.storage_key,
+                content_type: rec.content_type,
+                file_size: rec.file_size,
+                status: rec.content_status,
+                visibility: rec.visibility,
+                kind: rec.kind,
+                body: rec.body,
+                trashed_at: rec.trashed_at,
+                archived_at: rec.archived_at,
+                created_at: rec.content_created_at,
+                updated_at: rec.updated_at,
+            };
+            let share_link = ShareLinkRow {
+                id: rec.share_link_id,
+                owner_id: rec.owner_id,
+                token: rec.token,
+                name: rec.share_link_name,
+                permission: rec.permission,
+                password_hash: rec.password_hash,
+                max_access_count: rec.max_access_count,
+                access_count: rec.access_count,
+                expires_at: rec.expires_at,
+                is_active: rec.is_active,
+                created_at: rec.share_link_created_at,
+            };
+            (content, share_link)
+        }))
+    }
+
+    async fn groups_get_by_share_token(
+        &self,
+        token: &str,
+    ) -> Result<Option<(ContentGroupRow, ShareLinkRow, i64)>, SqlStorageError> {
+        let rec = sqlx::query!(
+            r#"
+            SELECT
+                g.id as group_id,
+                g.user_id as group_user_id,
+                g.name,
+                g.description,
+                g.visibility,
+                g.status as group_status,
+                g.trashed_at,
+                g.archived_at,
+                g.created_at as group_created_at,
+                g.updated_at,
+                sl.id as share_link_id,
+                sl.owner_id,
+                sl.token,
+                sl.name as share_link_name,
+                sl.permission,
+                sl.password_hash,
+                sl.max_access_count,
+                sl.access_count,
+                sl.expires_at,
+                sl.is_active,
+                sl.created_at as share_link_created_at,
+                (SELECT COUNT(*) FROM content_group_items WHERE group_id = g.id) as "file_count!"
+            FROM share_links sl
+            JOIN content_group_shares cgs ON cgs.share_link_id = sl.id
+            JOIN content_groups g ON g.id = cgs.group_id
+            WHERE sl.token = $1 AND g.status = 'active'
+            "#,
+            token
+        )
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| SqlStorageError::Db(e.to_string()))?;
+
+        Ok(rec.map(|rec| {
+            let group = ContentGroupRow {
+                id: rec.group_id,
+                user_id: rec.group_user_id,
+                name: rec.name,
+                description: rec.description,
+                visibility: rec.visibility,
+                status: rec.group_status,
+                trashed_at: rec.trashed_at,
+                archived_at: rec.archived_at,
+                created_at: rec.group_created_at,
+                updated_at: rec.updated_at,
+            };
+            let share_link = ShareLinkRow {
+                id: rec.share_link_id,
+                owner_id: rec.owner_id,
+                token: rec.token,
+                name: rec.share_link_name,
+                permission: rec.permission,
+                password_hash: rec.password_hash,
+                max_access_count: rec.max_access_count,
+                access_count: rec.access_count,
+                expires_at: rec.expires_at,
+                is_active: rec.is_active,
+                created_at: rec.share_link_created_at,
+            };
+            (group, share_link, rec.file_count)
+        }))
     }
 
     async fn content_shares_create_for_user(

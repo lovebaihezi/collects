@@ -5,6 +5,8 @@
 //! - `content_tags` - Content-tag relationship endpoints
 //! - `groups` - Group management endpoints
 //! - `me` - Current user information
+//! - `public` - Public share access endpoints (unauthenticated)
+//! - `share_links` - Share link management endpoints
 //! - `tags` - Tag management endpoints
 //! - `types` - Shared types for API request/response
 //! - `uploads` - File upload endpoints
@@ -13,6 +15,8 @@ pub mod content_tags;
 pub mod contents;
 pub mod groups;
 pub mod me;
+pub mod public;
+pub mod share_links;
 pub mod tags;
 pub mod types;
 pub mod uploads;
@@ -24,6 +28,23 @@ use axum::{
     Router,
     routing::{delete, get, patch, post},
 };
+
+/// Creates public (unauthenticated) v1 API routes.
+pub fn create_public_routes<S, U>() -> Router<AppState<S, U>>
+where
+    S: SqlStorage + Clone + Send + Sync + 'static,
+    U: UserStorage + Clone + Send + Sync + 'static,
+{
+    Router::new()
+        .route(
+            "/public/share/{token}",
+            get(public::v1_public_share_get::<S, U>),
+        )
+        .route(
+            "/public/share/{token}/view-url",
+            post(public::v1_public_share_view_url::<S, U>),
+        )
+}
 
 /// Creates the v1 API routes.
 pub fn create_routes<S, U>() -> Router<AppState<S, U>>
@@ -121,5 +142,27 @@ where
         .route(
             "/groups/{id}/contents/reorder",
             patch(groups::v1_groups_contents_reorder::<S, U>),
+        )
+        // Share links endpoints
+        .route(
+            "/share-links",
+            get(share_links::v1_share_links_list::<S, U>)
+                .post(share_links::v1_share_links_create::<S, U>),
+        )
+        .route(
+            "/share-links/{id}",
+            get(share_links::v1_share_links_get::<S, U>)
+                .patch(share_links::v1_share_links_update::<S, U>)
+                .delete(share_links::v1_share_links_delete::<S, U>),
+        )
+        // Content share link creation
+        .route(
+            "/contents/{id}/share-link",
+            post(share_links::v1_contents_share_link_create::<S, U>),
+        )
+        // Group share link creation
+        .route(
+            "/groups/{id}/share-link",
+            post(share_links::v1_groups_share_link_create::<S, U>),
         )
 }

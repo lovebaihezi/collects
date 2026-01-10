@@ -24,8 +24,20 @@ use super::types::{
 const MAX_TEXT_BODY_SIZE: usize = 64 * 1024;
 
 /// List contents for the authenticated user.
-///
-/// GET /v1/contents?limit=50&offset=0&status=active
+#[utoipa::path(
+    get,
+    path = "/v1/contents",
+    tag = "contents",
+    params(V1ContentsListQuery),
+    responses(
+        (status = 200, description = "List of contents", body = V1ContentsListResponse),
+        (status = 401, description = "Unauthorized", body = V1ErrorResponse),
+        (status = 500, description = "Internal server error", body = V1ErrorResponse),
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn v1_contents_list<S, U>(
     State(state): State<AppState<S, U>>,
     auth: RequireAuth,
@@ -99,10 +111,23 @@ where
 
 /// Create text content directly (without upload).
 ///
-/// POST /v1/contents
-///
 /// This endpoint creates text content that is stored inline in the database
 /// (not uploaded to R2). Suitable for notes, markdown, and other text < 64KB.
+#[utoipa::path(
+    post,
+    path = "/v1/contents",
+    tag = "contents",
+    request_body = V1ContentCreateRequest,
+    responses(
+        (status = 201, description = "Content created", body = V1ContentCreateResponse),
+        (status = 400, description = "Bad request", body = V1ErrorResponse),
+        (status = 401, description = "Unauthorized", body = V1ErrorResponse),
+        (status = 500, description = "Internal server error", body = V1ErrorResponse),
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn v1_contents_create<S, U>(
     State(state): State<AppState<S, U>>,
     auth: RequireAuth,
@@ -206,8 +231,24 @@ where
 }
 
 /// Get a specific content item by ID.
-///
-/// GET /v1/contents/:id
+#[utoipa::path(
+    get,
+    path = "/v1/contents/{id}",
+    tag = "contents",
+    params(
+        ("id" = String, Path, description = "Content ID (UUID)")
+    ),
+    responses(
+        (status = 200, description = "Content item", body = V1ContentItem),
+        (status = 400, description = "Invalid content ID format", body = V1ErrorResponse),
+        (status = 401, description = "Unauthorized", body = V1ErrorResponse),
+        (status = 404, description = "Content not found", body = V1ErrorResponse),
+        (status = 500, description = "Internal server error", body = V1ErrorResponse),
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn v1_contents_get<S, U>(
     State(state): State<AppState<S, U>>,
     auth: RequireAuth,
@@ -278,8 +319,26 @@ where
 }
 
 /// Update content metadata.
-///
-/// PATCH /v1/contents/:id
+#[utoipa::path(
+    patch,
+    path = "/v1/contents/{id}",
+    tag = "contents",
+    params(
+        ("id" = String, Path, description = "Content ID (UUID)")
+    ),
+    request_body = V1ContentsUpdateRequest,
+    responses(
+        (status = 200, description = "Content updated", body = V1ContentItem),
+        (status = 400, description = "Bad request", body = V1ErrorResponse),
+        (status = 401, description = "Unauthorized", body = V1ErrorResponse),
+        (status = 403, description = "Forbidden", body = V1ErrorResponse),
+        (status = 404, description = "Content not found", body = V1ErrorResponse),
+        (status = 500, description = "Internal server error", body = V1ErrorResponse),
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn v1_contents_update<S, U>(
     State(state): State<AppState<S, U>>,
     auth: RequireAuth,
@@ -392,8 +451,25 @@ where
 }
 
 /// Move content to trash.
-///
-/// POST /v1/contents/:id/trash
+#[utoipa::path(
+    post,
+    path = "/v1/contents/{id}/trash",
+    tag = "contents",
+    params(
+        ("id" = String, Path, description = "Content ID (UUID)")
+    ),
+    responses(
+        (status = 200, description = "Content trashed", body = V1ContentItem),
+        (status = 400, description = "Invalid content ID format", body = V1ErrorResponse),
+        (status = 401, description = "Unauthorized", body = V1ErrorResponse),
+        (status = 403, description = "Forbidden", body = V1ErrorResponse),
+        (status = 404, description = "Content not found", body = V1ErrorResponse),
+        (status = 500, description = "Internal server error", body = V1ErrorResponse),
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn v1_contents_trash<S, U>(
     State(state): State<AppState<S, U>>,
     auth: RequireAuth,
@@ -407,8 +483,25 @@ where
 }
 
 /// Restore content from trash.
-///
-/// POST /v1/contents/:id/restore
+#[utoipa::path(
+    post,
+    path = "/v1/contents/{id}/restore",
+    tag = "contents",
+    params(
+        ("id" = String, Path, description = "Content ID (UUID)")
+    ),
+    responses(
+        (status = 200, description = "Content restored", body = V1ContentItem),
+        (status = 400, description = "Invalid content ID format", body = V1ErrorResponse),
+        (status = 401, description = "Unauthorized", body = V1ErrorResponse),
+        (status = 403, description = "Forbidden", body = V1ErrorResponse),
+        (status = 404, description = "Content not found", body = V1ErrorResponse),
+        (status = 500, description = "Internal server error", body = V1ErrorResponse),
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn v1_contents_restore<S, U>(
     State(state): State<AppState<S, U>>,
     auth: RequireAuth,
@@ -422,8 +515,25 @@ where
 }
 
 /// Archive content.
-///
-/// POST /v1/contents/:id/archive
+#[utoipa::path(
+    post,
+    path = "/v1/contents/{id}/archive",
+    tag = "contents",
+    params(
+        ("id" = String, Path, description = "Content ID (UUID)")
+    ),
+    responses(
+        (status = 200, description = "Content archived", body = V1ContentItem),
+        (status = 400, description = "Invalid content ID format", body = V1ErrorResponse),
+        (status = 401, description = "Unauthorized", body = V1ErrorResponse),
+        (status = 403, description = "Forbidden", body = V1ErrorResponse),
+        (status = 404, description = "Content not found", body = V1ErrorResponse),
+        (status = 500, description = "Internal server error", body = V1ErrorResponse),
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn v1_contents_archive<S, U>(
     State(state): State<AppState<S, U>>,
     auth: RequireAuth,
@@ -437,8 +547,25 @@ where
 }
 
 /// Unarchive content (restore to active).
-///
-/// POST /v1/contents/:id/unarchive
+#[utoipa::path(
+    post,
+    path = "/v1/contents/{id}/unarchive",
+    tag = "contents",
+    params(
+        ("id" = String, Path, description = "Content ID (UUID)")
+    ),
+    responses(
+        (status = 200, description = "Content unarchived", body = V1ContentItem),
+        (status = 400, description = "Invalid content ID format", body = V1ErrorResponse),
+        (status = 401, description = "Unauthorized", body = V1ErrorResponse),
+        (status = 403, description = "Forbidden", body = V1ErrorResponse),
+        (status = 404, description = "Content not found", body = V1ErrorResponse),
+        (status = 500, description = "Internal server error", body = V1ErrorResponse),
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn v1_contents_unarchive<S, U>(
     State(state): State<AppState<S, U>>,
     auth: RequireAuth,
@@ -530,10 +657,27 @@ where
 
 /// Get a view URL for content.
 ///
-/// POST /v1/contents/:id/view-url
-///
 /// This endpoint generates a presigned GET URL for viewing/downloading content
 /// from R2 storage. The URL is valid for 15 minutes by default.
+#[utoipa::path(
+    post,
+    path = "/v1/contents/{id}/view-url",
+    tag = "contents",
+    params(
+        ("id" = String, Path, description = "Content ID (UUID)")
+    ),
+    request_body = V1ViewUrlRequest,
+    responses(
+        (status = 200, description = "View URL generated", body = V1ViewUrlResponse),
+        (status = 400, description = "Bad request", body = V1ErrorResponse),
+        (status = 401, description = "Unauthorized", body = V1ErrorResponse),
+        (status = 404, description = "Content not found", body = V1ErrorResponse),
+        (status = 500, description = "Internal server error", body = V1ErrorResponse),
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn v1_contents_view_url<S, U>(
     State(state): State<AppState<S, U>>,
     presigner: Option<axum::Extension<R2Presigner>>,

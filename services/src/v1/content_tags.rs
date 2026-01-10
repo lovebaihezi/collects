@@ -14,8 +14,24 @@ use axum::{
 use super::types::{V1ContentTagsAttachRequest, V1ErrorResponse, V1TagItem, V1TagsListResponse};
 
 /// List tags attached to a content item.
-///
-/// GET /v1/contents/:id/tags
+#[utoipa::path(
+    get,
+    path = "/v1/contents/{id}/tags",
+    tag = "content-tags",
+    params(
+        ("id" = String, Path, description = "Content ID (UUID)")
+    ),
+    responses(
+        (status = 200, description = "List of tags for content", body = V1TagsListResponse),
+        (status = 400, description = "Invalid content ID format", body = V1ErrorResponse),
+        (status = 401, description = "Unauthorized", body = V1ErrorResponse),
+        (status = 404, description = "Content not found", body = V1ErrorResponse),
+        (status = 500, description = "Internal server error", body = V1ErrorResponse),
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn v1_content_tags_list<S, U>(
     State(state): State<AppState<S, U>>,
     auth: RequireAuth,
@@ -109,8 +125,25 @@ where
 }
 
 /// Attach a tag to a content item.
-///
-/// POST /v1/contents/:id/tags
+#[utoipa::path(
+    post,
+    path = "/v1/contents/{id}/tags",
+    tag = "content-tags",
+    params(
+        ("id" = String, Path, description = "Content ID (UUID)")
+    ),
+    request_body = V1ContentTagsAttachRequest,
+    responses(
+        (status = 204, description = "Tag attached to content"),
+        (status = 400, description = "Bad request", body = V1ErrorResponse),
+        (status = 401, description = "Unauthorized", body = V1ErrorResponse),
+        (status = 404, description = "Content not found", body = V1ErrorResponse),
+        (status = 500, description = "Internal server error", body = V1ErrorResponse),
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn v1_content_tags_attach<S, U>(
     State(state): State<AppState<S, U>>,
     auth: RequireAuth,
@@ -211,8 +244,25 @@ where
 }
 
 /// Detach a tag from a content item.
-///
-/// DELETE /v1/contents/:id/tags/:tag_id
+#[utoipa::path(
+    delete,
+    path = "/v1/contents/{id}/tags/{tag_id}",
+    tag = "content-tags",
+    params(
+        ("id" = String, Path, description = "Content ID (UUID)"),
+        ("tag_id" = String, Path, description = "Tag ID (UUID)")
+    ),
+    responses(
+        (status = 204, description = "Tag detached from content"),
+        (status = 400, description = "Bad request", body = V1ErrorResponse),
+        (status = 401, description = "Unauthorized", body = V1ErrorResponse),
+        (status = 404, description = "Content or tag not found", body = V1ErrorResponse),
+        (status = 500, description = "Internal server error", body = V1ErrorResponse),
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn v1_content_tags_detach<S, U>(
     State(state): State<AppState<S, U>>,
     auth: RequireAuth,

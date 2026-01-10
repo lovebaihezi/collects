@@ -6,32 +6,21 @@ use crate::users::session_auth::RequireAuth;
 use crate::users::storage::UserStorage;
 use axum::{Json, extract::State, http::StatusCode, response::IntoResponse};
 
-use super::types::V1MeResponse;
+use super::types::{V1ErrorResponse, V1MeResponse};
 
 /// Get the current authenticated user's information.
-///
-/// This endpoint requires a valid session JWT token in the Authorization header.
-///
-/// # Request
-///
-/// ```text
-/// GET /v1/me
-/// Authorization: Bearer <session_token>
-/// ```
-///
-/// # Response
-///
-/// ```json
-/// {
-///     "username": "alice",
-///     "issued_at": 1704067200,
-///     "expires_at": 1704153600
-/// }
-/// ```
-///
-/// # Errors
-///
-/// - 401 Unauthorized: Missing or invalid token
+#[utoipa::path(
+    get,
+    path = "/v1/me",
+    tag = "me",
+    responses(
+        (status = 200, description = "Current user information", body = V1MeResponse),
+        (status = 401, description = "Unauthorized - missing or invalid token", body = V1ErrorResponse),
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn v1_me<S, U>(
     State(_state): State<AppState<S, U>>,
     auth: RequireAuth,

@@ -30,11 +30,33 @@ valid:
         let compute = dep.get_compute_ref::<MyCompute>();
         println!("{:?}", compute);
     }
-  # StateCtx::state_mut is a different method (allowed for UI-only state)
+  # StateCtx::state_mut is allowed for UI-only state (actual usage from modals.rs)
   - |
-    fn ui_only_mutation(ctx: &StateCtx) {
-        let state = ctx.state_mut::<ImagePreviewState>();
-        state.texture = None;
+    fn update_qr_texture(state_ctx: &StateCtx, ui: &egui::Ui) {
+        let state = state_ctx.state_mut::<InternalUsersState>();
+        state.qr_texture = Some(ui.ctx().load_texture(
+            "qr_code",
+            qr_image,
+            egui::TextureOptions::NEAREST,
+        ));
+    }
+  # StateCtx::state_mut for ImagePreviewState (actual usage from app.rs)
+  - |
+    fn handle_paste(ctx: &egui::Context, state_ctx: &StateCtx) {
+        let image_state = state_ctx.state_mut::<ImagePreviewState>();
+        image_state.set_image_rgba(ctx, width, height, bytes);
+    }
+  # self.state.ctx.state_mut pattern (actual usage from app.rs)
+  - |
+    fn process_clipboard(&mut self, ctx: &egui::Context) {
+        let image_state = self.state.ctx.state_mut::<ImagePreviewState>();
+        image_state.set_image_rgba(ctx, width, height, bytes);
+    }
+  # Test harness state_mut (actual usage from tests)
+  - |
+    fn test_example() {
+        let state = harness.state_mut();
+        state.ctx.sync_computes();
     }
   # Using state_mut on a completely different type is allowed
   - |

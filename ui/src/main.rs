@@ -14,6 +14,12 @@ mod alloc {
 fn main() -> eframe::Result {
     use std::fs;
 
+    // Create a Tokio runtime for async command execution.
+    // We need this because StateCtx uses JoinSet::spawn() which requires an active runtime.
+    // We enter the runtime context without blocking, allowing eframe to run its own event loop.
+    let runtime = tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime");
+    let _guard = runtime.enter();
+
     // Log to stderr (if you run with `RUST_LOG=debug`).
     // Default level: INFO, with noisy subsystems silenced.
     // Override with `RUST_LOG=...` when needed (e.g., `RUST_LOG=collects_ui::paste=trace`).

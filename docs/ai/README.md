@@ -15,12 +15,14 @@ This folder contains **small, task-focused** documents. When working on the repo
 ### If you touch `StateCtx`, `Compute`, `Command`, async work, or eframe frame lifecycle
 Read:
 - `docs/ai/state-model.md`
+- `docs/ai/send-safe-state.md` (if adding/modifying State types)
 
 Typical tasks:
 - adding a new command
 - running concurrent async work (native + WASM)
 - adding end-of-frame command queue flushing
 - Updater usage, snapshot-based reads, request generation rules
+- determining if a State is Send-safe or UI-affine
 
 ---
 
@@ -83,6 +85,7 @@ When you start a task:
 
 - `docs/ai/README.md` — this index (start here)
 - `docs/ai/state-model.md` — StateCtx / Compute / Command rules (async-safe, snapshot-based, end-of-frame)
+- `docs/ai/send-safe-state.md` — Send-safe vs UI-affine state boundary rules
 - `docs/ai/testing.md` — test strategy + commands
 - `docs/ai/scripts-and-ci.md` — scripts + GitHub Actions rules
 - `docs/ai/versioning.md` — version format + release metadata rules

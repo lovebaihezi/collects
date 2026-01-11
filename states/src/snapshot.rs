@@ -424,4 +424,149 @@ mod tests {
         assert!(snap.states().contains::<TestState>());
         assert!(snap.computes().contains::<TestCompute>());
     }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // SEND-SAFE STATE BOUNDARY TESTS
+    //
+    // These tests verify the Send-safe vs UI-affine state patterns documented
+    // in docs/ai/send-safe-state.md
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// A Send-safe state: all fields are Send, implements clone_boxed returning Some.
+    #[derive(Debug, Clone, PartialEq)]
+    struct SendSafeState {
+        value: i32,
+        name: String,
+    }
+
+    impl SnapshotClone for SendSafeState {
+        fn clone_boxed(&self) -> Option<Box<dyn Any + Send>> {
+            Some(Box::new(self.clone()))
+        }
+    }
+
+    /// A UI-affine state simulation: uses default SnapshotClone (returns None).
+    /// In real code, this would contain non-Send types like egui::TextureHandle.
+    #[derive(Debug, Default)]
+    #[allow(dead_code)]
+    struct UiAffineState {
+        value: i32,
+        // In real code: pub texture: Option<egui::TextureHandle>,
+    }
+
+    // UI-affine states use the default SnapshotClone implementation which returns None
+    impl SnapshotClone for UiAffineState {}
+
+    #[test]
+    fn send_safe_state_clone_boxed_returns_some() {
+        let state = SendSafeState {
+            value: 42,
+            name: "test".to_string(),
+        };
+
+        let boxed = state.clone_boxed();
+        assert!(
+            boxed.is_some(),
+            "Send-safe state should return Some from clone_boxed"
+        );
+
+        // Verify the cloned value is correct
+        let boxed_value = boxed.unwrap();
+        let downcast = boxed_value.downcast::<SendSafeState>().unwrap();
+        assert_eq!(*downcast, state);
+    }
+
+    #[test]
+    fn ui_affine_state_clone_boxed_returns_none() {
+        let state = UiAffineState { value: 42 };
+
+        let boxed = state.clone_boxed();
+        assert!(
+            boxed.is_none(),
+            "UI-affine state should return None from clone_boxed (default impl)"
+        );
+    }
+
+    #[test]
+    fn send_safe_state_included_in_snapshot() {
+        let state = SendSafeState {
+            value: 42,
+            name: "test".to_string(),
+        };
+
+        // Simulate how StateCtx creates snapshots: only include states where clone_boxed returns Some
+        let states: Vec<(TypeId, Box<dyn Any + Send>)> = state
+            .clone_boxed()
+            .map(|boxed| (TypeId::of::<SendSafeState>(), boxed))
+            .into_iter()
+            .collect();
+
+        let snap = StateSnapshot::new(states.into_iter());
+
+        assert!(
+            snap.contains::<SendSafeState>(),
+            "Send-safe state should be included in snapshot"
+        );
+        assert_eq!(snap.get::<SendSafeState>().value, 42);
+    }
+
+    #[test]
+    fn ui_affine_state_excluded_from_snapshot() {
+        let state = UiAffineState { value: 42 };
+
+        // Simulate how StateCtx creates snapshots: only include states where clone_boxed returns Some
+        let states: Vec<(TypeId, Box<dyn Any + Send>)> = state
+            .clone_boxed()
+            .map(|boxed| (TypeId::of::<UiAffineState>(), boxed))
+            .into_iter()
+            .collect();
+
+        let snap = StateSnapshot::new(states.into_iter());
+
+        assert!(
+            !snap.contains::<UiAffineState>(),
+            "UI-affine state should NOT be included in snapshot"
+        );
+    }
+
+    #[test]
+    fn command_snapshot_excludes_ui_affine_states() {
+        let send_safe = SendSafeState {
+            value: 42,
+            name: "test".to_string(),
+        };
+        let ui_affine = UiAffineState { value: 100 };
+
+        // Simulate StateCtx::create_command_snapshot behavior
+        let states: Vec<(TypeId, Box<dyn Any + Send>)> = [
+            send_safe
+                .clone_boxed()
+                .map(|boxed| (TypeId::of::<SendSafeState>(), boxed)),
+            ui_affine
+                .clone_boxed()
+                .map(|boxed| (TypeId::of::<UiAffineState>(), boxed)),
+        ]
+        .into_iter()
+        .flatten()
+        .collect();
+
+        let snap = CommandSnapshot::from_iters(states.into_iter(), std::iter::empty());
+
+        // Send-safe state should be in snapshot
+        assert!(
+            snap.has_state::<SendSafeState>(),
+            "Send-safe state should be in command snapshot"
+        );
+        assert_eq!(snap.state::<SendSafeState>().value, 42);
+
+        // UI-affine state should NOT be in snapshot
+        assert!(
+            !snap.has_state::<UiAffineState>(),
+            "UI-affine state should NOT be in command snapshot"
+        );
+        assert!(
+            snap.try_state::<UiAffineState>().is_none(),
+            "try_state for UI-affine should return None"
+        );
+    }
 }

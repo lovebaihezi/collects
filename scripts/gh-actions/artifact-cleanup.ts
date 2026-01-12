@@ -12,7 +12,7 @@
 import { $ } from "bun";
 import { parseTags } from "./shared.ts";
 
-interface DockerImage {
+export interface DockerImage {
   digest: string;
   tags: string[];
   createTime: Date;
@@ -54,10 +54,24 @@ interface CleanupOptions {
   dryRun: boolean;
 }
 
+/**
+ * Counts of images by category
+ */
+export interface ImageCounts {
+  total: number;
+  pr: number;
+  nightly: number;
+  main: number;
+  production: number;
+  unknown: number;
+}
+
 interface CleanupResult {
   deleted: string[];
   skipped: string[];
   errors: string[];
+  beforeCounts: ImageCounts;
+  afterCounts: ImageCounts;
 }
 
 // Allowed characters for GCP resource names (alphanumeric, hyphens, underscores)
@@ -140,6 +154,57 @@ async function listImages(options: CleanupOptions): Promise<DockerImage[]> {
  */
 function findRetentionPolicy(tag: string): RetentionPolicy | undefined {
   return RETENTION_POLICIES.find((policy) => policy.pattern.test(tag));
+}
+
+/**
+ * Categorize an image based on its tags
+ */
+export function categorizeImage(
+  image: DockerImage,
+): "pr" | "nightly" | "main" | "production" | "unknown" {
+  for (const tag of image.tags) {
+    if (/^pr-\d+$/.test(tag)) return "pr";
+    if (/^nightly-\d{8}$/.test(tag)) return "nightly";
+    if (/^main-[a-f0-9]+$/.test(tag)) return "main";
+    if (/^v\d+\.\d+\.\d+$/.test(tag)) return "production";
+  }
+  return "unknown";
+}
+
+/**
+ * Count images by category
+ */
+export function countImagesByCategory(images: DockerImage[]): ImageCounts {
+  const counts: ImageCounts = {
+    total: images.length,
+    pr: 0,
+    nightly: 0,
+    main: 0,
+    production: 0,
+    unknown: 0,
+  };
+
+  for (const image of images) {
+    const category = categorizeImage(image);
+    counts[category]++;
+  }
+
+  return counts;
+}
+
+/**
+ * Format image counts for display
+ */
+export function formatImageCounts(counts: ImageCounts): string {
+  const lines = [
+    `Total: ${counts.total}`,
+    `  PR builds: ${counts.pr}`,
+    `  Nightly builds: ${counts.nightly}`,
+    `  Main branch builds: ${counts.main}`,
+    `  Production releases: ${counts.production}`,
+    `  Unknown/Untagged: ${counts.unknown}`,
+  ];
+  return lines.join("\n");
 }
 
 /**
@@ -231,15 +296,33 @@ export async function cleanupArtifacts(
   console.log(`Dry Run: ${fullOptions.dryRun}`);
   console.log("");
 
+  // Initialize result with empty counts
+  const emptyCounts: ImageCounts = {
+    total: 0,
+    pr: 0,
+    nightly: 0,
+    main: 0,
+    production: 0,
+    unknown: 0,
+  };
+
   const result: CleanupResult = {
     deleted: [],
     skipped: [],
     errors: [],
+    beforeCounts: { ...emptyCounts },
+    afterCounts: { ...emptyCounts },
   };
 
   try {
     const images = await listImages(fullOptions);
-    console.log(`Found ${images.length} images\n`);
+
+    // Count images BEFORE cleanup
+    result.beforeCounts = countImagesByCategory(images);
+
+    console.log("=== Before Cleanup ===");
+    console.log(formatImageCounts(result.beforeCounts));
+    console.log("");
 
     const now = new Date();
 
@@ -264,8 +347,16 @@ export async function cleanupArtifacts(
       }
     }
 
+    // Count images AFTER cleanup (re-fetch the list)
+    const imagesAfter = await listImages(fullOptions);
+    result.afterCounts = countImagesByCategory(imagesAfter);
+
     // Print summary
-    console.log("\n=== Cleanup Summary ===");
+    console.log("\n=== After Cleanup ===");
+    console.log(formatImageCounts(result.afterCounts));
+    console.log("");
+
+    console.log("=== Cleanup Summary ===");
     console.log(`Deleted: ${result.deleted.length}`);
     console.log(`Skipped: ${result.skipped.length}`);
     console.log(`Errors: ${result.errors.length}`);
@@ -290,6 +381,44 @@ export async function cleanupArtifacts(
 }
 
 /**
+ * Write content to GitHub Step Summary (if available)
+ */
+async function appendToGitHubSummary(content: string): Promise<void> {
+  const summaryFile = process.env.GITHUB_STEP_SUMMARY;
+  if (summaryFile) {
+    try {
+      await Bun.write(summaryFile, content + "\n", { append: true });
+    } catch {
+      // Ignore errors writing to summary file - it's not critical
+      console.warn("Failed to write to GITHUB_STEP_SUMMARY");
+    }
+  }
+}
+
+/**
+ * Format image counts as markdown table
+ */
+export function formatImageCountsMarkdown(
+  label: string,
+  counts: ImageCounts,
+): string {
+  const lines = [
+    `### ${label}`,
+    "",
+    "| Image Type | Count |",
+    "|------------|-------|",
+    `| **Total** | ${counts.total} |`,
+    `| PR builds | ${counts.pr} |`,
+    `| Nightly builds | ${counts.nightly} |`,
+    `| Main branch builds | ${counts.main} |`,
+    `| Production releases | ${counts.production} |`,
+    `| Unknown/Untagged | ${counts.unknown} |`,
+    "",
+  ];
+  return lines.join("\n");
+}
+
+/**
  * CLI entry point
  */
 export async function runArtifactCleanupCLI(): Promise<void> {
@@ -306,6 +435,37 @@ export async function runArtifactCleanupCLI(): Promise<void> {
     imageName,
     dryRun,
   });
+
+  // Write counts to GitHub Step Summary
+  const summaryContent = [
+    "## Artifact Registry Cleanup Summary",
+    "",
+    dryRun
+      ? "🔍 **Dry Run Mode** - No images were actually deleted"
+      : "✅ Cleanup completed",
+    "",
+    formatImageCountsMarkdown("📊 Before Cleanup", result.beforeCounts),
+    formatImageCountsMarkdown("📊 After Cleanup", result.afterCounts),
+    "### 📋 Results",
+    "",
+    `| Action | Count |`,
+    `|--------|-------|`,
+    `| Deleted | ${result.deleted.length} |`,
+    `| Skipped | ${result.skipped.length} |`,
+    `| Errors | ${result.errors.length} |`,
+    "",
+    "### Retention Policies",
+    "",
+    "| Image Type | Retention Period |",
+    "|------------|------------------|",
+    "| Nightly builds | 7 days |",
+    "| Main branch builds | 1 day |",
+    "| Production releases | 30 days |",
+    "| PR builds | On PR close |",
+    "",
+  ].join("\n");
+
+  await appendToGitHubSummary(summaryContent);
 
   // Exit with error if there were any errors
   if (result.errors.length > 0) {

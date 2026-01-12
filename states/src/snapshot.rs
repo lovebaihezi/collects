@@ -9,11 +9,11 @@
 //! # Usage
 //!
 //! Snapshots are created by the UI thread at flush time (end-of-frame) and passed to commands.
-//! Commands read from snapshots and write updates via the `Updater` channel.
+//! Commands read from snapshots and write updates via the `LatestOnlyUpdater` channel.
 //!
 //! ```ignore
 //! impl Command for MyCommand {
-//!     fn run(&self, snap: CommandSnapshot, updater: Updater) {
+//!     fn run(&self, snap: CommandSnapshot, updater: LatestOnlyUpdater) {
 //!         let my_state: &MyState = snap.state();
 //!         // ... read from snapshot, write via updater ...
 //!     }
@@ -142,10 +142,10 @@ impl ComputeSnapshot {
 ///
 /// ```ignore
 /// impl Command for FetchDataCommand {
-///     fn run(&self, snap: CommandSnapshot, updater: Updater) {
+///     fn run(&self, snap: CommandSnapshot, updater: LatestOnlyUpdater) {
 ///         let config: &ApiConfig = snap.state();
 ///         let auth: &AuthCompute = snap.compute();
-///         
+///
 ///         // Use config and auth to make API call...
 ///         // Send results via updater.set(...)
 ///     }

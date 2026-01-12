@@ -33,8 +33,8 @@
 use std::any::Any;
 
 use collects_states::{
-    Command, CommandSnapshot, Compute, ComputeDeps, Dep, SnapshotClone, State, Updater,
-    assign_impl, state_assign_impl,
+    Command, CommandSnapshot, Compute, ComputeDeps, Dep, LatestOnlyUpdater, SnapshotClone, State,
+    Updater, assign_impl, state_assign_impl,
 };
 use log::info;
 
@@ -167,7 +167,7 @@ impl Command for SetCFTokenCommand {
     fn run(
         &self,
         snap: CommandSnapshot,
-        updater: Updater,
+        updater: LatestOnlyUpdater,
         _cancel: tokio_util::sync::CancellationToken,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> {
         let input: CFTokenInput = snap.state::<CFTokenInput>().clone();

@@ -3,15 +3,20 @@ use std::{
     cell::{RefCell, RefMut},
     collections::{BTreeMap, HashMap, VecDeque},
     ptr::NonNull,
+    sync::{
+        Arc,
+        atomic::{AtomicU64, Ordering},
+    },
 };
 
 use log::{Level, log_enabled, trace};
+#[cfg(not(target_arch = "wasm32"))]
 use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    Command, CommandSnapshot, Dep, Reader, TaskHandle, TaskIdGenerator, Updater,
-    state::UpdateMessage,
+    Command, CommandSnapshot, Dep, LatestOnlyUpdater, Reader, TaskHandle, TaskId, TaskIdGenerator,
+    Updater, state::UpdateMessage,
 };
 
 use super::{Compute, Stage, State, StateRuntime};
@@ -42,6 +47,7 @@ use super::{Compute, Stage, State, StateRuntime};
 /// - `JoinSet` tracks all spawned async tasks
 /// - `TaskHandle` by `TypeId` enables auto-cancellation when a new task is spawned for the same type
 /// - `TaskIdGenerator` provides unique task identifiers
+/// - `current_generation` provides out-of-order safety for async completion (latest-only writes)
 #[derive(Debug)]
 pub struct StateCtx {
     runtime: StateRuntime,
@@ -66,12 +72,12 @@ pub struct StateCtx {
     /// owned clones of states and computes at flush time.
     command_queue: VecDeque<TypeId>,
 
-    /// Set of spawned async tasks for structured concurrency.
+    /// Set of spawned async tasks for structured concurrency (native only).
     ///
-    /// The `JoinSet` owns all spawned tasks and allows for:
-    /// - Awaiting all tasks to complete
-    /// - Aborting all tasks during shutdown
-    /// - Collecting task results
+    /// On native targets, we use Tokio's `JoinSet` so tasks can be awaited/aborted.
+    /// On WASM, there is no Tokio runtime reactor, so commands/tasks are spawned via
+    /// `wasm_bindgen_futures::spawn_local` and are not tracked here.
+    #[cfg(not(target_arch = "wasm32"))]
     task_set: JoinSet<()>,
 
     /// Active task handles indexed by compute type.
@@ -80,6 +86,13 @@ pub struct StateCtx {
     /// the previous task's cancellation token is triggered before spawning the new one.
     /// This implements the auto-cancellation pattern for superseded tasks.
     active_tasks: HashMap<TypeId, TaskHandle>,
+
+    /// Per-type "current generation" counters used for latest-only enforcement.
+    ///
+    /// For each async task type `T`, we keep an `Arc<AtomicU64>` that stores the generation of
+    /// the most recently spawned task for that type. Async completion must check that its
+    /// captured generation still matches this atomic before publishing results.
+    current_generation: HashMap<TypeId, Arc<AtomicU64>>,
 
     /// Generator for unique task identifiers.
     ///
@@ -107,8 +120,10 @@ impl StateCtx {
         let states = BTreeMap::new();
         let commands = BTreeMap::new();
         let command_queue = VecDeque::new();
+        #[cfg(not(target_arch = "wasm32"))]
         let task_set = JoinSet::new();
         let active_tasks = HashMap::new();
+        let current_generation = HashMap::new();
         let task_id_generator = TaskIdGenerator::new();
         Self {
             runtime,
@@ -116,8 +131,10 @@ impl StateCtx {
             computes,
             commands,
             command_queue,
+            #[cfg(not(target_arch = "wasm32"))]
             task_set,
             active_tasks,
+            current_generation,
             task_id_generator,
         }
     }
@@ -307,6 +324,13 @@ impl StateCtx {
     ///
     /// The command is given a snapshot of current state/compute values and a cancellation token.
     /// Results are delivered via the Updater channel and applied during subsequent sync_computes() calls.
+    ///
+    /// ## Out-of-order safety (latest-only)
+    ///
+    /// Commands can be triggered multiple times (e.g. rapid UI interactions), so multiple
+    /// in-flight async completions of the *same* command type may race. We therefore run each
+    /// command under a per-command `TypeId` generation gate ("latest-only") and pass a
+    /// `LatestOnlyUpdater` into the command future so stale completions cannot publish.
     fn execute_command_by_id(&mut self, id: &TypeId) {
         let Some(cell) = self.commands.get(id) else {
             panic!("No command found for id: {id:?}");
@@ -318,17 +342,51 @@ impl StateCtx {
         // the snapshot from what's available in this context at execution time.
         // Only states/computes that implement SnapshotClone::clone_boxed will be included.
         let snapshot = self.create_command_snapshot();
-        let updater = self.updater();
 
         // Create a cancellation token for this command execution
         let cancel = CancellationToken::new();
 
-        let borrowed = cell.borrow();
-        trace!("Executing command: id={:?}", id);
+        // Latest-only generation gate keyed by command TypeId
+        let command_id = *id;
+        let gen_cell = self
+            .current_generation
+            .entry(command_id)
+            .or_insert_with(|| Arc::new(AtomicU64::new(0)))
+            .clone();
 
-        // Spawn the command as an async task
-        let future = borrowed.run(snapshot, updater, cancel);
-        self.task_set.spawn(future);
+        let generation = gen_cell.fetch_add(1, Ordering::Relaxed) + 1;
+        gen_cell.store(generation, Ordering::Relaxed);
+
+        let gen_cell_for_check = Arc::clone(&gen_cell);
+        let current_check: Arc<dyn Fn(TaskId) -> bool + Send + Sync> = Arc::new(move |tid| {
+            tid.type_id() == command_id
+                && gen_cell_for_check.load(Ordering::Relaxed) == tid.generation()
+        });
+
+        let updater = self.updater();
+        let task_id = TaskId::new(command_id, generation);
+        let latest: LatestOnlyUpdater = updater.latest_only(task_id, current_check);
+
+        // We must not hold any borrows into `self.commands` across a call that mutably borrows
+        // `self` (spawning). So we create the future inside a short scope and drop the `Ref`
+        // before spawning.
+        let future = {
+            let borrowed = cell.borrow();
+            trace!("Executing command: id={:?}", id);
+            borrowed.run(snapshot, latest, cancel)
+        };
+
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            self.task_set.spawn(future);
+        }
+
+        #[cfg(target_arch = "wasm32")]
+        {
+            wasm_bindgen_futures::spawn_local(async move {
+                future.await;
+            });
+        }
     }
 
     /// Creates a `CommandSnapshot` from the current states and computes.
@@ -516,6 +574,21 @@ impl StateCtx {
         unsafe { NonNull::new_unchecked(self.get_compute_mut(id)) }
     }
 
+    /// Returns a read-only reference to a compute.
+    ///
+    /// This mirrors `state::<T>()` but for computes. Prefer this for reading compute values
+    /// from UI code and for tests.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the compute type `T` was not registered via `record_compute::<T>(...)`.
+    pub fn compute<T: Compute>(&self) -> &T {
+        self.get_compute_mut(&TypeId::of::<T>())
+            .as_any()
+            .downcast_ref::<T>()
+            .unwrap()
+    }
+
     /// Retrieves a reference to a cached compute value if available.
     pub fn cached<T: Compute + Sized>(&self) -> Option<&'static T> {
         unsafe {
@@ -693,6 +766,7 @@ This is a programmer error (e.g. a Compute called `Updater::enqueue_command::<T>
     ///
     /// This provides read access to the task set for inspection purposes.
     /// Use `task_set_mut()` for spawning or aborting tasks.
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn task_set(&self) -> &JoinSet<()> {
         &self.task_set
     }
@@ -700,6 +774,7 @@ This is a programmer error (e.g. a Compute called `Updater::enqueue_command::<T>
     /// Returns a mutable reference to the `JoinSet` managing all spawned async tasks.
     ///
     /// This allows spawning new tasks, aborting tasks, and awaiting task completion.
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn task_set_mut(&mut self) -> &mut JoinSet<()> {
         &mut self.task_set
     }
@@ -729,7 +804,15 @@ This is a programmer error (e.g. a Compute called `Updater::enqueue_command::<T>
     ///
     /// This includes both running and completed (but not yet joined) tasks.
     pub fn task_count(&self) -> usize {
-        self.task_set.len()
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            self.task_set.len()
+        }
+
+        #[cfg(target_arch = "wasm32")]
+        {
+            0
+        }
     }
 
     /// Returns the number of compute types with active task handles.
@@ -748,6 +831,32 @@ This is a programmer error (e.g. a Compute called `Updater::enqueue_command::<T>
     /// Gets the active `TaskHandle` for the given compute type, if any.
     pub fn get_active_task<T: 'static>(&self) -> Option<&TaskHandle> {
         self.active_tasks.get(&TypeId::of::<T>())
+    }
+
+    /// Returns `true` if `task_id` is still the current active task for type `T`.
+    ///
+    /// This is the core out-of-order safety primitive: async completions should check
+    /// they are still "current" before publishing results via `Updater::set(...)`.
+    pub fn is_task_current<T: 'static>(&self, task_id: TaskId) -> bool {
+        self.get_active_task::<T>()
+            .is_some_and(|h| h.id() == task_id)
+    }
+
+    /// Debug-only assertion that a task is still current for type `T`.
+    ///
+    /// Use this right before publishing results from async work. In release builds
+    /// this compiles to a fast boolean check (`is_task_current`) that you can use
+    /// to early-return and drop stale results.
+    #[cfg(debug_assertions)]
+    pub fn debug_assert_task_current<T: 'static>(&self, task_id: TaskId) {
+        let active = self.get_active_task::<T>().map(|h| h.id());
+        debug_assert!(
+            active == Some(task_id),
+            "stale async publish attempt for type {}: task_id={:?}, active={:?}",
+            std::any::type_name::<T>(),
+            task_id,
+            active
+        );
     }
 
     /// Cancels the active task for the given compute type, if any.
@@ -781,6 +890,7 @@ This is a programmer error (e.g. a Compute called `Updater::enqueue_command::<T>
             trace!("Cancelling task for type {:?}", type_id);
             handle.cancel();
         }
+        #[cfg(not(target_arch = "wasm32"))]
         self.task_set.abort_all();
     }
 
@@ -867,13 +977,39 @@ This is a programmer error (e.g. a Compute called `Updater::enqueue_command::<T>
         F: FnOnce(CancellationToken) -> Fut,
         Fut: std::future::Future<Output = ()> + Send + 'static,
     {
+        // Legacy API: keep the old closure signature.
+        //
+        // NOTE:
+        // This does NOT enforce latest-only writes. Callers that publish results should
+        // prefer `spawn_task_latest::<T>(...)` so async completion is out-of-order safe.
+        let cancel = CancellationToken::new();
+        let fut = f(cancel);
+        self.spawn_task_latest::<T, _, _>(|_latest, _cancel| async move {
+            fut.await;
+        })
+    }
+
+    /// Spawns an async task for a compute type with enforced out-of-order safety ("latest-only" writes).
+    ///
+    /// This is the recommended API for tasks that publish results via `Updater::set(...)` /
+    /// `Updater::set_state(...)` / `Updater::enqueue_command(...)`.
+    ///
+    /// The task body receives a `LatestOnlyUpdater` that will:
+    /// - allow publishes only if this task's generation is still current for type `T`
+    /// - drop stale publishes (and `debug_assert!` in debug builds)
+    pub fn spawn_task_latest<T, F, Fut>(&mut self, f: F) -> TaskHandle
+    where
+        T: 'static,
+        F: FnOnce(crate::LatestOnlyUpdater, CancellationToken) -> Fut,
+        Fut: std::future::Future<Output = ()> + Send + 'static,
+    {
         // Generate unique task ID
         let task_id = self.task_id_generator.next::<T>();
         let cancel_token = CancellationToken::new();
         let handle = TaskHandle::new(task_id, cancel_token.clone());
 
         trace!(
-            "Spawning task for type {} (generation {})",
+            "Spawning task (latest-only) for type {} (generation {})",
             std::any::type_name::<T>(),
             task_id.generation()
         );
@@ -881,9 +1017,45 @@ This is a programmer error (e.g. a Compute called `Updater::enqueue_command::<T>
         // Register handle (this auto-cancels any previous task for this type)
         self.register_task_handle::<T>(handle.clone());
 
-        // Spawn the future onto the JoinSet
-        let future = f(cancel_token);
-        self.task_set.spawn(future);
+        // Latest-only enforcement (out-of-order safety):
+        let type_id = TypeId::of::<T>();
+
+        let gen_cell = self
+            .current_generation
+            .entry(type_id)
+            .or_insert_with(|| Arc::new(AtomicU64::new(0)))
+            .clone();
+
+        // Use the TaskId generation as the authoritative generation number.
+        gen_cell.store(task_id.generation(), Ordering::Relaxed);
+
+        let gen_cell_for_check = Arc::clone(&gen_cell);
+        let current_check: Arc<dyn Fn(TaskId) -> bool + Send + Sync> = Arc::new(move |id| {
+            if id.type_id() != type_id {
+                return false;
+            }
+            gen_cell_for_check.load(Ordering::Relaxed) == id.generation()
+        });
+
+        let updater = self.updater();
+        let latest = updater.latest_only(task_id, current_check);
+
+        let future = f(latest, cancel_token);
+        let guarded = async move {
+            future.await;
+        };
+
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            self.task_set.spawn(guarded);
+        }
+
+        #[cfg(target_arch = "wasm32")]
+        {
+            wasm_bindgen_futures::spawn_local(async move {
+                guarded.await;
+            });
+        }
 
         handle
     }
@@ -945,12 +1117,21 @@ This is a programmer error (e.g. a Compute called `Updater::enqueue_command::<T>
             handle.cancel();
         }
 
-        // Abort all tasks in the JoinSet
-        self.task_set.abort_all();
+        // Abort all tasks in the JoinSet (native only)
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            self.task_set.abort_all();
 
-        // Await all tasks to complete
-        while self.task_set.join_next().await.is_some() {
-            // Tasks are completing (either normally or via abort)
+            // Await all tasks to complete
+            while self.task_set.join_next().await.is_some() {
+                // Tasks are completing (either normally or via abort)
+            }
+        }
+
+        // On WASM we don't track spawned futures here, so there's nothing to abort/join.
+        #[cfg(target_arch = "wasm32")]
+        {
+            // no-op
         }
 
         trace!("Shutdown complete");

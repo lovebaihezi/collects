@@ -17,13 +17,17 @@ chrono = { workspace = true }
 log = { workspace = true }
 ustr = { workspace = true }
 egui = { workspace = true }
-tokio = { workspace = true }
 tokio-util = { workspace = true }
 
 collects-states = { path = "../states" }
 collects-utils = { path = "../utils" }
 
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+tokio = { workspace = true, features = ["full"] }
+
 [target.'cfg(target_arch = "wasm32")'.dependencies]
+# Do NOT pull Tokio default features on wasm32 (default includes `net` → mio, which is unsupported).
+tokio = { workspace = true, default-features = false, features = ["sync", "macros"] }
 wasm-bindgen-futures = { workspace = true }
 
 [build-dependencies]

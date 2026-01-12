@@ -18,8 +18,8 @@ use std::any::Any;
 use crate::BusinessConfig;
 use crate::http::Client;
 use collects_states::{
-    Command, CommandSnapshot, Compute, ComputeDeps, Dep, SnapshotClone, State, Updater,
-    assign_impl, state_assign_impl,
+    Command, CommandSnapshot, Compute, ComputeDeps, Dep, LatestOnlyUpdater, SnapshotClone, State,
+    Updater, assign_impl, state_assign_impl,
 };
 use log::{error, info};
 use serde::{Deserialize, Serialize};
@@ -245,7 +245,7 @@ impl Command for LoginCommand {
     fn run(
         &self,
         snap: CommandSnapshot,
-        updater: Updater,
+        updater: LatestOnlyUpdater,
         _cancel: tokio_util::sync::CancellationToken,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> {
         let input: LoginInput = snap.state::<LoginInput>().clone();
@@ -394,7 +394,7 @@ impl Command for LogoutCommand {
     fn run(
         &self,
         _snap: CommandSnapshot,
-        updater: Updater,
+        updater: LatestOnlyUpdater,
         _cancel: tokio_util::sync::CancellationToken,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> {
         Box::pin(async move {
@@ -457,7 +457,7 @@ impl Command for ValidateTokenCommand {
     fn run(
         &self,
         snap: CommandSnapshot,
-        updater: Updater,
+        updater: LatestOnlyUpdater,
         _cancel: tokio_util::sync::CancellationToken,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> {
         let pending: PendingTokenValidation = snap.state::<PendingTokenValidation>().clone();

@@ -42,6 +42,7 @@ import {
   promptForZeroTrustCredentials,
   setupZeroTrustSecrets,
 } from "./services/zero-trust-setup.ts";
+import { runCommandUpdaterCheckCLI } from "./gh-actions/command-updater-check.ts";
 
 const cli = cac("services");
 
@@ -439,6 +440,15 @@ cli
   )
   .action(async () => {
     await runMigrationLockCLI();
+  });
+
+cli
+  .command(
+    "command-updater-check",
+    "Check for legacy Command::run signatures using Updater (should use LatestOnlyUpdater)",
+  )
+  .action(async () => {
+    await runCommandUpdaterCheckCLI();
   });
 
 cli.command("", "Show help").action(() => {

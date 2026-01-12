@@ -20,7 +20,7 @@ pub use enum_states::BasicStates;
 pub use graph::{DepRoute, Graph, TopologyError};
 pub use runtime::StateRuntime;
 pub use snapshot::{CommandSnapshot, ComputeSnapshot, SnapshotClone, StateSnapshot};
-pub use state::{Reader, State, Updater, state_assign_impl};
+pub use state::{LatestOnlyUpdater, Reader, State, Updater, state_assign_impl};
 pub use state_sync_status::Stage;
 pub use task::{TaskHandle, TaskId, TaskIdGenerator};
 
@@ -65,8 +65,9 @@ pub use task::{TaskHandle, TaskId, TaskIdGenerator};
 pub trait Command: std::fmt::Debug + Send + Sync + 'static {
     /// Runs the command asynchronously with snapshot-based access to states and computes.
     ///
-    /// Commands read from `CommandSnapshot` (owned clones) and write updates via `Updater`.
-    /// This ensures commands never hold mutable references to live state during execution.
+    /// Commands read from `CommandSnapshot` (owned clones) and write updates via `LatestOnlyUpdater`.
+    /// This ensures commands never hold mutable references to live state during execution, and that
+    /// out-of-order async completion cannot publish stale results.
     ///
     /// The `cancel` token enables cooperative cancellation. Commands should check
     /// `cancel.is_cancelled()` or await `cancel.cancelled()` to respond to cancellation.
@@ -81,7 +82,7 @@ pub trait Command: std::fmt::Debug + Send + Sync + 'static {
     ///     fn run(
     ///         &self,
     ///         snap: CommandSnapshot,
-    ///         updater: Updater,
+    ///         updater: LatestOnlyUpdater,
     ///         cancel: CancellationToken,
     ///     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> {
     ///         // Clone any data from self that you need in the async block
@@ -102,7 +103,7 @@ pub trait Command: std::fmt::Debug + Send + Sync + 'static {
     fn run(
         &self,
         snap: CommandSnapshot,
-        updater: Updater,
+        updater: LatestOnlyUpdater,
         cancel: tokio_util::sync::CancellationToken,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>>;
 }
@@ -118,6 +119,70 @@ mod state_runtime_test {
     };
 
     use crate::compute::ComputeDeps;
+
+    /// Demonstrates out-of-order safety: when two tasks of the same type race, only the latest
+    /// task's publish is applied (the stale publish is dropped by latest-only enforcement).
+    #[tokio::test]
+    async fn test_latest_only_drops_stale_publish() {
+        use crate::{Compute, ComputeDeps, SnapshotClone, StateCtx};
+        use std::{any::Any, fmt::Debug};
+
+        #[derive(Debug, Clone)]
+        struct LatestOnlyCompute {
+            value: i32,
+        }
+
+        impl SnapshotClone for LatestOnlyCompute {
+            fn clone_boxed(&self) -> Option<Box<dyn Any + Send>> {
+                Some(Box::new(self.clone()))
+            }
+        }
+
+        impl Compute for LatestOnlyCompute {
+            fn compute(&self, _deps: crate::Dep, _updater: crate::Updater) {
+                // This compute is a cache updated by tasks/commands; no pure derivation.
+            }
+
+            fn deps(&self) -> ComputeDeps {
+                // No dependencies.
+                (&[], &[])
+            }
+
+            fn as_any(&self) -> &dyn Any {
+                self
+            }
+
+            fn assign_box(&mut self, new_self: Box<dyn Any + Send>) {
+                crate::assign_impl(self, new_self);
+            }
+        }
+
+        let mut ctx = StateCtx::new();
+        ctx.record_compute(LatestOnlyCompute { value: 0 });
+
+        // Spawn "old" task first, but it yields so it likely completes later.
+        let _h1 = ctx.spawn_task_latest::<LatestOnlyCompute, _, _>(|updater, _cancel| async move {
+            tokio::task::yield_now().await;
+            // If this task is stale by the time it publishes, this should be dropped.
+            updater.set(LatestOnlyCompute { value: 1 });
+        });
+
+        // Spawn "new" task second; it publishes immediately.
+        let _h2 = ctx.spawn_task_latest::<LatestOnlyCompute, _, _>(|updater, _cancel| async move {
+            updater.set(LatestOnlyCompute { value: 2 });
+        });
+
+        // Let tasks run.
+        tokio::task::yield_now().await;
+        tokio::task::yield_now().await;
+
+        // Apply updates into ctx storage.
+        ctx.sync_computes();
+
+        // Latest publish should win; stale publish should have been dropped.
+        let got = ctx.compute::<LatestOnlyCompute>().value;
+        assert_eq!(got, 2);
+    }
 
     use super::*;
 
@@ -444,7 +509,7 @@ mod state_runtime_test {
         fn run(
             &self,
             _snap: CommandSnapshot,
-            _updater: Updater,
+            _updater: LatestOnlyUpdater,
             _cancel: tokio_util::sync::CancellationToken,
         ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> {
             let shared = Arc::clone(&self.shared);
@@ -535,7 +600,7 @@ mod state_runtime_test {
         fn run(
             &self,
             _snap: CommandSnapshot,
-            updater: Updater,
+            updater: LatestOnlyUpdater,
             _cancel: tokio_util::sync::CancellationToken,
         ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> {
             let value = self.value;
@@ -621,7 +686,7 @@ mod state_runtime_test {
         fn run(
             &self,
             _snap: CommandSnapshot,
-            updater: Updater,
+            updater: LatestOnlyUpdater,
             _cancel: tokio_util::sync::CancellationToken,
         ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> {
             let value = self.value;
@@ -762,7 +827,7 @@ mod state_runtime_test {
         fn run(
             &self,
             snap: CommandSnapshot,
-            updater: Updater,
+            updater: LatestOnlyUpdater,
             _cancel: tokio_util::sync::CancellationToken,
         ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> {
             let expected_state_value = self.expected_state_value;
@@ -904,7 +969,7 @@ mod state_runtime_test {
         fn run(
             &self,
             _snap: CommandSnapshot,
-            _updater: Updater,
+            _updater: LatestOnlyUpdater,
             _cancel: tokio_util::sync::CancellationToken,
         ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> {
             let counter = Arc::clone(&self.counter);
@@ -1042,7 +1107,7 @@ mod state_runtime_test {
         fn run(
             &self,
             _snap: CommandSnapshot,
-            _updater: Updater,
+            _updater: LatestOnlyUpdater,
             cancel: tokio_util::sync::CancellationToken,
         ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> {
             let cancel_received = Arc::clone(&self.cancel_received);

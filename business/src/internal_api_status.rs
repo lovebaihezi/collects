@@ -17,8 +17,8 @@ use crate::BusinessConfig;
 use crate::http::Client;
 use chrono::{DateTime, Utc};
 use collects_states::{
-    Command, CommandSnapshot, Compute, ComputeDeps, Dep, SnapshotClone, State, Time, Updater,
-    assign_impl, state_assign_impl,
+    Command, CommandSnapshot, Compute, ComputeDeps, Dep, LatestOnlyUpdater, SnapshotClone, State,
+    Time, Updater, assign_impl, state_assign_impl,
 };
 use log::{debug, error, info, warn};
 
@@ -162,7 +162,7 @@ impl Command for FetchInternalApiStatusCommand {
     fn run(
         &self,
         snap: CommandSnapshot,
-        updater: Updater,
+        updater: LatestOnlyUpdater,
         _cancel: tokio_util::sync::CancellationToken,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> {
         let current: InternalApiStatus = snap.compute::<InternalApiStatus>().clone();

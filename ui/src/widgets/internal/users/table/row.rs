@@ -334,7 +334,12 @@ pub fn prepare_user_row_data(
     state: &InternalUsersState,
     now: DateTime<Utc>,
 ) -> UserRowData {
-    let is_revealed = state.is_otp_revealed(&user.username);
+    // Respect OTP auto-hide deadlines when rendering.
+    //
+    // `revealed_otps` is a UI toggle, but OTP should not remain visible indefinitely.
+    // We treat expired deadlines as hidden at render time (and the panel also performs
+    // a state cleanup via `auto_hide_expired_otps(now)` each frame).
+    let is_revealed = state.is_otp_revealed_at(&user.username, now);
     let time_remaining = state.calculate_time_remaining(user.time_remaining, now);
 
     UserRowData {

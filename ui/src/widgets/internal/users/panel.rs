@@ -22,6 +22,16 @@ use collects_business::{InternalUsersState, UserAction};
 
 /// Displays the internal users panel with a table and create button.
 pub fn internal_users_panel(state_ctx: &mut StateCtx, api_base_url: &str, ui: &mut Ui) -> Response {
+    // Auto-hide any revealed one-time passcodes whose deadlines have expired (deadline is based on the Time state).
+    //
+    // TODO(perf): If the user list becomes large, scanning OTP deadlines every frame may become
+    // noticeable. Consider a small scheduler state (e.g. next_deadline) so you only scan when the
+    // next deadline is reached, or trigger a lightweight recompute when Time crosses that boundary.
+    let now = *state_ctx.state::<Time>().as_ref();
+    state_ctx.update::<InternalUsersState>(|s| {
+        s.auto_hide_expired_otps(now);
+    });
+
     // Fetch once when the panel is first opened:
     // - if we have never loaded the list yet (`cached == None` or result == Idle)
     // - and if we are not already loading
@@ -41,7 +51,8 @@ pub fn internal_users_panel(state_ctx: &mut StateCtx, api_base_url: &str, ui: &m
 
         // Apply toggle action after table iteration
         if let Some(username) = username_to_toggle {
-            state_ctx.update::<InternalUsersState>(|s| s.toggle_otp_visibility(username));
+            let now = *state_ctx.state::<Time>().as_ref();
+            state_ctx.update::<InternalUsersState>(|s| s.toggle_otp_visibility_at(username, now));
         }
 
         // Start action if requested

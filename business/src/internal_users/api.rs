@@ -12,14 +12,13 @@
 //! This module intentionally contains *no egui memory plumbing*; that belongs in
 //! UI code. Callers should map results into state/compute updates.
 
-use crate::CLIENT;
 use crate::cf_token_compute::CFTokenCompute;
+use crate::http::Client;
 use crate::internal::{
     CreateUserRequest, CreateUserResponse, DeleteUserResponse, GetUserResponse, InternalUserItem,
     ListUsersResponse, RevokeOtpResponse, UpdateProfileRequest, UpdateProfileResponse,
     UpdateUsernameRequest, UpdateUsernameResponse,
 };
-use reqwest::header::{CONTENT_TYPE, HeaderMap, HeaderValue};
 
 /// Minimal error wrapper for API calls.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -46,18 +45,17 @@ impl std::error::Error for InternalUsersApiError {}
 /// A typed API result.
 pub type ApiResult<T> = Result<T, InternalUsersApiError>;
 
-fn build_headers(cf_token: &CFTokenCompute) -> HeaderMap {
-    let mut headers = HeaderMap::new();
-    if let Some(token) = cf_token.token()
-        && let Ok(value) = HeaderValue::from_str(token)
-    {
-        headers.insert("cf-authorization", value);
-    }
-    headers
-}
-
 fn http_status_error(status: u16) -> InternalUsersApiError {
     InternalUsersApiError::new(format!("API returned status: {status}"))
+}
+
+fn build_request(url: &str, cf_token: &CFTokenCompute) -> crate::http::RequestBuilder {
+    let request = Client::get(url);
+    if let Some(token) = cf_token.token() {
+        request.header("cf-authorization", token)
+    } else {
+        request
+    }
 }
 
 /// GET `/internal/users`
@@ -67,19 +65,16 @@ pub async fn list_users(
 ) -> ApiResult<Vec<InternalUserItem>> {
     let url = format!("{api_base_url}/internal/users");
 
-    let response = CLIENT
-        .get(&url)
-        .headers(build_headers(cf_token))
+    let response = build_request(&url, cf_token)
         .send()
         .await
         .map_err(|e| InternalUsersApiError::new(e.to_string()))?;
 
-    let status = response.status().as_u16();
-    if status != 200 {
-        return Err(http_status_error(status));
+    if response.status != 200 {
+        return Err(http_status_error(response.status));
     }
 
-    let list_response: ListUsersResponse = response.json().await.map_err(|e| {
+    let list_response: ListUsersResponse = response.json().map_err(|e| {
         InternalUsersApiError::new(format!("Failed to parse ListUsersResponse: {e}"))
     })?;
 
@@ -94,21 +89,17 @@ pub async fn get_user(
 ) -> ApiResult<GetUserResponse> {
     let url = format!("{api_base_url}/internal/users/{username}");
 
-    let response = CLIENT
-        .get(&url)
-        .headers(build_headers(cf_token))
+    let response = build_request(&url, cf_token)
         .send()
         .await
         .map_err(|e| InternalUsersApiError::new(e.to_string()))?;
 
-    let status = response.status().as_u16();
-    if status != 200 {
-        return Err(http_status_error(status));
+    if response.status != 200 {
+        return Err(http_status_error(response.status));
     }
 
     response
         .json()
-        .await
         .map_err(|e| InternalUsersApiError::new(format!("Failed to parse GetUserResponse: {e}")))
 }
 
@@ -126,23 +117,25 @@ pub async fn update_username(
         new_username: new_username.to_string(),
     };
 
-    let mut headers = build_headers(cf_token);
-    headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+    let mut request = Client::put(&url).header("content-type", "application/json");
+    if let Some(token) = cf_token.token() {
+        request = request.header("cf-authorization", token);
+    }
 
-    let response = CLIENT
-        .put(&url)
-        .headers(headers)
+    let request = request
         .json(&body)
+        .map_err(|e| InternalUsersApiError::new(format!("Failed to serialize request: {e}")))?;
+
+    let response = request
         .send()
         .await
         .map_err(|e| InternalUsersApiError::new(e.to_string()))?;
 
-    let status = response.status().as_u16();
-    if status != 200 {
-        return Err(http_status_error(status));
+    if response.status != 200 {
+        return Err(http_status_error(response.status));
     }
 
-    response.json().await.map_err(|e| {
+    response.json().map_err(|e| {
         InternalUsersApiError::new(format!("Failed to parse UpdateUsernameResponse: {e}"))
     })
 }
@@ -163,23 +156,25 @@ pub async fn update_profile(
         avatar_url,
     };
 
-    let mut headers = build_headers(cf_token);
-    headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+    let mut request = Client::put(&url).header("content-type", "application/json");
+    if let Some(token) = cf_token.token() {
+        request = request.header("cf-authorization", token);
+    }
 
-    let response = CLIENT
-        .put(&url)
-        .headers(headers)
+    let request = request
         .json(&body)
+        .map_err(|e| InternalUsersApiError::new(format!("Failed to serialize request: {e}")))?;
+
+    let response = request
         .send()
         .await
         .map_err(|e| InternalUsersApiError::new(e.to_string()))?;
 
-    let status = response.status().as_u16();
-    if status != 200 {
-        return Err(http_status_error(status));
+    if response.status != 200 {
+        return Err(http_status_error(response.status));
     }
 
-    response.json().await.map_err(|e| {
+    response.json().map_err(|e| {
         InternalUsersApiError::new(format!("Failed to parse UpdateProfileResponse: {e}"))
     })
 }
@@ -192,21 +187,22 @@ pub async fn delete_user(
 ) -> ApiResult<DeleteUserResponse> {
     let url = format!("{api_base_url}/internal/users/{username}");
 
-    let response = CLIENT
-        .delete(&url)
-        .headers(build_headers(cf_token))
+    let mut request = Client::delete(&url);
+    if let Some(token) = cf_token.token() {
+        request = request.header("cf-authorization", token);
+    }
+
+    let response = request
         .send()
         .await
         .map_err(|e| InternalUsersApiError::new(e.to_string()))?;
 
-    let status = response.status().as_u16();
-    if status != 200 {
-        return Err(http_status_error(status));
+    if response.status != 200 {
+        return Err(http_status_error(response.status));
     }
 
     response
         .json()
-        .await
         .map_err(|e| InternalUsersApiError::new(format!("Failed to parse DeleteUserResponse: {e}")))
 }
 
@@ -219,21 +215,22 @@ pub async fn revoke_otp(
 ) -> ApiResult<RevokeOtpResponse> {
     let url = format!("{api_base_url}/internal/users/{username}/revoke");
 
-    let response = CLIENT
-        .post(&url)
-        .headers(build_headers(cf_token))
+    let mut request = Client::post(&url);
+    if let Some(token) = cf_token.token() {
+        request = request.header("cf-authorization", token);
+    }
+
+    let response = request
         .send()
         .await
         .map_err(|e| InternalUsersApiError::new(e.to_string()))?;
 
-    let status = response.status().as_u16();
-    if status != 200 {
-        return Err(http_status_error(status));
+    if response.status != 200 {
+        return Err(http_status_error(response.status));
     }
 
     response
         .json()
-        .await
         .map_err(|e| InternalUsersApiError::new(format!("Failed to parse RevokeOtpResponse: {e}")))
 }
 
@@ -252,24 +249,25 @@ pub async fn create_user(
         username: username.to_string(),
     };
 
-    let mut headers = build_headers(cf_token);
-    headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+    let mut request = Client::post(&url).header("content-type", "application/json");
+    if let Some(token) = cf_token.token() {
+        request = request.header("cf-authorization", token);
+    }
 
-    let response = CLIENT
-        .post(&url)
-        .headers(headers)
+    let request = request
         .json(&body)
+        .map_err(|e| InternalUsersApiError::new(format!("Failed to serialize request: {e}")))?;
+
+    let response = request
         .send()
         .await
         .map_err(|e| InternalUsersApiError::new(e.to_string()))?;
 
-    let status = response.status().as_u16();
-    if status != 201 {
-        return Err(http_status_error(status));
+    if response.status != 201 {
+        return Err(http_status_error(response.status));
     }
 
     response
         .json()
-        .await
         .map_err(|e| InternalUsersApiError::new(format!("Failed to parse CreateUserResponse: {e}")))
 }

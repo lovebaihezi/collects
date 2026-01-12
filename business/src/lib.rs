@@ -1,9 +1,8 @@
-use std::sync::LazyLock;
-
 mod api_status;
 pub mod cf_token_compute;
 pub mod config;
 pub mod create_user_compute;
+pub mod http;
 pub mod image_diag;
 pub mod internal;
 pub mod internal_api_status;
@@ -45,5 +44,3 @@ pub use login_state::{
     ValidateTokenCommand, ValidateTokenRequest, ValidateTokenResponse,
 };
 pub use route::Route;
-
-pub static CLIENT: LazyLock<reqwest::Client> = LazyLock::new(reqwest::Client::new);

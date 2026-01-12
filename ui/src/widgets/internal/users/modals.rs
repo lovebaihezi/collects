@@ -76,7 +76,6 @@ pub fn show_edit_username_modal(
                 state_ctx.update::<InternalUsersState>(|s| s.close_action());
                 state_ctx.enqueue_command::<RefreshInternalUsersCommand>();
                 state_ctx.enqueue_command::<ResetInternalUsersActionCommand>();
-                state_ctx.flush_commands();
                 return;
             }
 
@@ -123,7 +122,6 @@ pub fn show_edit_username_modal(
                     });
 
                     state_ctx.enqueue_command::<UpdateUsernameCommand>();
-                    state_ctx.flush_commands();
                 }
 
                 if ui.button("Cancel").clicked() {
@@ -226,7 +224,6 @@ pub fn show_edit_profile_modal(
                 state_ctx.update::<InternalUsersState>(|s| s.close_action());
                 state_ctx.enqueue_command::<RefreshInternalUsersCommand>();
                 state_ctx.enqueue_command::<ResetInternalUsersActionCommand>();
-                state_ctx.flush_commands();
                 return;
             }
 
@@ -293,7 +290,6 @@ pub fn show_edit_profile_modal(
                     });
 
                     state_ctx.enqueue_command::<UpdateProfileCommand>();
-                    state_ctx.flush_commands();
                 }
 
                 if ui.button("Cancel").clicked() {
@@ -359,7 +355,6 @@ pub fn show_delete_user_modal(
                 state_ctx.update::<InternalUsersState>(|s| s.close_action());
                 state_ctx.enqueue_command::<RefreshInternalUsersCommand>();
                 state_ctx.enqueue_command::<ResetInternalUsersActionCommand>();
-                state_ctx.flush_commands();
                 return;
             }
 
@@ -398,7 +393,6 @@ pub fn show_delete_user_modal(
                     });
 
                     state_ctx.enqueue_command::<DeleteUserCommand>();
-                    state_ctx.flush_commands();
                 }
 
                 if ui.button("Cancel").clicked() {
@@ -514,7 +508,6 @@ pub fn show_revoke_otp_modal(
                     state_ctx.update::<InternalUsersState>(|s| s.close_action());
                     state_ctx.enqueue_command::<RefreshInternalUsersCommand>();
                     state_ctx.enqueue_command::<ResetInternalUsersActionCommand>();
-                    state_ctx.flush_commands();
                 }
             } else {
                 ui.colored_label(Color32::from_rgb(255, 165, 0), "⚠️ Warning");
@@ -541,7 +534,6 @@ pub fn show_revoke_otp_modal(
                         });
 
                         state_ctx.enqueue_command::<RevokeOtpCommand>();
-                        state_ctx.flush_commands();
                     }
 
                     if ui.button("Cancel").clicked() {
@@ -655,7 +647,6 @@ pub fn show_create_user_modal(state_ctx: &mut StateCtx, ui: &mut Ui) {
                         super::panel::reset_create_user_compute(state_ctx);
                         state_ctx.update::<InternalUsersState>(|s| s.close_create_modal());
                         state_ctx.enqueue_command::<RefreshInternalUsersCommand>();
-                        state_ctx.flush_commands();
                     }
                 }
                 CreateUserResult::Error(err) => {

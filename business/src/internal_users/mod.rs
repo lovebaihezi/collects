@@ -14,9 +14,9 @@ pub mod list_users_compute;
 pub mod state;
 
 pub use action_compute::{
-    DeleteUserCommand, GetUserQrCommand, InternalUsersActionCompute, InternalUsersActionInput,
-    InternalUsersActionKind, InternalUsersActionState, ResetInternalUsersActionCommand,
-    RevokeOtpCommand, UpdateProfileCommand, UpdateUsernameCommand,
+    DeleteUserCommand, GetUserOtpCommand, GetUserQrCommand, InternalUsersActionCompute,
+    InternalUsersActionInput, InternalUsersActionKind, InternalUsersActionState,
+    ResetInternalUsersActionCommand, RevokeOtpCommand, UpdateProfileCommand, UpdateUsernameCommand,
 };
 
 pub use list_users_compute::{

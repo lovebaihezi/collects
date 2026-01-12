@@ -126,15 +126,3 @@ pub struct UpdateProfileResponse {
     /// The updated avatar URL.
     pub avatar_url: Option<String>,
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_is_internal_build() {
-        // This test verifies the function compiles and can be called.
-        // The actual value depends on feature flags at compile time.
-        let _result: bool = is_internal_build();
-    }
-}

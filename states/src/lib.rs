@@ -1093,6 +1093,185 @@ mod state_runtime_test {
     }
 
     // ═══════════════════════════════════════════════════════════════════════
+    // SCHEDULING (DECENTRALIZED) TESTS
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// A per-job schedule state (decentralized scheduler model).
+    ///
+    /// Best practice: store `next_due` in state so a scheduler compute does not enqueue every frame
+    /// once the job becomes due.
+    #[derive(Debug, Clone)]
+    struct ScheduledJobState {
+        enabled: bool,
+        interval: chrono::Duration,
+        next_due: chrono::DateTime<chrono::Utc>,
+        enqueued_count: u64,
+    }
+
+    impl SnapshotClone for ScheduledJobState {
+        fn clone_boxed(&self) -> Option<Box<dyn Any + Send>> {
+            Some(Box::new(self.clone()))
+        }
+    }
+
+    impl State for ScheduledJobState {
+        fn as_any(&self) -> &dyn Any {
+            self
+        }
+
+        fn as_any_mut(&mut self) -> &mut dyn Any {
+            self
+        }
+
+        fn assign_box(&mut self, new_self: Box<dyn Any + Send>) {
+            state_assign_impl(self, new_self);
+        }
+    }
+
+    /// The command representing the job's side-effect.
+    ///
+    /// In production this would do IO and publish results via `updater.set_state(...)` / `updater.set(...)`.
+    #[derive(Debug)]
+    struct ScheduledJobCommand {
+        shared: Arc<AtomicUsize>,
+    }
+
+    impl Command for ScheduledJobCommand {
+        fn run(
+            &self,
+            _snap: CommandSnapshot,
+            _updater: LatestOnlyUpdater,
+            _cancel: tokio_util::sync::CancellationToken,
+        ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> {
+            let shared = Arc::clone(&self.shared);
+            Box::pin(async move {
+                shared.fetch_add(1, Ordering::SeqCst);
+            })
+        }
+    }
+
+    /// The scheduler compute for this job.
+    ///
+    /// Depends on `Time` + schedule state, and enqueues the job command when due.
+    #[derive(Debug, Clone)]
+    struct ScheduledJobSchedulerCompute;
+
+    impl SnapshotClone for ScheduledJobSchedulerCompute {
+        fn clone_boxed(&self) -> Option<Box<dyn Any + Send>> {
+            Some(Box::new(self.clone()))
+        }
+    }
+
+    impl Compute for ScheduledJobSchedulerCompute {
+        fn as_any(&self) -> &dyn Any {
+            self
+        }
+
+        fn deps(&self) -> ComputeDeps {
+            const STATE_IDS: [TypeId; 2] =
+                [TypeId::of::<Time>(), TypeId::of::<ScheduledJobState>()];
+            const COMPUTE_IDS: [TypeId; 0] = [];
+            (&STATE_IDS, &COMPUTE_IDS)
+        }
+
+        fn compute(&self, dep: Dep, updater: Updater) {
+            let now = *dep.get_state_ref::<Time>().as_ref();
+            let sched = dep.get_state_ref::<ScheduledJobState>();
+
+            if !sched.enabled {
+                return;
+            }
+
+            if now < sched.next_due {
+                return;
+            }
+
+            // 1) Enqueue the command via updater so it will be moved into the command queue during `sync_computes()`.
+            updater.enqueue_command::<ScheduledJobCommand>();
+
+            // 2) Advance next_due immediately so we don't enqueue every frame.
+            //    Use a simple "next = now + interval" policy (no catch-up loop).
+            let next_due = now + sched.interval;
+
+            updater.set_state(ScheduledJobState {
+                enabled: sched.enabled,
+                interval: sched.interval,
+                next_due,
+                enqueued_count: sched.enqueued_count + 1,
+            });
+        }
+
+        fn assign_box(&mut self, new_self: Box<dyn Any + Send>) {
+            assign_impl(self, new_self);
+        }
+    }
+
+    /// Verifies correct frame-loop integration for decentralized scheduling:
+    ///
+    /// - Scheduler compute enqueues a command via `Updater::enqueue_command::<T>()`
+    /// - The command is NOT in `StateCtx::command_queue` until `sync_computes()` runs
+    /// - Only after `sync_computes()` do we `flush_commands()` to execute it
+    ///
+    /// This test ensures you don't accidentally call `flush_commands()` before `sync_computes()`
+    /// and wonder why scheduled commands didn't run.
+    #[tokio::test]
+    async fn test_decentralized_scheduler_requires_sync_before_flush() {
+        let shared = Arc::new(AtomicUsize::new(0));
+        let mut ctx = StateCtx::new();
+
+        // Time starts "now".
+        ctx.add_state(Time::default());
+
+        // Schedule is due immediately.
+        let now = *ctx.state::<Time>().as_ref();
+        ctx.add_state(ScheduledJobState {
+            enabled: true,
+            interval: chrono::Duration::seconds(60),
+            next_due: now,
+            enqueued_count: 0,
+        });
+
+        // Register command + scheduler compute.
+        ctx.record_command(ScheduledJobCommand {
+            shared: Arc::clone(&shared),
+        });
+        ctx.record_compute(ScheduledJobSchedulerCompute);
+
+        // Frame:
+        // 1) Run computes: scheduler requests enqueue via updater channel
+        ctx.run_all_dirty();
+
+        // At this point, the command request is still sitting in the runtime channel.
+        // The command queue should still be empty.
+        assert_eq!(ctx.command_queue_len(), 0);
+
+        // 2) Sync: moves updater messages into actual state/compute updates and command queue.
+        ctx.sync_computes();
+
+        // Now the command should be queued, and schedule state should have advanced.
+        assert_eq!(ctx.command_queue_len(), 1);
+        assert_eq!(ctx.state::<ScheduledJobState>().enqueued_count, 1);
+
+        // 3) End-of-frame: flush executes the queued command.
+        ctx.flush_commands();
+
+        // Yield to let the spawned task complete
+        tokio::task::yield_now().await;
+        tokio::task::yield_now().await;
+
+        assert_eq!(shared.load(Ordering::SeqCst), 1);
+
+        // 4) Sync (optional here) would apply any command-published updates; this command doesn't publish.
+        ctx.sync_computes();
+
+        // Ensure scheduler won't enqueue again until due again (since next_due was advanced to now+interval).
+        ctx.run_all_dirty();
+        ctx.sync_computes();
+        assert_eq!(ctx.command_queue_len(), 0);
+        assert_eq!(ctx.state::<ScheduledJobState>().enqueued_count, 1);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
     // ASYNC COMMAND TRAIT TESTS
     // ═══════════════════════════════════════════════════════════════════════
 

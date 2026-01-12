@@ -77,9 +77,8 @@ impl<P: PasteHandler, D: DropHandler> eframe::App for CollectsApp<P, D> {
                 self.state.ctx.update::<PendingTokenValidation>(|pending| {
                     pending.token = Some(token);
                 });
-                // Enqueue token validation command
+                // Enqueue token validation command; flush will happen in the normal end-of-frame flow below.
                 self.state.ctx.enqueue_command::<ValidateTokenCommand>();
-                self.state.ctx.flush_commands();
             }
         }
 
@@ -335,7 +334,6 @@ impl<P: PasteHandler, D: DropHandler> eframe::App for CollectsApp<P, D> {
         // Use Shift+F1 instead of F1 to avoid browser defaults (e.g., Chrome help) in WASM
         if ctx.input_mut(|i| i.consume_key(egui::Modifiers::SHIFT, egui::Key::F1)) {
             self.state.ctx.enqueue_command::<ToggleApiStatusCommand>();
-            self.state.ctx.flush_commands();
         }
 
         // Toggle image diagnostics window with Shift+F2
@@ -479,13 +477,13 @@ impl<P: PasteHandler, D: DropHandler> CollectsApp<P, D> {
                 *route = new_route.clone();
             });
 
-            // Auto-fetch users when navigating to Internal route
+            // Auto-fetch users when navigating to Internal route.
+            // Enqueue only; flush will happen in the normal end-of-frame flow.
             #[cfg(any(feature = "env_internal", feature = "env_test_internal"))]
             if matches!(new_route, Route::Internal) {
                 self.state
                     .ctx
                     .enqueue_command::<RefreshInternalUsersCommand>();
-                self.state.ctx.flush_commands();
             }
         }
     }

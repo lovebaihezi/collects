@@ -11,10 +11,11 @@ use collects_business::{
 #[cfg(any(feature = "env_internal", feature = "env_test_internal"))]
 use collects_business::{
     CFTokenCompute, CFTokenInput, CreateUserCommand, CreateUserCompute, CreateUserInput,
-    DeleteUserCommand, FetchInternalApiStatusCommand, GetUserQrCommand, InternalApiStatus,
-    InternalUsersActionCompute, InternalUsersActionInput, InternalUsersListUsersCompute,
-    InternalUsersListUsersInput, RefreshInternalUsersCommand, ResetInternalUsersActionCommand,
-    RevokeOtpCommand, SetCFTokenCommand, UpdateProfileCommand, UpdateUsernameCommand,
+    DeleteUserCommand, FetchInternalApiStatusCommand, GetUserOtpCommand, GetUserQrCommand,
+    InternalApiStatus, InternalUsersActionCompute, InternalUsersActionInput,
+    InternalUsersListUsersCompute, InternalUsersListUsersInput, RefreshInternalUsersCommand,
+    ResetInternalUsersActionCommand, RevokeOtpCommand, SetCFTokenCommand, UpdateProfileCommand,
+    UpdateUsernameCommand,
 };
 use collects_states::{StateCtx, Time};
 use serde::{Deserialize, Serialize};
@@ -112,6 +113,7 @@ impl State {
             ctx.add_state(InternalUsersActionInput::default());
             ctx.record_compute(InternalUsersActionCompute::default());
             ctx.record_command(GetUserQrCommand);
+            ctx.record_command(GetUserOtpCommand);
             ctx.record_command(UpdateUsernameCommand);
             ctx.record_command(UpdateProfileCommand);
             ctx.record_command(DeleteUserCommand);

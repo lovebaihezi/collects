@@ -10,7 +10,7 @@
 //!   because it represents application state for the internal users feature.
 //! - For identifiers that are frequently cloned/compared (usernames), we use `Ustr`.
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Duration, Utc};
 use collects_states::{SnapshotClone, State};
 use egui::TextureHandle;
 use std::any::Any;
@@ -21,6 +21,19 @@ use crate::InternalUserItem;
 
 /// OTP codes change every 30 seconds (TOTP standard).
 const OTP_CYCLE_SECONDS: i64 = 30;
+
+/// Auto-hide revealed OTP codes after this duration.
+///
+/// This is a UI safety measure: OTP can be revealed on-demand, but should not remain visible
+/// indefinitely.
+///
+/// IMPORTANT: The deadline must be based on the app's `Time` state (virtual time), not `Utc::now()`,
+/// so behavior remains testable and consistent with the state model.
+///
+/// TODO(security): Review whether 10s is the right default for your threat model and UX.
+/// Consider making this configurable (per environment) and/or requiring an explicit user gesture
+/// to re-reveal after auto-hide.
+const OTP_AUTO_HIDE_SECONDS: i64 = 10;
 
 /// Action type for user management.
 /// This drives which modal/action UI is currently active.
@@ -57,6 +70,21 @@ pub struct InternalUsersState {
 
     /// Map to track which users have their OTP revealed.
     pub revealed_otps: HashMap<Ustr, bool>,
+
+    /// Per-user deadlines for auto-hiding OTP after it has been revealed.
+    ///
+    /// When `now >= deadline`, the OTP should be treated as hidden and the UI should update
+    /// `revealed_otps` accordingly (typically during the UI frame loop) via
+    /// `InternalUsersState::auto_hide_expired_otps(now)`.
+    ///
+    /// Deadlines are expressed in `DateTime<Utc>` so callers can use the app's `Time` state
+    /// (also `DateTime<Utc>`) for comparisons.
+    ///
+    /// TODO(ux): Consider storing last-reveal time and/or an explicit "reveal reason" so the UI can
+    /// show better affordances (e.g. "auto-hidden, click to reveal again") without extra plumbing.
+    /// TODO(perf): Depending on user count, it may be cheaper to store a single next-expiry instant
+    /// for scheduling repaints, rather than scanning this map every frame.
+    pub otp_auto_hide_deadlines: HashMap<Ustr, DateTime<Utc>>,
 
     /// Whether currently fetching users.
     pub is_fetching: bool,
@@ -103,6 +131,10 @@ impl std::fmt::Debug for InternalUsersState {
         f.debug_struct("InternalUsersState")
             .field("users", &self.users)
             .field("revealed_otps", &self.revealed_otps)
+            .field(
+                "otp_auto_hide_deadlines",
+                &format_args!("{} entries", self.otp_auto_hide_deadlines.len()),
+            )
             .field("is_fetching", &self.is_fetching)
             .field("error", &self.error)
             .field("last_fetch", &self.last_fetch)
@@ -141,16 +173,79 @@ impl InternalUsersState {
         Self::default()
     }
 
-    /// Toggle OTP visibility for a user.
-    pub fn toggle_otp_visibility(&mut self, username: Ustr) {
+    /// Toggle OTP visibility for a user at a given time.
+    ///
+    /// When toggling to revealed, an auto-hide deadline is set relative to `now` so OTP does not
+    /// remain visible indefinitely.
+    ///
+    /// Callers should pass the app's `Time` state (`DateTime<Utc>`) for deterministic behavior.
+    ///
+    /// TODO(security): If OTP exposure is sensitive, consider:
+    /// - auto-hiding immediately on focus loss / route change
+    /// - clearing any on-demand OTP caches (if/when introduced) when hiding
+    /// - adding audit logging hooks at the UI boundary for reveal events
+    pub fn toggle_otp_visibility_at(&mut self, username: Ustr, now: DateTime<Utc>) {
         let revealed = self.revealed_otps.entry(username).or_insert(false);
         *revealed = !*revealed;
+
+        if *revealed {
+            let deadline = now + Duration::seconds(OTP_AUTO_HIDE_SECONDS);
+            self.otp_auto_hide_deadlines.insert(username, deadline);
+        } else {
+            self.revealed_otps.insert(username, false);
+            self.otp_auto_hide_deadlines.remove(&username);
+        }
     }
 
     /// Check if OTP is revealed for a user.
+    ///
+    /// Note: this does not consult deadlines. Prefer `is_otp_revealed_at(username, now)` when
+    /// rendering UI.
     pub fn is_otp_revealed(&self, username: &str) -> bool {
         let key = Ustr::from(username);
         self.revealed_otps.get(&key).copied().unwrap_or(false)
+    }
+
+    /// Check if OTP is revealed for a user at a given time, respecting auto-hide deadlines.
+    pub fn is_otp_revealed_at(&self, username: &str, now: DateTime<Utc>) -> bool {
+        let key = Ustr::from(username);
+
+        if !self.revealed_otps.get(&key).copied().unwrap_or(false) {
+            return false;
+        }
+
+        match self.otp_auto_hide_deadlines.get(&key) {
+            None => true,
+            Some(deadline) => now < *deadline,
+        }
+    }
+
+    /// Auto-hide any revealed OTP entries whose deadlines have expired.
+    ///
+    /// Returns `true` if any visibility state changed (useful for tests / conditional UI updates).
+    ///
+    /// TODO(test): Add unit tests that verify:
+    /// - reveal sets deadline to `now + OTP_AUTO_HIDE_SECONDS`
+    /// - `is_otp_revealed_at` returns false at/after deadline
+    /// - `auto_hide_expired_otps` clears both `revealed_otps` and `otp_auto_hide_deadlines`
+    pub fn auto_hide_expired_otps(&mut self, now: DateTime<Utc>) -> bool {
+        // Collect first to avoid mutating while iterating.
+        let expired: Vec<Ustr> = self
+            .otp_auto_hide_deadlines
+            .iter()
+            .filter_map(|(user, deadline)| (now >= *deadline).then_some(*user))
+            .collect();
+
+        if expired.is_empty() {
+            return false;
+        }
+
+        for user in expired {
+            self.revealed_otps.insert(user, false);
+            self.otp_auto_hide_deadlines.remove(&user);
+        }
+
+        true
     }
 
     /// Update users from API response.

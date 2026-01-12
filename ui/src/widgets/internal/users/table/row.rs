@@ -14,7 +14,7 @@ use super::cells::{
 };
 use crate::widgets::internal::users::qr::generate_qr_image;
 use collects_business::{
-    GetUserQrCommand, InternalUsersActionCompute, InternalUsersActionInput,
+    GetUserOtpCommand, GetUserQrCommand, InternalUsersActionCompute, InternalUsersActionInput,
     InternalUsersActionKind, InternalUsersActionState, InternalUsersState,
     ResetInternalUsersActionCommand, UserAction,
 };
@@ -49,7 +49,11 @@ pub struct UserRowResult {
 ///
 /// If QR code is expanded, also renders the QR inline below the row data.
 #[inline]
-pub fn render_user_row(row: &mut TableRow<'_, '_>, data: &UserRowData) -> UserRowResult {
+pub fn render_user_row(
+    state_ctx: &mut StateCtx,
+    row: &mut TableRow<'_, '_>,
+    data: &UserRowData,
+) -> UserRowResult {
     let mut result = UserRowResult {
         toggle_otp: false,
         action: None,
@@ -81,13 +85,45 @@ pub fn render_user_row(row: &mut TableRow<'_, '_>, data: &UserRowData) -> UserRo
 
     // OTP code cell
     row.col(|ui| {
-        render_otp_code_cell(ui, &data.user.current_otp, data.is_revealed);
+        // Default to OTP from the list-users payload.
+        // If the user explicitly requested a fresh OTP, prefer the on-demand result.
+        let mut otp_code: &str = &data.user.current_otp;
+
+        if let Some(action_compute) = state_ctx.cached::<InternalUsersActionCompute>() {
+            match action_compute.state() {
+                InternalUsersActionState::Otp { user, code, .. }
+                    if data.is_revealed && user.as_str() == data.user.username =>
+                {
+                    otp_code = code.as_str();
+                }
+                _ => {}
+            }
+        }
+
+        render_otp_code_cell(ui, otp_code, data.is_revealed);
         draw_cell_bottom_border(ui);
     });
 
     // Time remaining cell
     row.col(|ui| {
-        render_time_remaining_cell(ui, data.time_remaining);
+        // Default to locally-adjusted time remaining based on last fetch time.
+        // If we have an on-demand OTP fetch for this user, prefer its time_remaining.
+        let mut time_remaining = data.time_remaining;
+
+        if let Some(action_compute) = state_ctx.cached::<InternalUsersActionCompute>() {
+            match action_compute.state() {
+                InternalUsersActionState::Otp {
+                    user,
+                    time_remaining: tr,
+                    ..
+                } if data.is_revealed && user.as_str() == data.user.username => {
+                    time_remaining = *tr;
+                }
+                _ => {}
+            }
+        }
+
+        render_time_remaining_cell(ui, time_remaining);
         draw_cell_bottom_border(ui);
     });
 
@@ -95,6 +131,25 @@ pub fn render_user_row(row: &mut TableRow<'_, '_>, data: &UserRowData) -> UserRo
     row.col(|ui| {
         if render_otp_toggle_button(ui, data.is_revealed) {
             result.toggle_otp = true;
+
+            // When revealing, fetch OTP on-demand for this user.
+            //
+            // The command publishes `InternalUsersActionState::Otp { user, code, time_remaining }`.
+            // We enqueue only; the app loop flushes end-of-frame.
+            if !data.is_revealed {
+                let username_ustr = Ustr::from(&data.user.username);
+
+                state_ctx.update::<InternalUsersActionInput>(|input| {
+                    // Use same input model as other internal-users actions. api_base_url is set by the
+                    // calling UI (or falls back to BusinessConfig in the command).
+                    input.username = Some(username_ustr);
+                    input.new_username = None;
+                    input.nickname = None;
+                    input.avatar_url = None;
+                });
+
+                state_ctx.enqueue_command::<GetUserOtpCommand>();
+            }
         }
         draw_cell_bottom_border(ui);
     });
@@ -173,7 +228,6 @@ pub fn render_qr_expansion(
                             if ui.button("Close").clicked() {
                                 state.close_action();
                                 state_ctx.enqueue_command::<ResetInternalUsersActionCommand>();
-                                state_ctx.flush_commands();
                             }
                             return;
                         }
@@ -251,7 +305,6 @@ pub fn render_qr_expansion(
                     if ui.button("Close").clicked() {
                         state.close_action();
                         state_ctx.enqueue_command::<ResetInternalUsersActionCommand>();
-                        state_ctx.flush_commands();
                     }
                 } else {
                     // Fetch user QR code via business Command + Compute (no egui temp memory plumbing).
@@ -268,7 +321,6 @@ pub fn render_qr_expansion(
                     });
 
                     state_ctx.enqueue_command::<GetUserQrCommand>();
-                    state_ctx.flush_commands();
                 }
             });
         });
@@ -282,7 +334,12 @@ pub fn prepare_user_row_data(
     state: &InternalUsersState,
     now: DateTime<Utc>,
 ) -> UserRowData {
-    let is_revealed = state.is_otp_revealed(&user.username);
+    // Respect OTP auto-hide deadlines when rendering.
+    //
+    // `revealed_otps` is a UI toggle, but OTP should not remain visible indefinitely.
+    // We treat expired deadlines as hidden at render time (and the panel also performs
+    // a state cleanup via `auto_hide_expired_otps(now)` each frame).
+    let is_revealed = state.is_otp_revealed_at(&user.username, now);
     let time_remaining = state.calculate_time_remaining(user.time_remaining, now);
 
     UserRowData {

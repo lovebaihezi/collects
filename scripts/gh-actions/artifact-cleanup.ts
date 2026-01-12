@@ -156,6 +156,12 @@ function findRetentionPolicy(tag: string): RetentionPolicy | undefined {
   return RETENTION_POLICIES.find((policy) => policy.pattern.test(tag));
 }
 
+// Pre-compiled patterns for image categorization
+const PR_PATTERN = /^pr-\d+$/;
+const NIGHTLY_PATTERN = /^nightly-\d{8}$/;
+const MAIN_PATTERN = /^main-[a-f0-9]+$/;
+const PRODUCTION_PATTERN = /^v\d+\.\d+\.\d+$/;
+
 /**
  * Categorize an image based on its tags
  */
@@ -163,10 +169,10 @@ export function categorizeImage(
   image: DockerImage,
 ): "pr" | "nightly" | "main" | "production" | "unknown" {
   for (const tag of image.tags) {
-    if (/^pr-\d+$/.test(tag)) return "pr";
-    if (/^nightly-\d{8}$/.test(tag)) return "nightly";
-    if (/^main-[a-f0-9]+$/.test(tag)) return "main";
-    if (/^v\d+\.\d+\.\d+$/.test(tag)) return "production";
+    if (PR_PATTERN.test(tag)) return "pr";
+    if (NIGHTLY_PATTERN.test(tag)) return "nightly";
+    if (MAIN_PATTERN.test(tag)) return "main";
+    if (PRODUCTION_PATTERN.test(tag)) return "production";
   }
   return "unknown";
 }
@@ -388,9 +394,9 @@ async function appendToGitHubSummary(content: string): Promise<void> {
   if (summaryFile) {
     try {
       await Bun.write(summaryFile, content + "\n", { append: true });
-    } catch {
-      // Ignore errors writing to summary file - it's not critical
-      console.warn("Failed to write to GITHUB_STEP_SUMMARY");
+    } catch (error) {
+      // Log error for debugging but don't fail the cleanup
+      console.warn("Failed to write to GITHUB_STEP_SUMMARY:", error);
     }
   }
 }

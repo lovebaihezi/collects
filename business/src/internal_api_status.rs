@@ -14,6 +14,7 @@
 use std::any::{Any, TypeId};
 
 use crate::BusinessConfig;
+use crate::http::Client;
 use chrono::{DateTime, Utc};
 use collects_states::{
     Command, CommandSnapshot, Compute, ComputeDeps, Dep, SnapshotClone, State, Time, Updater,
@@ -211,11 +212,9 @@ impl Command for FetchInternalApiStatusCommand {
                 is_fetching: true,
             });
 
-            let client = reqwest::Client::new();
-            match client.get(&url).send().await {
+            match Client::get(&url).send().await {
                 Ok(response) => {
-                    let status = response.status();
-                    if status.is_success() {
+                    if response.is_success() {
                         debug!("Internal API Available, checked at {:?}", now);
                         updater.set(InternalApiStatus {
                             last_update_time: Some(now),
@@ -224,10 +223,13 @@ impl Command for FetchInternalApiStatusCommand {
                             is_fetching: false,
                         });
                     } else {
-                        info!("Internal API Return with status code: {:?}", status);
+                        info!(
+                            "Internal API Return with status code: {:?}",
+                            response.status
+                        );
                         updater.set(InternalApiStatus {
                             last_update_time: Some(now),
-                            last_error: Some(format!("Internal API: {}", status)),
+                            last_error: Some(format!("Internal API: {}", response.status)),
                             retry_count: current_retry_count.saturating_add(1),
                             is_fetching: false,
                         });

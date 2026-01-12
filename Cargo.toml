@@ -41,6 +41,7 @@ foyer = "0.21"
 flume = "0.11"
 mimalloc = { version = "0.1", default-features = false }
 wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
 log = "0.4"
 
 ustr = "1"

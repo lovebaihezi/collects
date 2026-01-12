@@ -6,7 +6,8 @@ edition = "2024"
 license = "MIT"
 
 [dependencies]
-anyhow = { workspace = true}
+anyhow = { workspace = true }
+flume = { workspace = true }
 reqwest = { workspace = true }
 serde = { workspace = true }
 serde-env = { workspace = true }
@@ -21,6 +22,9 @@ tokio-util = { workspace = true }
 
 collects-states = { path = "../states" }
 collects-utils = { path = "../utils" }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen-futures = { workspace = true }
 
 [build-dependencies]
 chrono = "0.4.42"

@@ -1132,6 +1132,7 @@ dependencies = [
  "collects-states",
  "collects-utils",
  "egui",
+ "flume",
  "log",
  "reqwest 0.13.1",
  "serde",
@@ -1141,6 +1142,7 @@ dependencies = [
  "tokio",
  "tokio-util",
  "ustr",
+ "wasm-bindgen-futures",
 ]
 
 [[package]]

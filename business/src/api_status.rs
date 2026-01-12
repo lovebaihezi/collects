@@ -13,6 +13,7 @@
 use std::any::{Any, TypeId};
 
 use crate::BusinessConfig;
+use crate::http::Client;
 use chrono::{DateTime, Utc};
 use collects_states::{
     Command, CommandSnapshot, Compute, ComputeDeps, Dep, SnapshotClone, State, Time, Updater,
@@ -263,16 +264,10 @@ impl Command for FetchApiStatusCommand {
                 is_fetching: true,
             });
 
-            let client = reqwest::Client::new();
-            match client.get(&url).send().await {
+            match Client::get(&url).send().await {
                 Ok(response) => {
-                    let service_version = response
-                        .headers()
-                        .get(SERVICE_VERSION_HEADER)
-                        .and_then(|v| v.to_str().ok())
-                        .map(String::from);
-                    let status = response.status();
-                    if status.is_success() {
+                    let service_version = response.header(SERVICE_VERSION_HEADER).map(String::from);
+                    if response.is_success() {
                         debug!("BackEnd Available, checked at {:?}", now);
                         updater.set(ApiStatus {
                             last_update_time: Some(now),
@@ -283,10 +278,10 @@ impl Command for FetchApiStatusCommand {
                             is_fetching: false,
                         });
                     } else {
-                        info!("BackEnd Return with status code: {:?}", status);
+                        info!("BackEnd Return with status code: {:?}", response.status);
                         updater.set(ApiStatus {
                             last_update_time: Some(now),
-                            last_error: Some(format!("API Health: {}", status)),
+                            last_error: Some(format!("API Health: {}", response.status)),
                             service_version,
                             retry_count: current_retry_count.saturating_add(1),
                             show_status: current_show_status,

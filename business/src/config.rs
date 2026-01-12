@@ -41,9 +41,7 @@ impl BusinessConfig {
 impl Default for BusinessConfig {
     fn default() -> Self {
         Self {
-            api_base_url: if cfg!(target_arch = "wasm32") {
-                "".to_string()
-            } else if cfg!(feature = "env_test") {
+            api_base_url: if cfg!(feature = "env_test") {
                 "https://collects-test.lqxclqxc.com".to_string()
             } else if cfg!(feature = "env_test_internal") {
                 "https://collects-test-internal.lqxclqxc.com".to_string()
@@ -83,10 +81,7 @@ mod tests {
     fn test_environment_urls() {
         let config = BusinessConfig::default();
 
-        if cfg!(target_arch = "wasm32") {
-            assert_eq!(config.api_base_url, "");
-            assert_eq!(config.api_url(), Ustr::from("/api"));
-        } else if cfg!(feature = "env_test") {
+        if cfg!(feature = "env_test") {
             assert_eq!(config.api_base_url, "https://collects-test.lqxclqxc.com");
             assert_eq!(
                 config.api_url(),

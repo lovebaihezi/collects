@@ -70,13 +70,15 @@ wk-dev: (web-build)
 # Build wrangler deployment with optional environment config
 # Usage: just ui::wk-build [env]
 wk-build env="": install (web-release env)
-    @echo "build for env: {{env}}"
+    #!/bin/bash
+    set -e
+    echo "build for env: {{env}}"
     pnpm wrangler build {{ if env != "" { "--config wrangler." + env + ".toml" } else { "" } }}
 
 # Deploy to Cloudflare Workers with optional environment config
 # Usage: just ui::wk-deploy [env]
 wk-deploy env="": (wk-build env)
-    @echo {{env}}
+    echo {{env}}
     pnpm wrangler deploy {{ if env != "" { "--config wrangler." + env + ".toml" } else { "" } }}
 
 # Generate TypeScript types for Cloudflare Workers

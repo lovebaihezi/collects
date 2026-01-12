@@ -1,8 +1,8 @@
 name: Deploy Services
 
 on:
-  schedule:
-    - cron: "0 0 * * *"
+  # schedule:
+  #   - cron: "0 0 * * *"
   workflow_run:
     workflows: ["CI"]
     types:

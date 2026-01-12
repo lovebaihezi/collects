@@ -34,10 +34,11 @@ pub use image_diag::{
 };
 pub use internal_users::state::{InternalUsersState, UserAction};
 pub use internal_users::{
-    DeleteUserCommand, GetUserQrCommand, InternalUsersActionCompute, InternalUsersActionInput,
-    InternalUsersActionKind, InternalUsersActionState, InternalUsersListUsersCompute,
-    InternalUsersListUsersInput, InternalUsersListUsersResult, RefreshInternalUsersCommand,
-    ResetInternalUsersActionCommand, RevokeOtpCommand, UpdateProfileCommand, UpdateUsernameCommand,
+    DeleteUserCommand, GetUserOtpCommand, GetUserQrCommand, InternalUsersActionCompute,
+    InternalUsersActionInput, InternalUsersActionKind, InternalUsersActionState,
+    InternalUsersListUsersCompute, InternalUsersListUsersInput, InternalUsersListUsersResult,
+    RefreshInternalUsersCommand, ResetInternalUsersActionCommand, RevokeOtpCommand,
+    UpdateProfileCommand, UpdateUsernameCommand,
 };
 pub use login_state::{
     AuthCompute, AuthStatus, LoginCommand, LoginInput, LogoutCommand, PendingTokenValidation,

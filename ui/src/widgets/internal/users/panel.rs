@@ -22,8 +22,10 @@ use collects_business::{InternalUsersState, UserAction};
 
 /// Displays the internal users panel with a table and create button.
 pub fn internal_users_panel(state_ctx: &mut StateCtx, api_base_url: &str, ui: &mut Ui) -> Response {
-    // Check if OTP codes have become stale and auto-refresh if needed
-    check_and_auto_refresh_otp(state_ctx, api_base_url);
+    // Fetch once when the panel is first opened:
+    // - if we have never loaded the list yet (`cached == None` or result == Idle)
+    // - and if we are not already loading
+    request_initial_users_refresh_if_needed(state_ctx, api_base_url);
 
     let response = ui.vertical(|ui| {
         // Controls row: Refresh and Create buttons
@@ -57,49 +59,33 @@ pub fn internal_users_panel(state_ctx: &mut StateCtx, api_base_url: &str, ui: &m
     response.response
 }
 
-/// Checks if any OTP codes have become stale and triggers auto-refresh.
+/// Enqueue an initial refresh the first time this panel is shown.
 ///
-/// OTP codes change every 30 seconds. When the time remaining crosses a 30-second
-/// boundary, the cached OTP codes are stale and need to be refreshed from the API.
-/// This function automatically triggers a refresh when stale OTP is detected.
+/// This avoids auto-refreshing based on OTP-cycle staleness (OTP codes are unstable) and instead
+/// loads the table once on entry. Commands should be flushed end-of-frame by the app loop.
 #[inline]
-fn check_and_auto_refresh_otp(state_ctx: &mut StateCtx, api_base_url: &str) {
-    // Don't auto-refresh if already loading
-    let is_loading = state_ctx
-        .cached::<InternalUsersListUsersCompute>()
-        .map(|c| c.is_loading())
-        .unwrap_or(false);
+fn request_initial_users_refresh_if_needed(state_ctx: &mut StateCtx, api_base_url: &str) {
+    let Some(compute) = state_ctx.cached::<InternalUsersListUsersCompute>() else {
+        // Compute not registered yet; nothing to do here.
+        return;
+    };
 
-    if is_loading {
+    // Don't enqueue if already loading.
+    if compute.is_loading() {
         return;
     }
 
-    // Get current time
-    let now = *state_ctx.state::<Time>().as_ref();
-
-    // Get users from the compute
-    let users: Vec<InternalUserItem> = match state_ctx.cached::<InternalUsersListUsersCompute>() {
-        Some(c) => match &c.result {
-            InternalUsersListUsersResult::Loaded(users) => users.clone(),
-            _ => return, // No data loaded yet
-        },
-        None => return,
-    };
-
-    // Check if any user's OTP is stale
-    let state = state_ctx.state::<InternalUsersState>();
-    let any_stale = users
-        .iter()
-        .any(|user| state.is_otp_stale(user.time_remaining, now));
-
-    if any_stale {
-        // Trigger auto-refresh
-        state_ctx.update::<InternalUsersListUsersInput>(|input| {
-            input.api_base_url = Some(Ustr::from(api_base_url));
-        });
-        state_ctx.enqueue_command::<RefreshInternalUsersCommand>();
-        state_ctx.flush_commands();
+    // Only fetch on first open / not-yet-loaded state.
+    if !matches!(compute.result, InternalUsersListUsersResult::Idle) {
+        return;
     }
+
+    state_ctx.update::<InternalUsersListUsersInput>(|input| {
+        input.api_base_url = Some(Ustr::from(api_base_url));
+    });
+
+    // Enqueue only; do NOT flush mid-frame from within widget code.
+    state_ctx.enqueue_command::<RefreshInternalUsersCommand>();
 }
 
 /// Renders the controls row with Refresh and Create buttons.
@@ -114,8 +100,8 @@ fn render_controls_row(state_ctx: &mut StateCtx, api_base_url: &str, ui: &mut Ui
                 state_ctx.update::<collects_business::InternalUsersListUsersInput>(|input| {
                     input.api_base_url = Some(Ustr::from(api_base_url));
                 });
+                // Enqueue only; flush at end-of-frame in the app loop.
                 state_ctx.enqueue_command::<RefreshInternalUsersCommand>();
-                state_ctx.flush_commands();
             }
 
             let should_open_create = ui.button("➕ Create User").clicked();
@@ -197,7 +183,7 @@ fn render_users_table(state_ctx: &mut StateCtx, ui: &mut Ui) -> (Option<Ustr>, O
 
                 // Use fixed row height - QR code is rendered outside the table
                 body.row(ROW_HEIGHT, |mut row| {
-                    let result = render_user_row(&mut row, data);
+                    let result = render_user_row(state_ctx, &mut row, data);
 
                     if result.toggle_otp {
                         username_to_toggle = Some(username_ustr);
@@ -277,7 +263,6 @@ pub(crate) fn trigger_create_user(state_ctx: &mut StateCtx, username: &str) {
         input.username = Some(username.to_string());
     });
 
-    // Explicitly enqueue and execute the command (manual-only; never runs implicitly)
+    // Enqueue only; flush at end-of-frame in the app loop.
     state_ctx.enqueue_command::<CreateUserCommand>();
-    state_ctx.flush_commands();
 }

@@ -34,6 +34,8 @@ pub enum InternalUsersActionKind {
     DeleteUser,
     RevokeOtp,
     GetUserQr,
+    /// Fetch current OTP code (and its remaining seconds) on-demand for a single user.
+    GetUserOtp,
 }
 
 /// Strongly-typed action state.
@@ -57,6 +59,17 @@ pub enum InternalUsersActionState {
         kind: InternalUsersActionKind,
         user: Ustr,
         data: Option<String>,
+    },
+
+    /// On-demand OTP fetch succeeded for a user.
+    ///
+    /// This is intentionally separate from `Success { data }` so the UI can handle it without
+    /// parsing and without conflating it with QR flows.
+    Otp {
+        user: Ustr,
+        code: String,
+        /// Seconds remaining until the OTP code expires (1-30).
+        time_remaining: u8,
     },
 
     /// An action failed.
@@ -542,6 +555,23 @@ impl Command for ResetInternalUsersActionCommand {
 #[derive(Default, Debug)]
 pub struct GetUserQrCommand;
 
+// ─────────────────────────────────────────────────────────────────────────────
+// On-demand OTP view
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Fetch the current OTP code for a single user on-demand.
+///
+/// This avoids refreshing the full users table every 30 seconds just to keep OTP codes fresh.
+///
+/// UI flow:
+/// - user clicks "Reveal" (or "Refresh OTP")
+/// - UI sets `InternalUsersActionInput` (api_base_url + username)
+/// - UI enqueues `GetUserOtpCommand`
+/// - command calls GET `/internal/users/{username}` and publishes `InternalUsersActionState::Otp { .. }`
+/// - UI displays the code and `time_remaining`, and may auto-hide after a short duration
+#[derive(Default, Debug)]
+pub struct GetUserOtpCommand;
+
 impl Command for GetUserQrCommand {
     fn run(
         &self,
@@ -602,6 +632,76 @@ impl Command for GetUserQrCommand {
                     updater.set(InternalUsersActionCompute {
                         state: InternalUsersActionState::Error {
                             kind: InternalUsersActionKind::GetUserQr,
+                            user,
+                            message: err.to_string(),
+                        },
+                    });
+                }
+            }
+        })
+    }
+}
+
+impl Command for GetUserOtpCommand {
+    fn run(
+        &self,
+        snap: CommandSnapshot,
+        updater: LatestOnlyUpdater,
+        _cancel: tokio_util::sync::CancellationToken,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> {
+        let input: InternalUsersActionInput = snap.state::<InternalUsersActionInput>().clone();
+        let config: BusinessConfig = snap.state::<BusinessConfig>().clone();
+        let cf_token: CFTokenCompute = snap.compute::<CFTokenCompute>().clone();
+
+        Box::pin(async move {
+            let api_base_url = resolve_api_base_url(&input, &config);
+            if api_base_url.trim().is_empty() {
+                updater.set(InternalUsersActionCompute {
+                    state: InternalUsersActionState::Error {
+                        kind: InternalUsersActionKind::GetUserOtp,
+                        user: input.username.unwrap_or_else(|| Ustr::from("")),
+                        message:
+                            "GetUserOtpCommand: missing api_base_url (set InternalUsersActionInput.api_base_url or BusinessConfig.api_base_url)"
+                                .to_string(),
+                    },
+                });
+                return;
+            }
+
+            let Some(user) = input.username else {
+                updater.set(InternalUsersActionCompute {
+                    state: InternalUsersActionState::Error {
+                        kind: InternalUsersActionKind::GetUserOtp,
+                        user: Ustr::from(""),
+                        message: missing("username", "GetUserOtpCommand"),
+                    },
+                });
+                return;
+            };
+
+            updater.set(InternalUsersActionCompute {
+                state: InternalUsersActionState::InFlight {
+                    kind: InternalUsersActionKind::GetUserOtp,
+                    user,
+                },
+            });
+
+            let user_str = user.as_str().to_string();
+
+            match internal_users_api::get_user(&api_base_url, &cf_token, &user_str).await {
+                Ok(resp) => {
+                    updater.set(InternalUsersActionCompute {
+                        state: InternalUsersActionState::Otp {
+                            user,
+                            code: resp.current_otp,
+                            time_remaining: resp.time_remaining,
+                        },
+                    });
+                }
+                Err(err) => {
+                    updater.set(InternalUsersActionCompute {
+                        state: InternalUsersActionState::Error {
+                            kind: InternalUsersActionKind::GetUserOtp,
                             user,
                             message: err.to_string(),
                         },

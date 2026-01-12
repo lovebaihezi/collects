@@ -214,7 +214,7 @@ export async function deploy(config: DeployConfig): Promise<void> {
       --region ${GCP_REGION} \
       --platform managed \
       --allow-unauthenticated \
-      --startup-probe httpGet.path=/is-health,httpGet.port=8080,initialDelaySeconds=24,timeoutSeconds=240,periodSeconds=240,failureThreshold=3 \
+      --startup-probe httpGet.path=/is-health,httpGet.port=8080,initialDelaySeconds=1,timeoutSeconds=3,periodSeconds=3,failureThreshold=3 \
       --set-env-vars ENV=${env},GCP_PROJECT_ID=${projectId} \
       --set-secrets ${secretsArg}`.quiet();
 

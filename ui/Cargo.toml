@@ -57,8 +57,12 @@ image = { version = "0.25", default-features = false }
 
 [dev-dependencies]
 kittest = "0.3"
-wiremock = "0.6"
 egui_kittest = { version = "0.33", features = ["snapshot", "eframe"] }
+
+# `wiremock` pulls in `hyper`/`tokio`/`mio` via the Tokio network stack, which is not supported
+# on `wasm32-unknown-unknown`. Keep it (and Tokio test utilities) for native-only test builds.
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+wiremock = "0.6"
 tokio = { workspace = true, features = ["full", "test-util"] }
 
 [build-dependencies]

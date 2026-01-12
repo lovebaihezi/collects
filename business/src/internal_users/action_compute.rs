@@ -17,8 +17,8 @@
 use std::any::Any;
 
 use collects_states::{
-    Command, CommandSnapshot, Compute, ComputeDeps, Dep, SnapshotClone, State, Updater,
-    assign_impl, state_assign_impl,
+    Command, CommandSnapshot, Compute, ComputeDeps, Dep, LatestOnlyUpdater, SnapshotClone, State,
+    Updater, assign_impl, state_assign_impl,
 };
 use ustr::Ustr;
 
@@ -190,7 +190,7 @@ impl Command for UpdateUsernameCommand {
     fn run(
         &self,
         snap: CommandSnapshot,
-        updater: Updater,
+        updater: LatestOnlyUpdater,
         _cancel: tokio_util::sync::CancellationToken,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> {
         let input: InternalUsersActionInput = snap.state::<InternalUsersActionInput>().clone();
@@ -285,7 +285,7 @@ impl Command for UpdateProfileCommand {
     fn run(
         &self,
         snap: CommandSnapshot,
-        updater: Updater,
+        updater: LatestOnlyUpdater,
         _cancel: tokio_util::sync::CancellationToken,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> {
         let input: InternalUsersActionInput = snap.state::<InternalUsersActionInput>().clone();
@@ -368,7 +368,7 @@ impl Command for DeleteUserCommand {
     fn run(
         &self,
         snap: CommandSnapshot,
-        updater: Updater,
+        updater: LatestOnlyUpdater,
         _cancel: tokio_util::sync::CancellationToken,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> {
         let input: InternalUsersActionInput = snap.state::<InternalUsersActionInput>().clone();
@@ -451,7 +451,7 @@ impl Command for RevokeOtpCommand {
     fn run(
         &self,
         snap: CommandSnapshot,
-        updater: Updater,
+        updater: LatestOnlyUpdater,
         _cancel: tokio_util::sync::CancellationToken,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> {
         let input: InternalUsersActionInput = snap.state::<InternalUsersActionInput>().clone();
@@ -528,7 +528,7 @@ impl Command for ResetInternalUsersActionCommand {
     fn run(
         &self,
         _snap: CommandSnapshot,
-        updater: Updater,
+        updater: LatestOnlyUpdater,
         _cancel: tokio_util::sync::CancellationToken,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> {
         Box::pin(async move {
@@ -546,7 +546,7 @@ impl Command for GetUserQrCommand {
     fn run(
         &self,
         snap: CommandSnapshot,
-        updater: Updater,
+        updater: LatestOnlyUpdater,
         _cancel: tokio_util::sync::CancellationToken,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> {
         let input: InternalUsersActionInput = snap.state::<InternalUsersActionInput>().clone();

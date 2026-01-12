@@ -2,6 +2,11 @@
 install:
     bun i
 
+# Check that Commands use LatestOnlyUpdater (and do not use the legacy Updater signature)
+# Usage: just scripts::command-updater-check
+command-updater-check: install
+    bun run main.ts command-updater-check
+
 # Format TypeScript and JSON files with prettier
 fmt:
     bun prettier --write **/*.ts package.json tsconfig.json .oxlintrc.json

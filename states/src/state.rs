@@ -7,6 +7,88 @@ use flume::{Receiver, Sender};
 
 use crate::{Compute, SnapshotClone, StateRuntime};
 
+use crate::task::TaskId;
+
+/// An updater wrapper that enforces "latest-only" semantics for async publishers.
+///
+/// This is intended to make out-of-order completion safe:
+/// - Tasks capture their `TaskId` at spawn time.
+/// - Before publishing, they check whether they are still the active task (same generation).
+/// - If not current, the write is dropped (and debug-asserted).
+///
+/// Notes:
+/// - This is intentionally lightweight: it only gates writes, it does not schedule/await.
+/// - Stale writes are a logic error; in debug builds we `debug_assert!` to surface them early.
+/// - The gate is keyed by an arbitrary `TypeId` (not necessarily `T` of the payload being set).
+#[derive(Clone)]
+pub struct LatestOnlyUpdater {
+    updater: Updater,
+    gate_type_id: TypeId,
+    task_id: TaskId,
+    current_check: std::sync::Arc<dyn Fn(TaskId) -> bool + Send + Sync>,
+}
+
+impl LatestOnlyUpdater {
+    #[inline]
+    fn is_current(&self) -> bool {
+        // Defensive: ensure the check is applied to the correct gate type.
+        if self.task_id.type_id() != self.gate_type_id {
+            return false;
+        }
+        (self.current_check)(self.task_id)
+    }
+
+    /// Publish a compute update only if the task is still current for this updater's gate `TypeId`.
+    pub fn set<T: Compute + Send + 'static>(&self, compute: T) {
+        if !self.is_current() {
+            #[cfg(debug_assertions)]
+            debug_assert!(
+                false,
+                "stale async publish attempt (compute) for gate={:?}, task_id={:?}",
+                self.gate_type_id, self.task_id
+            );
+            return;
+        }
+        self.updater.set(compute);
+    }
+
+    /// Publish a state update only if the task is still current for this updater's gate `TypeId`.
+    pub fn set_state<T: State + Send + 'static>(&self, state: T) {
+        if !self.is_current() {
+            #[cfg(debug_assertions)]
+            debug_assert!(
+                false,
+                "stale async publish attempt (state) for gate={:?}, task_id={:?}",
+                self.gate_type_id, self.task_id
+            );
+            return;
+        }
+        self.updater.set_state(state);
+    }
+
+    /// Enqueue a command only if the task is still current for this updater's gate `TypeId`.
+    pub fn enqueue_command<T: crate::Command + 'static>(&self) {
+        if !self.is_current() {
+            #[cfg(debug_assertions)]
+            debug_assert!(
+                false,
+                "stale async publish attempt (enqueue_command) for gate={:?}, task_id={:?}",
+                self.gate_type_id, self.task_id
+            );
+            return;
+        }
+        self.updater.enqueue_command::<T>();
+    }
+
+    /// Run an async block (typically "the task body") while providing this latest-only updater.
+    ///
+    /// This is a small ergonomic helper so call sites can do:
+    /// `latest.run(async move { ... latest.set(...) ... }).await`
+    pub async fn run<Fut: std::future::Future<Output = ()>>(self, fut: Fut) {
+        fut.await
+    }
+}
+
 /// The `State` trait represents a fundamental unit of state in the application.
 ///
 /// It provides basic identity and initialization logic for state objects.
@@ -92,6 +174,7 @@ pub enum UpdateMessage {
     EnqueueCommand(TypeId),
 }
 
+#[derive(Debug, Clone)]
 pub struct Updater {
     send: Sender<UpdateMessage>,
 }
@@ -105,6 +188,28 @@ impl From<&StateRuntime> for Updater {
 }
 
 impl Updater {
+    /// Create a latest-only updater bound to a specific task identity.
+    ///
+    /// Intended usage:
+    /// - A caller creates a `TaskId` with an appropriate `type_id` "gate" (e.g. the task/command type).
+    /// - The async work uses this wrapper for *all* updates.
+    /// - If the task is no longer current for the associated gate, writes are dropped.
+    ///
+    /// Notes:
+    /// - The gate is derived from `task_id.type_id()` rather than from a generic `T`.
+    pub fn latest_only(
+        &self,
+        task_id: TaskId,
+        current_check: std::sync::Arc<dyn Fn(TaskId) -> bool + Send + Sync>,
+    ) -> LatestOnlyUpdater {
+        LatestOnlyUpdater {
+            updater: self.clone(),
+            gate_type_id: task_id.type_id(),
+            task_id,
+            current_check,
+        }
+    }
+
     /// Set a Compute value via the updater channel.
     ///
     /// This is used by Commands to update Compute values after async operations complete.

@@ -11,6 +11,10 @@ flume = { workspace = true }
 log = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }
-tokio = { workspace = true, features = ["rt", "sync", "macros"] }
+
+# Do NOT pull Tokio default features on wasm32 (default includes `net` → mio, which is unsupported).
+tokio = { workspace = true, default-features = false, features = ["rt", "sync", "macros"] }
+
 tokio-util = { workspace = true }
 ustr = { workspace = true }
+wasm-bindgen-futures = { workspace = true }

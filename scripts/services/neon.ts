@@ -5,8 +5,9 @@ import {
   type Endpoint,
 } from "@neondatabase/api-client";
 import * as p from "@clack/prompts";
+import { SecretManagerServiceClient } from "@google-cloud/secret-manager";
 import { $ } from "bun";
-import { confirmAndRun } from "./utils.ts";
+import { getProjectNumber } from "./utils.ts";
 
 /**
  * Neon-specific environment configuration for database branch and role mapping.
@@ -217,21 +218,56 @@ async function updateGCloudSecret(
   secretName: string,
   databaseUrl: string,
 ): Promise<void> {
+  const client = new SecretManagerServiceClient();
+  const projectIdEnv =
+    process.env.GOOGLE_CLOUD_PROJECT || process.env.GCP_PROJECT_ID;
+  const projectId = projectIdEnv
+    ? projectIdEnv.trim()
+    : (await $`gcloud config get-value project`.text()).trim();
+  const projectNumber = await getProjectNumber(projectId);
+  const parent = `projects/${projectNumber}`;
+  const fullName = `${parent}/secrets/${secretName}`;
+
   // Check if secret exists
   let secretExists = false;
   try {
-    await $`gcloud secrets describe ${secretName}`.quiet();
+    await client.getSecret({ name: fullName });
     secretExists = true;
-  } catch {
-    secretExists = false;
+  } catch (err: any) {
+    if (err.code === 5 || err.code === 404) {
+      // 5 = NOT_FOUND in gRPC, 404 in HTTP
+      secretExists = false;
+    } else {
+      throw err;
+    }
   }
 
   if (!secretExists) {
-    // Create the secret first
-    await confirmAndRun(
-      `gcloud secrets create ${secretName} --replication-policy="automatic"`,
-      `Create secret '${secretName}'`,
-    );
+    p.log.info(`Secret '${secretName}' does not exist. Creating it...`);
+    const shouldCreate = await p.confirm({
+      message: `Create secret '${secretName}'?`,
+    });
+
+    if (p.isCancel(shouldCreate) || !shouldCreate) {
+      p.log.warn(`Skipped creating secret '${secretName}'`);
+      return;
+    }
+
+    try {
+      await client.createSecret({
+        parent,
+        secretId: secretName,
+        secret: {
+          replication: {
+            automatic: {},
+          },
+        },
+      });
+      p.log.success(`Created secret '${secretName}'`);
+    } catch (err) {
+      p.log.error(`Failed to create secret '${secretName}'`);
+      throw err;
+    }
   }
 
   // Show what we're about to do (masked for security)
@@ -249,7 +285,12 @@ async function updateGCloudSecret(
 
   // Update the secret with the real value
   try {
-    await $`echo -n ${databaseUrl} | gcloud secrets versions add ${secretName} --data-file=-`.quiet();
+    await client.addSecretVersion({
+      parent: fullName,
+      payload: {
+        data: Buffer.from(databaseUrl, "utf8"),
+      },
+    });
     p.log.success(`Secret '${secretName}' updated successfully`);
   } catch (err) {
     p.log.error(`Failed to update secret '${secretName}'`);

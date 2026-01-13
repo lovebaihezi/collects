@@ -20,6 +20,7 @@ jobs:
       contents: read
       id-token: write
       issues: write
+      pull-requests: read
 
     steps:
       - uses: actions/checkout@v4
@@ -44,6 +45,8 @@ jobs:
       - name: Run Artifact Cleanup
         env:
           DRY_RUN: ${{ inputs.dry_run == true && 'true' || 'false' }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
         run: just scripts::artifact-cleanup
 
       - name: Create Issue on Scheduled Job Failure

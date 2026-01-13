@@ -1,6 +1,7 @@
 mod api_status;
 pub mod cf_token_compute;
 pub mod config;
+pub mod content;
 pub mod create_user_compute;
 pub mod http;
 pub mod image_diag;
@@ -16,6 +17,10 @@ pub use collects_utils::version_info;
 pub use api_status::{APIAvailability, ApiStatus, FetchApiStatusCommand, ToggleApiStatusCommand};
 pub use cf_token_compute::{CFTokenCompute, CFTokenInput, CFTokenResult, SetCFTokenCommand};
 pub use config::BusinessConfig;
+pub use content::{
+    Attachment, ContentCreationStatus, CreateContentCommand, CreateContentCompute,
+    CreateContentInput,
+};
 pub use create_user_compute::{
     CreateUserCommand, CreateUserCompute, CreateUserInput, CreateUserResult,
 };
@@ -45,3 +50,6 @@ pub use login_state::{
     ValidateTokenCommand, ValidateTokenRequest, ValidateTokenResponse,
 };
 pub use route::Route;
+
+#[cfg(test)]
+mod content_tests;

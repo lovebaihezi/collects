@@ -1,0 +1,29 @@
+[package]
+name = "collects-cli"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+collects-business = { path = "../business" }
+collects-states = { path = "../states" }
+collects-utils = { path = "../utils" }
+
+tokio = { version = "1", features = ["full"] }
+clap = { version = "4", features = ["derive", "env"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+dirs = "5"
+anyhow = "1"
+env_logger = "0.11"
+log = "0.4"
+rpassword = "7"
+mime_guess = "2.0.5"
+
+[features]
+default = []
+env_test = ["collects-business/env_test"]
+env_nightly = ["collects-business/env_nightly"]
+env_internal = ["collects-business/env_internal"]
+
+[lints]
+workspace = true

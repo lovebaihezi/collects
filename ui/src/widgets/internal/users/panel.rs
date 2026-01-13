@@ -2,6 +2,7 @@
 
 use collects_business::{
     CreateUserCommand, CreateUserCompute, CreateUserInput, InternalUserItem,
+    InternalUsersActionCompute, InternalUsersActionKind, InternalUsersActionState,
     InternalUsersListUsersCompute, InternalUsersListUsersInput, InternalUsersListUsersResult,
     RefreshInternalUsersCommand,
 };
@@ -9,6 +10,7 @@ use collects_states::{StateCtx, Time};
 use egui::{Color32, Response, Ui};
 use egui_extras::TableBuilder;
 use std::any::TypeId;
+use std::time::Duration;
 use ustr::Ustr;
 
 use super::modals::{
@@ -31,6 +33,36 @@ pub fn internal_users_panel(state_ctx: &mut StateCtx, api_base_url: &str, ui: &m
     state_ctx.update::<InternalUsersState>(|s| {
         s.auto_hide_expired_otps(now);
     });
+
+    // Request continuous repaints when OTPs are revealed (for live countdown) or when
+    // an OTP fetch is in-flight. This ensures the time remaining display updates in real-time.
+    let has_revealed_otps = !state_ctx
+        .state::<InternalUsersState>()
+        .revealed_otps
+        .is_empty()
+        && state_ctx
+            .state::<InternalUsersState>()
+            .revealed_otps
+            .values()
+            .any(|&revealed| revealed);
+
+    let otp_fetch_in_flight = state_ctx
+        .cached::<InternalUsersActionCompute>()
+        .is_some_and(|c| {
+            matches!(
+                c.state(),
+                InternalUsersActionState::InFlight {
+                    kind: InternalUsersActionKind::GetUserOtp,
+                    ..
+                }
+            )
+        });
+
+    if has_revealed_otps || otp_fetch_in_flight {
+        // Request repaint after a short delay to update the countdown timer.
+        // Using 100ms provides smooth updates without excessive CPU usage.
+        ui.ctx().request_repaint_after(Duration::from_millis(100));
+    }
 
     // Fetch once when the panel is first opened:
     // - if we have never loaded the list yet (`cached == None` or result == Idle)

@@ -9,8 +9,8 @@ use ustr::Ustr;
 
 use super::cells::{
     render_action_buttons, render_avatar_cell, render_id_cell, render_nickname_cell,
-    render_otp_code_cell, render_otp_toggle_button, render_time_remaining_cell,
-    render_timestamp_cell, render_username_cell,
+    render_otp_code_cell, render_otp_loading_cell, render_otp_toggle_button,
+    render_time_remaining_cell, render_timestamp_cell, render_username_cell,
 };
 use crate::widgets::internal::users::qr::generate_qr_image;
 use collects_business::{
@@ -121,34 +121,56 @@ pub fn render_user_row(
 
     // OTP code cell
     row.col(|ui| {
-        // Default to OTP from the list-users payload.
-        // If the user explicitly requested a fresh OTP, prefer the on-demand result.
-        let mut otp_code: &str = &data.user.current_otp;
+        // Check if we're currently fetching OTP for this user (show loading state).
+        // Otherwise, prefer the on-demand result if available, falling back to list-users payload.
+        let mut is_loading = false;
+        let mut otp_code: Option<&str> = None;
 
         if let Some(action_compute) = state_ctx.cached::<InternalUsersActionCompute>() {
             match action_compute.state() {
+                InternalUsersActionState::InFlight {
+                    kind: InternalUsersActionKind::GetUserOtp,
+                    user,
+                } if data.is_revealed && user.as_str() == data.user.username => {
+                    // OTP fetch is in progress for this user - show loading
+                    is_loading = true;
+                }
                 InternalUsersActionState::Otp { user, code, .. }
                     if data.is_revealed && user.as_str() == data.user.username =>
                 {
-                    otp_code = code.as_str();
+                    // On-demand OTP is available - use it
+                    otp_code = Some(code.as_str());
                 }
                 _ => {}
             }
         }
 
-        render_otp_code_cell(ui, otp_code, data.is_revealed);
+        if is_loading {
+            render_otp_loading_cell(ui);
+        } else {
+            // Fall back to list-users payload OTP if no on-demand result
+            let code = otp_code.unwrap_or(&data.user.current_otp);
+            render_otp_code_cell(ui, code, data.is_revealed);
+        }
         draw_cell_bottom_border(ui);
     });
 
     // Time remaining cell
     row.col(|ui| {
-        // Default to locally-adjusted time remaining based on last fetch time.
-        // If we have an on-demand OTP fetch for this user, prefer its time_remaining
-        // with live countdown computed from fetched_at.
+        // Check if we're currently fetching OTP for this user (show loading state).
+        // Otherwise, prefer time_remaining from on-demand fetch, falling back to list-users payload.
+        let mut is_loading = false;
         let mut time_remaining = data.time_remaining;
 
         if let Some(action_compute) = state_ctx.cached::<InternalUsersActionCompute>() {
             match action_compute.state() {
+                InternalUsersActionState::InFlight {
+                    kind: InternalUsersActionKind::GetUserOtp,
+                    user,
+                } if data.is_revealed && user.as_str() == data.user.username => {
+                    // OTP fetch is in progress - show loading
+                    is_loading = true;
+                }
                 InternalUsersActionState::Otp {
                     user,
                     time_remaining: tr,
@@ -163,7 +185,11 @@ pub fn render_user_row(
             }
         }
 
-        render_time_remaining_cell(ui, time_remaining);
+        if is_loading {
+            render_otp_loading_cell(ui);
+        } else {
+            render_time_remaining_cell(ui, time_remaining);
+        }
         draw_cell_bottom_border(ui);
     });
 

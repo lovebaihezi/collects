@@ -7,6 +7,7 @@ use crate::{
     utils::paste_handler::{PasteHandler, SystemPasteHandler},
     widgets,
 };
+#[cfg(not(feature = "env_test_internal"))]
 use chrono::{Timelike, Utc};
 #[cfg(any(feature = "env_internal", feature = "env_test_internal"))]
 use collects_business::RefreshInternalUsersCommand;
@@ -16,6 +17,7 @@ use collects_business::{
 };
 #[cfg(not(any(feature = "env_internal", feature = "env_test_internal")))]
 use collects_business::{PendingTokenValidation, ValidateTokenCommand};
+#[cfg(not(feature = "env_test_internal"))]
 use collects_states::Time;
 
 /// Horizontal offset for the API status window from the right edge (in pixels)
@@ -348,14 +350,20 @@ impl<P: PasteHandler, D: DropHandler> eframe::App for CollectsApp<P, D> {
         // This enables real-time updates for OTP countdown timers.
         // Time-dependent computes (ApiStatus, InternalApiStatus) will automatically
         // enqueue their fetch commands via Updater when conditions are met.
-        let now = Utc::now();
-        let current_time = self.state.ctx.state::<Time>();
-        let current_second = current_time.as_ref().second();
-        let new_second = now.second();
-        if current_second != new_second {
-            self.state.ctx.update::<Time>(|t| {
-                *t.as_mut() = now;
-            });
+        //
+        // In test builds, we skip automatic time sync so tests can control Time state
+        // directly via `state_ctx.update::<Time>()` for deterministic time-based testing.
+        #[cfg(not(feature = "env_test_internal"))]
+        {
+            let now = Utc::now();
+            let current_time = self.state.ctx.state::<Time>();
+            let current_second = current_time.as_ref().second();
+            let new_second = now.second();
+            if current_second != new_second {
+                self.state.ctx.update::<Time>(|t| {
+                    *t.as_mut() = now;
+                });
+            }
         }
 
         // Sync computes - this processes any enqueued commands from computes

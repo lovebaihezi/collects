@@ -21,6 +21,15 @@ pub struct Attachment {
     pub data: Vec<u8>,
 }
 
+/// Parameters for file upload.
+struct FileUploadParams {
+    filename: String,
+    content_type: String,
+    data: Vec<u8>,
+    title: Option<String>,
+    description: Option<String>,
+}
+
 /// Input state for content creation.
 #[derive(Default, Debug, Clone)]
 pub struct CreateContentInput {
@@ -185,8 +194,9 @@ impl Command for CreateContentCommand {
             let mut created_ids = Vec::new();
 
             // 1. Handle Text Body
-            if let Some(body) = input.body {
-                if !body.trim().is_empty() {
+            if let Some(body) = input.body
+                && !body.trim().is_empty()
+            {
                     const MAX_INLINE_SIZE: usize = 64 * 1024;
                     if body.len() > MAX_INLINE_SIZE {
                         // Upload as text file
@@ -194,11 +204,13 @@ impl Command for CreateContentCommand {
                             &config,
                             token,
                             &cf_token,
-                            "note.txt",
-                            "text/plain",
-                            body.into_bytes(),
-                            input.title.clone(),
-                            input.description.clone(),
+                            FileUploadParams {
+                                filename: "note.txt".to_string(),
+                                content_type: "text/plain".to_string(),
+                                data: body.into_bytes(),
+                                title: input.title.clone(),
+                                description: input.description.clone(),
+                            },
                         )
                         .await
                         {
@@ -231,7 +243,6 @@ impl Command for CreateContentCommand {
                             }
                         }
                     }
-                }
             }
 
             // 2. Handle Attachments
@@ -240,11 +251,13 @@ impl Command for CreateContentCommand {
                     &config,
                     token,
                     &cf_token,
-                    &attachment.filename,
-                    &attachment.mime_type,
-                    attachment.data,
-                    None, // Use filename as title or default
-                    None,
+                    FileUploadParams {
+                        filename: attachment.filename.clone(),
+                        content_type: attachment.mime_type.clone(),
+                        data: attachment.data,
+                        title: None,
+                        description: None,
+                    },
                 )
                 .await
                 {
@@ -308,20 +321,16 @@ async fn upload_file(
     config: &BusinessConfig,
     token: &str,
     cf_token: &CFTokenCompute,
-    filename: &str,
-    content_type: &str,
-    data: Vec<u8>,
-    title: Option<String>,
-    description: Option<String>,
+    params: FileUploadParams,
 ) -> Result<String, String> {
     // 1. Init Upload
     let url = format!("{}/v1/uploads/init", config.api_url());
     let request = Client::post(&url)
         .header("Authorization", format!("Bearer {}", token))
         .json(&InitUploadRequest {
-            filename: filename.to_string(),
-            content_type: content_type.to_string(),
-            file_size: data.len(),
+            filename: params.filename.clone(),
+            content_type: params.content_type.clone(),
+            file_size: params.data.len(),
         })
         .map_err(|e| e.to_string())?;
 
@@ -344,8 +353,8 @@ async fn upload_file(
     // but the Client might need to be careful if it adds them automatically.
     // Our Client adds headers explicitly, so it's fine.
     let upload_request = Client::put(&init_resp.upload_url)
-        .header("Content-Type", content_type)
-        .body(data);
+        .header("Content-Type", &params.content_type)
+        .body(params.data);
 
     let upload_response = upload_request.send().await.map_err(|e| e.to_string())?;
 
@@ -359,8 +368,8 @@ async fn upload_file(
         .header("Authorization", format!("Bearer {}", token))
         .json(&CompleteUploadRequest {
             upload_id: init_resp.upload_id,
-            title,
-            description,
+            title: params.title,
+            description: params.description,
         })
         .map_err(|e| e.to_string())?;
 

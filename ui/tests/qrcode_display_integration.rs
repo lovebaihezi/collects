@@ -124,7 +124,7 @@ async fn setup_qrcode_test<'a>() -> QrCodeTestCtx<'a> {
 
     let base_url = mock_server.uri();
     let state = State::test(base_url);
-    let app = CollectsApp::new(state);
+    let app = CollectsApp::builder().state(state).build();
     let harness = Harness::new_eframe(|_| app);
 
     QrCodeTestCtx {

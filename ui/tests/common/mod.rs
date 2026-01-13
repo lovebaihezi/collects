@@ -71,7 +71,7 @@ impl<'a> TestCtx<'a, CollectsApp> {
     #[allow(unused)]
     pub async fn new_app() -> Self {
         let (mock_server, state) = setup_test_state().await;
-        let app = CollectsApp::new(state);
+        let app = CollectsApp::builder().state(state).build();
         let harness = Harness::new_eframe(|_| app);
 
         Self {
@@ -83,7 +83,7 @@ impl<'a> TestCtx<'a, CollectsApp> {
     #[allow(unused)]
     pub async fn new_app_with_status(status_code: u16) -> Self {
         let (mock_server, state) = setup_test_state_with_status(status_code).await;
-        let app = CollectsApp::new(state);
+        let app = CollectsApp::builder().state(state).build();
         let harness = Harness::new_eframe(|_| app);
 
         Self {
@@ -96,7 +96,7 @@ impl<'a> TestCtx<'a, CollectsApp> {
     #[cfg(any(feature = "env_internal", feature = "env_test_internal"))]
     pub async fn new_app_with_users() -> Self {
         let (mock_server, state) = setup_test_state_with_users().await;
-        let app = CollectsApp::new(state);
+        let app = CollectsApp::builder().state(state).build();
         let harness = Harness::new_eframe(|_| app);
 
         Self {

@@ -34,40 +34,14 @@ pub fn internal_users_panel(state_ctx: &mut StateCtx, api_base_url: &str, ui: &m
         s.auto_hide_expired_otps(now);
     });
 
-    // Request continuous repaints when OTPs are revealed (for live countdown) or when
-    // an OTP fetch is in-flight. This ensures the time remaining display updates in real-time.
-    let has_revealed_otps = !state_ctx
-        .state::<InternalUsersState>()
-        .revealed_otps
-        .is_empty()
-        && state_ctx
-            .state::<InternalUsersState>()
-            .revealed_otps
-            .values()
-            .any(|&revealed| revealed);
-
-    let otp_fetch_in_flight = state_ctx
-        .cached::<InternalUsersActionCompute>()
-        .is_some_and(|c| {
-            matches!(
-                c.state(),
-                InternalUsersActionState::InFlight {
-                    kind: InternalUsersActionKind::GetUserOtp,
-                    ..
-                }
-            )
-        });
-
-    if has_revealed_otps || otp_fetch_in_flight {
-        // Request repaint after a short delay to update the countdown timer.
-        // Using 100ms provides smooth updates without excessive CPU usage.
-        ui.ctx().request_repaint_after(Duration::from_millis(100));
-    }
-
     // Fetch once when the panel is first opened:
     // - if we have never loaded the list yet (`cached == None` or result == Idle)
     // - and if we are not already loading
     request_initial_users_refresh_if_needed(state_ctx, api_base_url);
+
+    // Auto-refresh when any OTP has cycled (time_remaining reached 0 and wrapped).
+    // This ensures the displayed OTP codes stay fresh across 30-second boundaries.
+    request_refresh_if_otp_stale(state_ctx, api_base_url);
 
     let response = ui.vertical(|ui| {
         // Controls row: Refresh and Create buttons
@@ -99,6 +73,40 @@ pub fn internal_users_panel(state_ctx: &mut StateCtx, api_base_url: &str, ui: &m
     // Create user modal
     render_modals(state_ctx, api_base_url, ui);
 
+    // Request continuous repaints when OTPs are revealed (for live countdown) or when
+    // an OTP fetch is in-flight. This ensures the time remaining display updates in real-time.
+    //
+    // NOTE: This must run AFTER the toggle action is applied (above) so that on the frame
+    // where the user clicks "Reveal", we correctly detect the newly-revealed state and
+    // schedule the next repaint.
+    let has_revealed_otps = !state_ctx
+        .state::<InternalUsersState>()
+        .revealed_otps
+        .is_empty()
+        && state_ctx
+            .state::<InternalUsersState>()
+            .revealed_otps
+            .values()
+            .any(|&revealed| revealed);
+
+    let otp_fetch_in_flight = state_ctx
+        .cached::<InternalUsersActionCompute>()
+        .is_some_and(|c| {
+            matches!(
+                c.state(),
+                InternalUsersActionState::InFlight {
+                    kind: InternalUsersActionKind::GetUserOtp,
+                    ..
+                }
+            )
+        });
+
+    if has_revealed_otps || otp_fetch_in_flight {
+        // Request repaint after a short delay to update the countdown timer.
+        // Using 100ms provides smooth updates without excessive CPU usage.
+        ui.ctx().request_repaint_after(Duration::from_millis(100));
+    }
+
     response.response
 }
 
@@ -128,6 +136,52 @@ fn request_initial_users_refresh_if_needed(state_ctx: &mut StateCtx, api_base_ur
     });
 
     // Enqueue only; do NOT flush mid-frame from within widget code.
+    state_ctx.enqueue_command::<RefreshInternalUsersCommand>();
+}
+
+/// Auto-refresh when any revealed OTP has become stale (crossed a 30-second cycle boundary).
+///
+/// This ensures users see fresh OTP codes after the countdown reaches 0.
+/// Only triggers refresh if:
+/// - At least one OTP is currently revealed
+/// - That OTP's cycle has elapsed (is_otp_stale returns true)
+/// - No refresh is already in progress
+#[inline]
+fn request_refresh_if_otp_stale(state_ctx: &mut StateCtx, api_base_url: &str) {
+    let Some(compute) = state_ctx.cached::<InternalUsersListUsersCompute>() else {
+        return;
+    };
+
+    // Don't enqueue if already loading.
+    if compute.is_loading() {
+        return;
+    }
+
+    // Get the loaded users
+    let users: Vec<InternalUserItem> = match &compute.result {
+        InternalUsersListUsersResult::Loaded(users) => users.clone(),
+        _ => return,
+    };
+
+    let now = *state_ctx.state::<Time>().as_ref();
+    let state = state_ctx.state::<InternalUsersState>();
+
+    // Check if any revealed OTP has become stale
+    let any_stale = users.iter().any(|user| {
+        let username = Ustr::from(&user.username);
+        let is_revealed = state.is_otp_revealed_at(&username, now);
+        is_revealed && state.is_otp_stale(user.time_remaining, now)
+    });
+
+    if !any_stale {
+        return;
+    }
+
+    state_ctx.update::<InternalUsersListUsersInput>(|input| {
+        input.api_base_url = Some(Ustr::from(api_base_url));
+    });
+
+    // Enqueue only; flush at end-of-frame in the app loop.
     state_ctx.enqueue_command::<RefreshInternalUsersCommand>();
 }
 

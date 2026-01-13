@@ -18,6 +18,7 @@ wasm-bindgen = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 log = { workspace = true }
+bon = "3"
 qrcode = "0.14"
 ustr = { workspace = true }
 collects-business = { path = "../business" }

@@ -177,6 +177,14 @@ pub fn render_otp_code_cell(ui: &mut Ui, otp_code: &str, is_revealed: bool) {
     });
 }
 
+/// Renders a loading indicator in the OTP code cell while fetching.
+#[inline]
+pub fn render_otp_loading_cell(ui: &mut Ui) {
+    ui.centered_and_justified(|ui| {
+        ui.spinner();
+    });
+}
+
 /// Renders the time remaining cell with color coding.
 ///
 /// Colors:

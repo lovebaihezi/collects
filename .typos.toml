@@ -4,6 +4,10 @@
 
 [default.extend-words]
 egui = "egui" # Example for how to ignore a false positive
+OTPs = "OTPs" # One-Time Passwords (plural)
+
+[default.extend-identifiers]
+OTPs = "OTPs" # One-Time Passwords (plural)
 
 [files]
 extend-exclude = ["*.ttf", "*.d.ts"]

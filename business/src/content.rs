@@ -194,52 +194,52 @@ impl Command for CreateContentCommand {
             if let Some(body) = input.body
                 && !body.trim().is_empty()
             {
-                    const MAX_INLINE_SIZE: usize = 64 * 1024;
-                    if body.len() > MAX_INLINE_SIZE {
-                        // Upload as text file
-                        match upload_file(
-                            &config,
-                            token,
-                            &cf_token,
-                            FileUploadParams {
-                                filename: "note.txt".to_string(),
-                                content_type: "text/plain".to_string(),
-                                data: body.into_bytes(),
-                                title: input.title.clone(),
-                                description: input.description.clone(),
-                            },
-                        )
-                        .await
-                        {
-                            Ok(id) => created_ids.push(id),
-                            Err(e) => {
-                                updater.set(CreateContentCompute {
-                                    status: ContentCreationStatus::Error(e),
-                                });
-                                return;
-                            }
-                        }
-                    } else {
-                        // Create inline content
-                        match create_inline_content(
-                            &config,
-                            token,
-                            &cf_token,
-                            input.title.unwrap_or_else(|| "Note".to_string()),
-                            input.description.clone(),
-                            body,
-                        )
-                        .await
-                        {
-                            Ok(id) => created_ids.push(id),
-                            Err(e) => {
-                                updater.set(CreateContentCompute {
-                                    status: ContentCreationStatus::Error(e),
-                                });
-                                return;
-                            }
+                const MAX_INLINE_SIZE: usize = 64 * 1024;
+                if body.len() > MAX_INLINE_SIZE {
+                    // Upload as text file
+                    match upload_file(
+                        &config,
+                        token,
+                        &cf_token,
+                        FileUploadParams {
+                            filename: "note.txt".to_string(),
+                            content_type: "text/plain".to_string(),
+                            data: body.into_bytes(),
+                            title: input.title.clone(),
+                            description: input.description.clone(),
+                        },
+                    )
+                    .await
+                    {
+                        Ok(id) => created_ids.push(id),
+                        Err(e) => {
+                            updater.set(CreateContentCompute {
+                                status: ContentCreationStatus::Error(e),
+                            });
+                            return;
                         }
                     }
+                } else {
+                    // Create inline content
+                    match create_inline_content(
+                        &config,
+                        token,
+                        &cf_token,
+                        input.title.unwrap_or_else(|| "Note".to_string()),
+                        input.description.clone(),
+                        body,
+                    )
+                    .await
+                    {
+                        Ok(id) => created_ids.push(id),
+                        Err(e) => {
+                            updater.set(CreateContentCompute {
+                                status: ContentCreationStatus::Error(e),
+                            });
+                            return;
+                        }
+                    }
+                }
             }
 
             // 2. Handle Attachments

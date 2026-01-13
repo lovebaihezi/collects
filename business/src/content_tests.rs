@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use crate::content::{CreateContentInput, ContentCreationStatus, CreateContentCompute};
+    use crate::content::{ContentCreationStatus, CreateContentCompute, CreateContentInput};
     use collects_states::StateCtx;
 
     #[test]
@@ -21,7 +21,10 @@ mod tests {
     #[test]
     fn test_content_creation_status_equality() {
         assert_eq!(ContentCreationStatus::Idle, ContentCreationStatus::Idle);
-        assert_eq!(ContentCreationStatus::Uploading, ContentCreationStatus::Uploading);
+        assert_eq!(
+            ContentCreationStatus::Uploading,
+            ContentCreationStatus::Uploading
+        );
         assert_eq!(
             ContentCreationStatus::Success(vec!["1".to_string()]),
             ContentCreationStatus::Success(vec!["1".to_string()])
@@ -31,7 +34,10 @@ mod tests {
             ContentCreationStatus::Error("err".to_string())
         );
 
-        assert_ne!(ContentCreationStatus::Idle, ContentCreationStatus::Uploading);
+        assert_ne!(
+            ContentCreationStatus::Idle,
+            ContentCreationStatus::Uploading
+        );
     }
 
     #[test]

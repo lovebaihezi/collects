@@ -2,15 +2,12 @@ use std::any::Any;
 
 use serde::{Deserialize, Serialize};
 
-use crate::http::Client;
 use crate::BusinessConfig;
-use crate::{
-    cf_token_compute::CFTokenCompute,
-    login_state::AuthCompute,
-};
+use crate::http::Client;
+use crate::{cf_token_compute::CFTokenCompute, login_state::AuthCompute};
 use collects_states::{
-    assign_impl, state_assign_impl, Command, CommandSnapshot, Compute, ComputeDeps, Dep,
-    LatestOnlyUpdater, SnapshotClone, State, Updater,
+    Command, CommandSnapshot, Compute, ComputeDeps, Dep, LatestOnlyUpdater, SnapshotClone, State,
+    Updater, assign_impl, state_assign_impl,
 };
 
 /// Attachment data.
@@ -334,7 +331,10 @@ async fn upload_file(
     let response = request.send().await.map_err(|e| e.to_string())?;
 
     if !response.is_success() {
-        return Err(format!("Init upload failed: {}", response.text().unwrap_or_default()));
+        return Err(format!(
+            "Init upload failed: {}",
+            response.text().unwrap_or_default()
+        ));
     }
 
     let init_resp: InitUploadResponse = response.json().map_err(|e| e.to_string())?;
@@ -350,7 +350,10 @@ async fn upload_file(
     let upload_response = upload_request.send().await.map_err(|e| e.to_string())?;
 
     if !upload_response.is_success() {
-        return Err(format!("Upload to storage failed: status {}", upload_response.status));
+        return Err(format!(
+            "Upload to storage failed: status {}",
+            upload_response.status
+        ));
     }
 
     // 3. Complete Upload

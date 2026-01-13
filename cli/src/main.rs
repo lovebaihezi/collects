@@ -233,13 +233,14 @@ async fn run_create_impl(
             let auth = ctx.compute::<AuthCompute>();
             match &auth.status {
                 AuthStatus::Authenticated { .. } => break,
-                AuthStatus::NotAuthenticated if attempts > 20 => { // Timeout/Failure after ~1s
-                     eprintln!("Session expired or invalid. Please login again.");
-                     std::process::exit(1);
+                AuthStatus::NotAuthenticated if attempts > 20 => {
+                    // Timeout/Failure after ~1s
+                    eprintln!("Session expired or invalid. Please login again.");
+                    std::process::exit(1);
                 }
                 AuthStatus::Failed(e) => {
-                     eprintln!("Auth error: {e}");
-                     std::process::exit(1);
+                    eprintln!("Auth error: {e}");
+                    std::process::exit(1);
                 }
                 _ => {}
             }

@@ -232,21 +232,18 @@ export function extractPrNumber(tag: string): number | null {
 }
 
 /**
- * Cache for PR states to avoid repeated API calls
- */
-const prStateCache = new Map<number, "open" | "closed">();
-
-/**
  * Check if a PR is closed using the GitHub API
+ * Uses the provided cache to avoid repeated API calls for the same PR
  */
 export async function isPrClosed(
   octokit: Octokit,
   owner: string,
   repo: string,
   prNumber: number,
+  cache: Map<number, "open" | "closed">,
 ): Promise<boolean> {
   // Check cache first
-  const cached = prStateCache.get(prNumber);
+  const cached = cache.get(prNumber);
   if (cached !== undefined) {
     return cached === "closed";
   }
@@ -257,8 +254,9 @@ export async function isPrClosed(
       repo,
       pull_number: prNumber,
     });
-    const state = pr.state as "open" | "closed";
-    prStateCache.set(prNumber, state);
+    // GitHub PR state can only be "open" or "closed" (draft is a separate boolean property)
+    const state = pr.state === "closed" ? "closed" : "open";
+    cache.set(prNumber, state);
     return state === "closed";
   } catch (error) {
     // If we can't fetch PR state (e.g., PR doesn't exist or API error),
@@ -366,6 +364,9 @@ export async function cleanupArtifacts(
   // Create Octokit instance if GitHub context is provided
   const octokit = github ? new Octokit({ auth: github.token }) : null;
 
+  // Cache for PR states to avoid repeated API calls within this cleanup run
+  const prStateCache = new Map<number, "open" | "closed">();
+
   console.log("=== Artifact Registry Cleanup ===");
   console.log(`Project: ${fullOptions.projectId}`);
   console.log(`Region: ${fullOptions.region}`);
@@ -422,6 +423,7 @@ export async function cleanupArtifacts(
             github.owner,
             github.repo,
             prNumber,
+            prStateCache,
           );
           if (prClosed) {
             try {
@@ -553,8 +555,15 @@ export async function runArtifactCleanupCLI(): Promise<void> {
   const githubToken = process.env.GITHUB_TOKEN;
   const githubRepository = process.env.GITHUB_REPOSITORY;
 
+  // Validate GitHub repository format: must be "owner/repo" with both parts non-empty
+  const GITHUB_REPO_PATTERN = /^[^/]+\/[^/]+$/;
+
   let github: GitHubContext | undefined;
-  if (githubToken && githubRepository && githubRepository.includes("/")) {
+  if (
+    githubToken &&
+    githubRepository &&
+    GITHUB_REPO_PATTERN.test(githubRepository)
+  ) {
     const [owner, repo] = githubRepository.split("/");
     if (owner && repo) {
       github = { token: githubToken, owner, repo };

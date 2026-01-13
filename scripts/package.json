@@ -5,6 +5,8 @@
   },
   "dependencies": {
     "@clack/prompts": "^0.11.0",
+    "@google-cloud/resource-manager": "^6.2.1",
+    "@google-cloud/secret-manager": "^6.1.1",
     "@neondatabase/api-client": "^2.6.0",
     "@octokit/rest": "^21.1.1",
     "@types/bun": "^1.3.5",

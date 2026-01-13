@@ -1,4 +1,6 @@
 import * as p from "@clack/prompts";
+import { SecretManagerServiceClient } from "@google-cloud/secret-manager";
+import { ProjectsClient } from "@google-cloud/resource-manager";
 import {
   checkResource,
   confirmAndRun,
@@ -163,14 +165,67 @@ async function grantRolesToServiceAccount(ctx: SetupContext): Promise<void> {
 }
 
 /**
+ * Helper to update IAM policy for a resource
+ */
+async function addIamPolicyBinding(
+  getPolicy: () => Promise<any>,
+  setPolicy: (policy: any) => Promise<any>,
+  member: string,
+  role: string,
+  resourceName: string,
+  description: string,
+) {
+  p.log.info(`Checking IAM policy for ${resourceName}...`);
+  const shouldRun = await p.confirm({
+    message: description,
+  });
+
+  if (p.isCancel(shouldRun) || !shouldRun) {
+    p.log.warn(`Skipped: ${description}`);
+    return;
+  }
+
+  try {
+    const policy = await getPolicy();
+    let binding = policy.bindings.find((b: any) => b.role === role);
+    if (!binding) {
+      binding = { role, members: [] };
+      policy.bindings.push(binding);
+    }
+    if (!binding.members.includes(member)) {
+      binding.members.push(member);
+      await setPolicy(policy);
+      p.log.success(`Added binding: ${member} -> ${role}`);
+    } else {
+      p.log.info(`Binding already exists: ${member} -> ${role}`);
+    }
+  } catch (err: any) {
+    p.log.error(`Failed to update IAM policy: ${err.message}`);
+    throw err;
+  }
+}
+
+/**
  * Grants Secret Accessor role to the default compute service account
  */
 async function grantSecretAccessorToComputeServiceAccount(
   ctx: SetupContext,
 ): Promise<void> {
   const computeSaEmail = `${ctx.projectNumber}-compute@developer.gserviceaccount.com`;
-  await confirmAndRun(
-    `gcloud projects add-iam-policy-binding ${ctx.projectId} --member="serviceAccount:${computeSaEmail}" --role="roles/secretmanager.secretAccessor" --condition=None`,
+  const projectsClient = new ProjectsClient();
+  const resource = `projects/${ctx.projectId}`;
+
+  await addIamPolicyBinding(
+    async () => {
+      const [policy] = await projectsClient.getIamPolicy({ resource });
+      return policy;
+    },
+    async (policy) => {
+      await projectsClient.setIamPolicy({ resource, policy });
+    },
+    `serviceAccount:${computeSaEmail}`,
+    "roles/secretmanager.secretAccessor",
+    resource,
     `Grant 'roles/secretmanager.secretAccessor' to Default Compute Service Account (${computeSaEmail})`,
   );
 }
@@ -192,9 +247,22 @@ export async function grantSecretAccessToAllDatabaseSecrets(
     "database-url-local",
   ];
 
+  const client = new SecretManagerServiceClient();
+  const parent = `projects/${ctx.projectNumber}`;
+
   for (const secretName of databaseSecrets) {
-    await confirmAndRun(
-      `gcloud secrets add-iam-policy-binding ${secretName} --member="serviceAccount:${computeSaEmail}" --role="roles/secretmanager.secretAccessor" --project=${ctx.projectId}`,
+    const resource = `${parent}/secrets/${secretName}`;
+    await addIamPolicyBinding(
+      async () => {
+        const [policy] = await client.getIamPolicy({ resource });
+        return policy;
+      },
+      async (policy) => {
+        await client.setIamPolicy({ resource, policy });
+      },
+      `serviceAccount:${computeSaEmail}`,
+      "roles/secretmanager.secretAccessor",
+      resource,
       `Grant access to secret '${secretName}' for Compute Service Account`,
     );
   }
@@ -213,9 +281,22 @@ export async function grantSecretAccessToAllJwtSecrets(
     "jwt-secret-pr", // Used by PR environment
   ];
 
+  const client = new SecretManagerServiceClient();
+  const parent = `projects/${ctx.projectNumber}`;
+
   for (const secretName of jwtSecrets) {
-    await confirmAndRun(
-      `gcloud secrets add-iam-policy-binding ${secretName} --member="serviceAccount:${computeSaEmail}" --role="roles/secretmanager.secretAccessor" --project=${ctx.projectId}`,
+    const resource = `${parent}/secrets/${secretName}`;
+    await addIamPolicyBinding(
+      async () => {
+        const [policy] = await client.getIamPolicy({ resource });
+        return policy;
+      },
+      async (policy) => {
+        await client.setIamPolicy({ resource, policy });
+      },
+      `serviceAccount:${computeSaEmail}`,
+      "roles/secretmanager.secretAccessor",
+      resource,
       `Grant access to secret '${secretName}' for Compute Service Account`,
     );
   }
@@ -234,9 +315,22 @@ export async function grantSecretAccessToAllZeroTrustSecrets(
     "cf-access-aud", // Cloudflare Access application audience
   ];
 
+  const client = new SecretManagerServiceClient();
+  const parent = `projects/${ctx.projectNumber}`;
+
   for (const secretName of zeroTrustSecrets) {
-    await confirmAndRun(
-      `gcloud secrets add-iam-policy-binding ${secretName} --member="serviceAccount:${computeSaEmail}" --role="roles/secretmanager.secretAccessor" --project=${ctx.projectId}`,
+    const resource = `${parent}/secrets/${secretName}`;
+    await addIamPolicyBinding(
+      async () => {
+        const [policy] = await client.getIamPolicy({ resource });
+        return policy;
+      },
+      async (policy) => {
+        await client.setIamPolicy({ resource, policy });
+      },
+      `serviceAccount:${computeSaEmail}`,
+      "roles/secretmanager.secretAccessor",
+      resource,
       `Grant access to secret '${secretName}' for Compute Service Account`,
     );
   }

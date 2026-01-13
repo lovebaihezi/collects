@@ -7,7 +7,6 @@ use crate::{
     utils::paste_handler::{PasteHandler, SystemPasteHandler},
     widgets,
 };
-#[cfg(not(feature = "env_test_internal"))]
 use chrono::{Timelike, Utc};
 #[cfg(any(feature = "env_internal", feature = "env_test_internal"))]
 use collects_business::RefreshInternalUsersCommand;
@@ -17,7 +16,6 @@ use collects_business::{
 };
 #[cfg(not(any(feature = "env_internal", feature = "env_test_internal")))]
 use collects_business::{PendingTokenValidation, ValidateTokenCommand};
-#[cfg(not(feature = "env_test_internal"))]
 use collects_states::Time;
 
 /// Horizontal offset for the API status window from the right edge (in pixels)
@@ -34,6 +32,10 @@ pub struct CollectsApp<P: PasteHandler = SystemPasteHandler, D: DropHandler = Sy
     #[cfg(not(any(feature = "env_internal", feature = "env_test_internal")))]
     token_validation_started: bool,
     drop_handler: D,
+    /// When true, Time state is not auto-updated each frame.
+    /// Tests can set this to control Time deterministically.
+    /// Default: false (Time auto-updates in production).
+    pub manual_time_control: bool,
 }
 
 impl CollectsApp<SystemPasteHandler, SystemDropHandler> {
@@ -45,6 +47,21 @@ impl CollectsApp<SystemPasteHandler, SystemDropHandler> {
             #[cfg(not(any(feature = "env_internal", feature = "env_test_internal")))]
             token_validation_started: false,
             drop_handler: SystemDropHandler,
+            manual_time_control: false,
+        }
+    }
+
+    /// Create a new app with manual time control enabled (for testing).
+    /// When manual_time_control is true, Time state is not auto-updated,
+    /// allowing tests to control Time deterministically.
+    pub fn new_with_manual_time(state: State) -> Self {
+        Self {
+            state,
+            paste_handler: SystemPasteHandler,
+            #[cfg(not(any(feature = "env_internal", feature = "env_test_internal")))]
+            token_validation_started: false,
+            drop_handler: SystemDropHandler,
+            manual_time_control: true,
         }
     }
 }
@@ -58,6 +75,25 @@ impl<P: PasteHandler, D: DropHandler> CollectsApp<P, D> {
             #[cfg(not(any(feature = "env_internal", feature = "env_test_internal")))]
             token_validation_started: false,
             drop_handler,
+            manual_time_control: false,
+        }
+    }
+
+    /// Create a new app with manual time control enabled (for testing).
+    /// When manual_time_control is true, Time state is not auto-updated.
+    pub fn with_manual_time_control(
+        state: State,
+        paste_handler: P,
+        drop_handler: D,
+        manual_time_control: bool,
+    ) -> Self {
+        Self {
+            state,
+            paste_handler,
+            #[cfg(not(any(feature = "env_internal", feature = "env_test_internal")))]
+            token_validation_started: false,
+            drop_handler,
+            manual_time_control,
         }
     }
 }
@@ -351,10 +387,10 @@ impl<P: PasteHandler, D: DropHandler> eframe::App for CollectsApp<P, D> {
         // Time-dependent computes (ApiStatus, InternalApiStatus) will automatically
         // enqueue their fetch commands via Updater when conditions are met.
         //
-        // In test builds, we skip automatic time sync so tests can control Time state
-        // directly via `state_ctx.update::<Time>()` for deterministic time-based testing.
-        #[cfg(not(feature = "env_test_internal"))]
-        {
+        // When manual_time_control is true, tests can control Time deterministically
+        // via `state_ctx.update::<Time>()`. Both env_internal and env_test_internal
+        // deployment builds auto-update Time (they differ only in API base URL).
+        if !self.manual_time_control {
             let now = Utc::now();
             let current_time = self.state.ctx.state::<Time>();
             let current_second = current_time.as_ref().second();

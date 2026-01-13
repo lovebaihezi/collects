@@ -62,7 +62,7 @@ fn main() -> eframe::Result {
             add_font(&cc.egui_ctx, data);
 
             let state = State::default();
-            let app = collects_ui::CollectsApp::new(state);
+            let app = collects_ui::CollectsApp::builder().state(state).build();
             Ok(Box::new(app))
         }),
     )
@@ -131,7 +131,7 @@ fn main() {
                     add_font(&cc.egui_ctx, font_data);
 
                     let state = State::default();
-                    let app = collects_ui::CollectsApp::new(state);
+                    let app = collects_ui::CollectsApp::builder().state(state).build();
                     Ok(Box::new(app))
                 }),
             )

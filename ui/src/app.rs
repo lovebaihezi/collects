@@ -24,13 +24,34 @@ const API_STATUS_WINDOW_OFFSET_X: f32 = -8.0;
 const API_STATUS_WINDOW_OFFSET_Y: f32 = 8.0;
 
 /// Main application state and logic for the Collects app.
+///
+/// Use the builder pattern to construct:
+/// ```ignore
+/// // Production app with defaults
+/// let app = CollectsApp::builder().state(state).build();
+///
+/// // Test app with manual time control
+/// let app = CollectsApp::builder()
+///     .state(state)
+///     .manual_time_control(true)
+///     .build();
+///
+/// // Custom handlers for testing
+/// let app = CollectsApp::builder()
+///     .state(state)
+///     .paste_handler(mock_paste)
+///     .drop_handler(mock_drop)
+///     .build();
+/// ```
 pub struct CollectsApp<P: PasteHandler = SystemPasteHandler, D: DropHandler = SystemDropHandler> {
     /// The application state (public for testing access).
     pub state: State,
+    /// Custom paste handler (defaults to SystemPasteHandler).
     paste_handler: P,
     /// Whether token validation has been triggered on startup.
     #[cfg(not(any(feature = "env_internal", feature = "env_test_internal")))]
     token_validation_started: bool,
+    /// Custom drop handler (defaults to SystemDropHandler).
     drop_handler: D,
     /// When true, Time state is not auto-updated each frame.
     /// Tests can set this to control Time deterministically.
@@ -38,54 +59,31 @@ pub struct CollectsApp<P: PasteHandler = SystemPasteHandler, D: DropHandler = Sy
     pub manual_time_control: bool,
 }
 
+#[bon::bon]
 impl CollectsApp<SystemPasteHandler, SystemDropHandler> {
-    /// Called once before the first frame.
-    pub fn new(state: State) -> Self {
+    /// Build a new CollectsApp with the builder pattern.
+    #[builder]
+    pub fn new(state: State, #[builder(default)] manual_time_control: bool) -> Self {
         Self {
             state,
             paste_handler: SystemPasteHandler,
             #[cfg(not(any(feature = "env_internal", feature = "env_test_internal")))]
             token_validation_started: false,
             drop_handler: SystemDropHandler,
-            manual_time_control: false,
-        }
-    }
-
-    /// Create a new app with manual time control enabled (for testing).
-    /// When manual_time_control is true, Time state is not auto-updated,
-    /// allowing tests to control Time deterministically.
-    pub fn new_with_manual_time(state: State) -> Self {
-        Self {
-            state,
-            paste_handler: SystemPasteHandler,
-            #[cfg(not(any(feature = "env_internal", feature = "env_test_internal")))]
-            token_validation_started: false,
-            drop_handler: SystemDropHandler,
-            manual_time_control: true,
+            manual_time_control,
         }
     }
 }
 
+#[bon::bon]
 impl<P: PasteHandler, D: DropHandler> CollectsApp<P, D> {
-    /// Create a new app with custom paste and drop handlers (for testing).
-    pub fn with_handlers(state: State, paste_handler: P, drop_handler: D) -> Self {
-        Self {
-            state,
-            paste_handler,
-            #[cfg(not(any(feature = "env_internal", feature = "env_test_internal")))]
-            token_validation_started: false,
-            drop_handler,
-            manual_time_control: false,
-        }
-    }
-
-    /// Create a new app with manual time control enabled (for testing).
-    /// When manual_time_control is true, Time state is not auto-updated.
-    pub fn with_manual_time_control(
+    /// Build a new CollectsApp with custom handlers using the builder pattern.
+    #[builder]
+    pub fn with_handlers(
         state: State,
         paste_handler: P,
         drop_handler: D,
-        manual_time_control: bool,
+        #[builder(default)] manual_time_control: bool,
     ) -> Self {
         Self {
             state,

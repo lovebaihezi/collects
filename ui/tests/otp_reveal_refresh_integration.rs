@@ -150,7 +150,10 @@ fn simulate_hide(harness: &mut Harness<'_, CollectsApp>, username: &str) {
 /// Uses manual time control so tests can control Time deterministically.
 fn make_app_harness(base_url: String) -> Harness<'static, CollectsApp> {
     let state = State::test(base_url);
-    let app = CollectsApp::new_with_manual_time(state);
+    let app = CollectsApp::builder()
+        .state(state)
+        .manual_time_control(true)
+        .build();
     Harness::new_eframe(|_| app)
 }
 

@@ -90,3 +90,12 @@ When you start a task:
 - `docs/ai/scripts-and-ci.md` — scripts + GitHub Actions rules
 - `docs/ai/versioning.md` — version format + release metadata rules
 - `docs/ai/commits.md` — Conventional Commits + PR title rules
+
+---
+
+## Autopsy reports
+
+Post-mortems for significant bugs that escaped testing. Read these to understand past mistakes and avoid repeating them.
+
+- `docs/ai/autopsy-otp-countdown-2025-01.md` — OTP countdown timer not updating + stale code flash on reveal
+  - **Key lessons:** egui reactive rendering requires explicit `request_repaint()` for time-based updates; state machine UI must handle all states (including `InFlight`)

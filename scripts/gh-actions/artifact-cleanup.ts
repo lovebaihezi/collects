@@ -3,13 +3,14 @@
  *
  * Automatically cleans up Docker images from Google Cloud Artifact Registry
  * based on retention policies:
- * - PR images: Handled separately by cleanup-pr.yml when PR is closed
+ * - PR images: Deleted when the associated PR is closed
  * - Nightly images: Remove after 7 days
  * - Main images: Remove after 1 day
  * - Prod images: Remove after 30 days
  */
 
 import { $ } from "bun";
+import { Octokit } from "@octokit/rest";
 import { parseTags } from "./shared.ts";
 
 export interface DockerImage {
@@ -52,6 +53,15 @@ interface CleanupOptions {
   repository: string;
   imageName: string;
   dryRun: boolean;
+}
+
+/**
+ * GitHub context for checking PR state
+ */
+interface GitHubContext {
+  token: string;
+  owner: string;
+  repo: string;
 }
 
 /**
@@ -214,12 +224,63 @@ export function formatImageCounts(counts: ImageCounts): string {
 }
 
 /**
+ * Extract PR number from a pr-{number} tag
+ */
+export function extractPrNumber(tag: string): number | null {
+  const match = tag.match(/^pr-(\d+)$/);
+  return match ? parseInt(match[1], 10) : null;
+}
+
+/**
+ * Check if a PR is closed using the GitHub API
+ * Uses the provided cache to avoid repeated API calls for the same PR
+ */
+export async function isPrClosed(
+  octokit: Octokit,
+  owner: string,
+  repo: string,
+  prNumber: number,
+  cache: Map<number, "open" | "closed">,
+): Promise<boolean> {
+  // Check cache first
+  const cached = cache.get(prNumber);
+  if (cached !== undefined) {
+    return cached === "closed";
+  }
+
+  try {
+    const { data: pr } = await octokit.rest.pulls.get({
+      owner,
+      repo,
+      pull_number: prNumber,
+    });
+    // GitHub PR state can only be "open" or "closed" (draft is a separate boolean property)
+    const state = pr.state === "closed" ? "closed" : "open";
+    cache.set(prNumber, state);
+    return state === "closed";
+  } catch (error) {
+    // If we can't fetch PR state (e.g., PR doesn't exist or API error),
+    // skip deletion to be safe
+    console.warn(
+      `Failed to check PR #${prNumber} state: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    return false;
+  }
+}
+
+/**
  * Check if an image should be deleted based on retention policies
+ * Note: For PR images, use shouldDeletePrImage which checks PR state
  */
 function shouldDeleteImage(
   image: DockerImage,
   now: Date,
-): { shouldDelete: boolean; reason: string } {
+): {
+  shouldDelete: boolean;
+  reason: string;
+  isPrImage?: boolean;
+  prNumber?: number;
+} {
   // Skip images with no tags (untagged manifests will be cleaned up by GCR lifecycle)
   if (image.tags.length === 0) {
     return { shouldDelete: false, reason: "No tags (untagged manifest)" };
@@ -244,13 +305,18 @@ function shouldDeleteImage(
     }
   }
 
-  // Skip PR images (they are handled by cleanup-pr.yml when PR closes)
-  const hasPrTag = image.tags.some((tag) => tag.startsWith("pr-"));
-  if (hasPrTag) {
-    return {
-      shouldDelete: false,
-      reason: "PR image (handled by cleanup-pr.yml)",
-    };
+  // Check for PR images - mark for async PR state check
+  const prTag = image.tags.find((tag) => tag.startsWith("pr-"));
+  if (prTag) {
+    const prNumber = extractPrNumber(prTag);
+    if (prNumber !== null) {
+      return {
+        shouldDelete: false,
+        reason: "PR image (checking PR state...)",
+        isPrImage: true,
+        prNumber,
+      };
+    }
   }
 
   return { shouldDelete: false, reason: "No matching retention policy" };
@@ -282,6 +348,7 @@ async function deleteImage(
  */
 export async function cleanupArtifacts(
   options: Partial<CleanupOptions> = {},
+  github?: GitHubContext,
 ): Promise<CleanupResult> {
   const fullOptions: CleanupOptions = {
     projectId: options.projectId || (await getProjectId()),
@@ -294,12 +361,21 @@ export async function cleanupArtifacts(
   // Validate inputs to prevent command injection
   validateOptions(fullOptions);
 
+  // Create Octokit instance if GitHub context is provided
+  const octokit = github ? new Octokit({ auth: github.token }) : null;
+
+  // Cache for PR states to avoid repeated API calls within this cleanup run
+  const prStateCache = new Map<number, "open" | "closed">();
+
   console.log("=== Artifact Registry Cleanup ===");
   console.log(`Project: ${fullOptions.projectId}`);
   console.log(`Region: ${fullOptions.region}`);
   console.log(`Repository: ${fullOptions.repository}`);
   console.log(`Image: ${fullOptions.imageName}`);
   console.log(`Dry Run: ${fullOptions.dryRun}`);
+  console.log(
+    `PR Cleanup: ${octokit ? "enabled (checking closed PRs)" : "disabled (no GitHub token)"}`,
+  );
   console.log("");
 
   // Initialize result with empty counts
@@ -333,8 +409,49 @@ export async function cleanupArtifacts(
     const now = new Date();
 
     for (const image of images) {
-      const { shouldDelete, reason } = shouldDeleteImage(image, now);
+      const { shouldDelete, reason, isPrImage, prNumber } = shouldDeleteImage(
+        image,
+        now,
+      );
       const tagInfo = image.tags.join(", ") || "(untagged)";
+
+      // Handle PR images - check if PR is closed
+      if (isPrImage && prNumber !== undefined) {
+        if (octokit && github) {
+          const prClosed = await isPrClosed(
+            octokit,
+            github.owner,
+            github.repo,
+            prNumber,
+            prStateCache,
+          );
+          if (prClosed) {
+            try {
+              await deleteImage(fullOptions, image);
+              result.deleted.push(`${tagInfo} - PR #${prNumber} is closed`);
+              console.log(`  ✅ Deleted: PR #${prNumber} is closed\n`);
+            } catch (error) {
+              const message =
+                error instanceof Error ? error.message : String(error);
+              result.errors.push(`${tagInfo}: ${message}`);
+              console.log(`  ❌ Error: ${message}\n`);
+            }
+          } else {
+            result.skipped.push(`${tagInfo} - PR #${prNumber} is still open`);
+            console.log(
+              `  ⏭️  Skipped [${tagInfo}]: PR #${prNumber} is still open`,
+            );
+          }
+        } else {
+          result.skipped.push(
+            `${tagInfo} - PR image (no GitHub token to check state)`,
+          );
+          console.log(
+            `  ⏭️  Skipped [${tagInfo}]: PR image (no GitHub token to check state)`,
+          );
+        }
+        continue;
+      }
 
       if (shouldDelete) {
         try {
@@ -434,15 +551,50 @@ export async function runArtifactCleanupCLI(): Promise<void> {
   const repository = process.env.GCP_REPOSITORY || "collects-services";
   const imageName = process.env.GCP_IMAGE_NAME || "collects-services";
 
-  const result = await cleanupArtifacts({
-    projectId,
-    region,
-    repository,
-    imageName,
-    dryRun,
-  });
+  // GitHub context for checking PR states
+  const githubToken = process.env.GITHUB_TOKEN;
+  const githubRepository = process.env.GITHUB_REPOSITORY;
+
+  // Validate GitHub repository format: must be "owner/repo" with both parts non-empty
+  const GITHUB_REPO_PATTERN = /^[^/]+\/[^/]+$/;
+
+  let github: GitHubContext | undefined;
+  if (
+    githubToken &&
+    githubRepository &&
+    GITHUB_REPO_PATTERN.test(githubRepository)
+  ) {
+    const [owner, repo] = githubRepository.split("/");
+    if (owner && repo) {
+      github = { token: githubToken, owner, repo };
+    }
+  }
+
+  if (!github) {
+    console.log(
+      "Note: GITHUB_TOKEN or GITHUB_REPOSITORY not set - PR cleanup will be skipped",
+    );
+    console.log(
+      "Set these environment variables to enable automatic cleanup of closed PR images.\n",
+    );
+  }
+
+  const result = await cleanupArtifacts(
+    {
+      projectId,
+      region,
+      repository,
+      imageName,
+      dryRun,
+    },
+    github,
+  );
 
   // Write counts to GitHub Step Summary
+  const prCleanupNote = github
+    ? "PR images for closed PRs are automatically deleted."
+    : "⚠️ PR cleanup disabled (set GITHUB_TOKEN and GITHUB_REPOSITORY to enable)";
+
   const summaryContent = [
     "## Artifact Registry Cleanup Summary",
     "",
@@ -467,7 +619,9 @@ export async function runArtifactCleanupCLI(): Promise<void> {
     "| Nightly builds | 7 days |",
     "| Main branch builds | 1 day |",
     "| Production releases | 30 days |",
-    "| PR builds | On PR close |",
+    `| PR builds | When PR is closed |`,
+    "",
+    `> ${prCleanupNote}`,
     "",
   ].join("\n");
 

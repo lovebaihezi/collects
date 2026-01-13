@@ -2,11 +2,30 @@ import { describe, expect, test } from "bun:test";
 import {
   categorizeImage,
   countImagesByCategory,
+  extractPrNumber,
   formatImageCounts,
   formatImageCountsMarkdown,
   type DockerImage,
   type ImageCounts,
 } from "./artifact-cleanup.ts";
+
+describe("extractPrNumber", () => {
+  test("extracts PR number from valid pr-{number} tag", () => {
+    expect(extractPrNumber("pr-123")).toBe(123);
+    expect(extractPrNumber("pr-1")).toBe(1);
+    expect(extractPrNumber("pr-99999")).toBe(99999);
+  });
+
+  test("returns null for invalid tags", () => {
+    expect(extractPrNumber("pr-")).toBeNull();
+    expect(extractPrNumber("pr-abc")).toBeNull();
+    expect(extractPrNumber("main-abc123")).toBeNull();
+    expect(extractPrNumber("v1.0.0")).toBeNull();
+    expect(extractPrNumber("nightly-20260112")).toBeNull();
+    expect(extractPrNumber("")).toBeNull();
+    expect(extractPrNumber("pr-123-extra")).toBeNull();
+  });
+});
 
 describe("categorizeImage", () => {
   test("categorizes PR images", () => {

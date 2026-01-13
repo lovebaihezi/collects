@@ -219,8 +219,11 @@ async function updateGCloudSecret(
   databaseUrl: string,
 ): Promise<void> {
   const client = new SecretManagerServiceClient();
-  const projectIdEnv = process.env.GOOGLE_CLOUD_PROJECT || process.env.GCP_PROJECT_ID;
-  const projectId = projectIdEnv ? projectIdEnv.trim() : (await $`gcloud config get-value project`.text()).trim();
+  const projectIdEnv =
+    process.env.GOOGLE_CLOUD_PROJECT || process.env.GCP_PROJECT_ID;
+  const projectId = projectIdEnv
+    ? projectIdEnv.trim()
+    : (await $`gcloud config get-value project`.text()).trim();
   const projectNumber = await getProjectNumber(projectId);
   const parent = `projects/${projectNumber}`;
   const fullName = `${parent}/secrets/${secretName}`;

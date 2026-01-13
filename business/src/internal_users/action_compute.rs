@@ -16,11 +16,15 @@
 
 use std::any::Any;
 
+use chrono::{DateTime, Utc};
+
 use collects_states::{
     Command, CommandSnapshot, Compute, ComputeDeps, Dep, LatestOnlyUpdater, SnapshotClone, State,
     Updater, assign_impl, state_assign_impl,
 };
 use ustr::Ustr;
+
+use collects_states::Time;
 
 use crate::BusinessConfig;
 use crate::CFTokenCompute;
@@ -68,8 +72,10 @@ pub enum InternalUsersActionState {
     Otp {
         user: Ustr,
         code: String,
-        /// Seconds remaining until the OTP code expires (1-30).
+        /// Seconds remaining until the OTP code expires (1-30) at `fetched_at` time.
         time_remaining: u8,
+        /// Timestamp when this OTP was fetched, used to compute live countdown.
+        fetched_at: DateTime<Utc>,
     },
 
     /// An action failed.
@@ -652,6 +658,8 @@ impl Command for GetUserOtpCommand {
         let input: InternalUsersActionInput = snap.state::<InternalUsersActionInput>().clone();
         let config: BusinessConfig = snap.state::<BusinessConfig>().clone();
         let cf_token: CFTokenCompute = snap.compute::<CFTokenCompute>().clone();
+        // Capture the virtual time at command start for accurate countdown in tests.
+        let fetched_at = *snap.state::<Time>().as_ref();
 
         Box::pin(async move {
             let api_base_url = resolve_api_base_url(&input, &config);
@@ -695,6 +703,7 @@ impl Command for GetUserOtpCommand {
                             user,
                             code: resp.current_otp,
                             time_remaining: resp.time_remaining,
+                            fetched_at,
                         },
                     });
                 }

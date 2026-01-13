@@ -2,7 +2,7 @@
 
 use chrono::{DateTime, Utc};
 use collects_business::InternalUserItem;
-use collects_states::StateCtx;
+use collects_states::{StateCtx, Time};
 use egui::{Color32, RichText, Stroke, Ui};
 use egui_extras::TableRow;
 use ustr::Ustr;
@@ -18,6 +18,42 @@ use collects_business::{
     InternalUsersActionKind, InternalUsersActionState, InternalUsersState,
     ResetInternalUsersActionCommand, UserAction,
 };
+
+/// OTP codes change every 30 seconds (TOTP standard).
+const OTP_CYCLE_SECONDS: i64 = 30;
+
+/// Calculate live time remaining for on-demand OTP based on fetch timestamp.
+///
+/// This mirrors the logic in `InternalUsersState::calculate_time_remaining` but uses
+/// the on-demand `fetched_at` timestamp instead of the list-users `last_fetch`.
+#[inline]
+fn calculate_live_time_remaining(
+    original_time_remaining: u8,
+    fetched_at: DateTime<Utc>,
+    now: DateTime<Utc>,
+) -> u8 {
+    let elapsed_seconds = now.signed_duration_since(fetched_at).num_seconds();
+
+    if elapsed_seconds < 0 {
+        // Time went backwards (clock skew), return original value
+        return original_time_remaining;
+    }
+
+    // original_time_remaining was the seconds until code change at fetched_at time
+    // After elapsed_seconds, we need to compute new position in the 30-second cycle.
+    let original = original_time_remaining as i64;
+    let remaining = original - (elapsed_seconds % OTP_CYCLE_SECONDS);
+
+    // Wrap-around: if remaining <= 0, we've passed into new cycle(s)
+    let adjusted = if remaining <= 0 {
+        remaining + OTP_CYCLE_SECONDS
+    } else {
+        remaining
+    };
+
+    // Clamp to valid range (1-30)
+    adjusted.clamp(1, OTP_CYCLE_SECONDS) as u8
+}
 
 /// Data needed to render a user row.
 pub struct UserRowData {
@@ -107,7 +143,8 @@ pub fn render_user_row(
     // Time remaining cell
     row.col(|ui| {
         // Default to locally-adjusted time remaining based on last fetch time.
-        // If we have an on-demand OTP fetch for this user, prefer its time_remaining.
+        // If we have an on-demand OTP fetch for this user, prefer its time_remaining
+        // with live countdown computed from fetched_at.
         let mut time_remaining = data.time_remaining;
 
         if let Some(action_compute) = state_ctx.cached::<InternalUsersActionCompute>() {
@@ -115,9 +152,12 @@ pub fn render_user_row(
                 InternalUsersActionState::Otp {
                     user,
                     time_remaining: tr,
+                    fetched_at,
                     ..
                 } if data.is_revealed && user.as_str() == data.user.username => {
-                    time_remaining = *tr;
+                    // Compute live countdown based on fetched_at timestamp
+                    let now = *state_ctx.state::<Time>().as_ref();
+                    time_remaining = calculate_live_time_remaining(*tr, *fetched_at, now);
                 }
                 _ => {}
             }

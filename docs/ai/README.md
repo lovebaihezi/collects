@@ -97,5 +97,7 @@ When you start a task:
 
 Post-mortems for significant bugs that escaped testing. Read these to understand past mistakes and avoid repeating them.
 
-- `docs/ai/autopsy-otp-countdown-2025-01.md` — OTP countdown timer not updating + stale code flash on reveal
-  - **Key lessons:** egui reactive rendering requires explicit `request_repaint()` for time-based updates; state machine UI must handle all states (including `InFlight`)
+Located in `docs/autopsy/`:
+
+- `otp-countdown-2025-01.md` — OTP countdown timer not updating + stale code flash on reveal
+  - **Key lessons:** egui reactive rendering requires explicit `request_repaint()` for time-based updates; state machine UI must handle all states (including `InFlight`); hidden state needs continuous updates too

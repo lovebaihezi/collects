@@ -73,21 +73,28 @@ pub fn internal_users_panel(state_ctx: &mut StateCtx, api_base_url: &str, ui: &m
     // Create user modal
     render_modals(state_ctx, api_base_url, ui);
 
-    // Request continuous repaints when OTPs are revealed (for live countdown) or when
-    // an OTP fetch is in-flight. This ensures the time remaining display updates in real-time.
+    // Request continuous repaints when users have OTPs in the list (even if hidden) or when
+    // an OTP fetch is in-flight. This ensures:
+    // 1. Time state advances continuously so countdowns stay accurate
+    // 2. Hidden OTPs show correct time when revealed later
+    // 3. Stale OTP detection works correctly for hidden OTPs
     //
     // NOTE: This must run AFTER the toggle action is applied (above) so that on the frame
     // where the user clicks "Reveal", we correctly detect the newly-revealed state and
     // schedule the next repaint.
-    let has_revealed_otps = !state_ctx
-        .state::<InternalUsersState>()
-        .revealed_otps
-        .is_empty()
-        && state_ctx
-            .state::<InternalUsersState>()
-            .revealed_otps
-            .values()
-            .any(|&revealed| revealed);
+    //
+    // BUG FIX: Previously only requested repaints for revealed OTPs, causing hidden OTP
+    // countdowns to freeze. Now repaints whenever users exist, ensuring Time advances
+    // regardless of visibility state.
+    let users: Vec<InternalUserItem> = match state_ctx.cached::<InternalUsersListUsersCompute>() {
+        Some(c) => match &c.result {
+            InternalUsersListUsersResult::Loaded(users) => users.clone(),
+            _ => Vec::new(),
+        },
+        None => Vec::new(),
+    };
+
+    let has_users_with_otps = !users.is_empty();
 
     let otp_fetch_in_flight = state_ctx
         .cached::<InternalUsersActionCompute>()
@@ -101,7 +108,7 @@ pub fn internal_users_panel(state_ctx: &mut StateCtx, api_base_url: &str, ui: &m
             )
         });
 
-    if has_revealed_otps || otp_fetch_in_flight {
+    if has_users_with_otps || otp_fetch_in_flight {
         // Request repaint after a short delay to update the countdown timer.
         // Using 100ms provides smooth updates without excessive CPU usage.
         ui.ctx().request_repaint_after(Duration::from_millis(100));
@@ -139,13 +146,17 @@ fn request_initial_users_refresh_if_needed(state_ctx: &mut StateCtx, api_base_ur
     state_ctx.enqueue_command::<RefreshInternalUsersCommand>();
 }
 
-/// Auto-refresh when any revealed OTP has become stale (crossed a 30-second cycle boundary).
+/// Auto-refresh when any OTP (revealed or hidden) has become stale (crossed a 30-second cycle boundary).
 ///
-/// This ensures users see fresh OTP codes after the countdown reaches 0.
+/// This ensures users see fresh OTP codes after the countdown reaches 0, even if the OTP
+/// was hidden when it became stale.
 /// Only triggers refresh if:
-/// - At least one OTP is currently revealed
-/// - That OTP's cycle has elapsed (is_otp_stale returns true)
+/// - At least one OTP's cycle has elapsed (is_otp_stale returns true)
 /// - No refresh is already in progress
+///
+/// BUG FIX: Previously only checked revealed OTPs for staleness, causing hidden OTPs to
+/// show stale codes when revealed after crossing a cycle boundary. Now checks all OTPs
+/// regardless of visibility state.
 #[inline]
 fn request_refresh_if_otp_stale(state_ctx: &mut StateCtx, api_base_url: &str) {
     let Some(compute) = state_ctx.cached::<InternalUsersListUsersCompute>() else {
@@ -166,12 +177,10 @@ fn request_refresh_if_otp_stale(state_ctx: &mut StateCtx, api_base_url: &str) {
     let now = *state_ctx.state::<Time>().as_ref();
     let state = state_ctx.state::<InternalUsersState>();
 
-    // Check if any revealed OTP has become stale
-    let any_stale = users.iter().any(|user| {
-        let username = Ustr::from(&user.username);
-        let is_revealed = state.is_otp_revealed_at(&username, now);
-        is_revealed && state.is_otp_stale(user.time_remaining, now)
-    });
+    // Check if any OTP (revealed or hidden) has become stale
+    let any_stale = users
+        .iter()
+        .any(|user| state.is_otp_stale(user.time_remaining, now));
 
     if !any_stale {
         return;

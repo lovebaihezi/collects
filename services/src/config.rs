@@ -4,7 +4,7 @@ use std::env::vars;
 use std::fmt::Display;
 use tracing::info;
 
-#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 pub enum Env {
     #[serde(rename = "local")]
     Local,
@@ -25,13 +25,13 @@ pub enum Env {
 impl From<&Env> for RuntimeEnv {
     fn from(env: &Env) -> Self {
         match env {
-            Env::Local => RuntimeEnv::Local,
-            Env::Prod => RuntimeEnv::Prod,
-            Env::Internal => RuntimeEnv::Internal,
-            Env::Test => RuntimeEnv::Test,
-            Env::TestInternal => RuntimeEnv::TestInternal,
-            Env::Pr => RuntimeEnv::Pr,
-            Env::Nightly => RuntimeEnv::Nightly,
+            Env::Local => Self::Local,
+            Env::Prod => Self::Prod,
+            Env::Internal => Self::Internal,
+            Env::Test => Self::Test,
+            Env::TestInternal => Self::TestInternal,
+            Env::Pr => Self::Pr,
+            Env::Nightly => Self::Nightly,
         }
     }
 }
@@ -39,13 +39,13 @@ impl From<&Env> for RuntimeEnv {
 impl Display for Env {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Env::Local => write!(f, "local"),
-            Env::Prod => write!(f, "prod"),
-            Env::Internal => write!(f, "internal"),
-            Env::Test => write!(f, "test"),
-            Env::TestInternal => write!(f, "test-internal"),
-            Env::Pr => write!(f, "pr"),
-            Env::Nightly => write!(f, "nightly"),
+            Self::Local => write!(f, "local"),
+            Self::Prod => write!(f, "prod"),
+            Self::Internal => write!(f, "internal"),
+            Self::Test => write!(f, "test"),
+            Self::TestInternal => write!(f, "test-internal"),
+            Self::Pr => write!(f, "pr"),
+            Self::Nightly => write!(f, "nightly"),
         }
     }
 }
@@ -53,28 +53,28 @@ impl Display for Env {
 impl Env {
     /// Returns true if this environment requires R2 storage credentials.
     fn requires_r2(&self) -> bool {
-        matches!(self, Env::Prod | Env::Internal | Env::Pr | Env::Nightly)
+        matches!(self, Self::Prod | Self::Internal | Self::Pr | Self::Nightly)
     }
 
     /// Returns true if this environment requires Zero Trust configuration.
     fn requires_zero_trust(&self) -> bool {
-        matches!(self, Env::Internal | Env::TestInternal)
+        matches!(self, Self::Internal | Self::TestInternal)
     }
 
     /// Returns true if this environment requires a JWT secret to be explicitly set.
     fn requires_jwt_secret(&self) -> bool {
-        !matches!(self, Env::Local | Env::Test | Env::TestInternal)
+        !matches!(self, Self::Local | Self::Test | Self::TestInternal)
     }
 
     /// Returns true if this is a local or test environment.
     fn is_local_or_test(&self) -> bool {
-        matches!(self, Env::Local | Env::Test | Env::TestInternal)
+        matches!(self, Self::Local | Self::Test | Self::TestInternal)
     }
 
     /// Returns the default server address for this environment.
     fn default_server_addr(&self) -> &'static str {
         match self {
-            Env::Local => "127.0.0.1",
+            Self::Local => "127.0.0.1",
             _ => "0.0.0.0",
         }
     }
@@ -169,7 +169,7 @@ struct RawConfig {
 }
 
 impl RawConfig {
-    /// Try to construct R2Config if all required fields are present.
+    /// Try to construct `R2Config` if all required fields are present.
     /// Returns None if no R2 fields are set, or Err if partially configured.
     fn try_r2_config(&self) -> Result<Option<R2Config>, &'static str> {
         match (
@@ -194,7 +194,7 @@ impl RawConfig {
         }
     }
 
-    /// Try to construct ZeroTrustConfig if all required fields are present.
+    /// Try to construct `ZeroTrustConfig` if all required fields are present.
     /// Returns None if no Zero Trust fields are set, or Err if partially configured.
     fn try_zero_trust_config(&self) -> Result<Option<ZeroTrustConfig>, &'static str> {
         match (&self.cf_access_team_domain, &self.cf_access_aud) {
@@ -210,7 +210,7 @@ impl RawConfig {
         }
     }
 
-    /// Try to construct GcsConfig if bucket is present.
+    /// Try to construct `GcsConfig` if bucket is present.
     fn try_gcs_config(&self) -> Option<GcsConfig> {
         self.gcs_bucket.as_ref().map(|bucket| GcsConfig {
             bucket: bucket.clone(),
@@ -367,36 +367,32 @@ impl Config {
         let env = raw.env.clone();
 
         // Apply default server_addr based on environment
-        let server_addr = match raw.server_addr.take() {
-            Some(addr) => addr,
-            None => {
-                let default = env.default_server_addr();
-                info!(
-                    "SERVER_ADDR not set, defaulting to {} for {} environment",
-                    default, env
-                );
-                default.to_string()
-            }
+        let server_addr = if let Some(addr) = raw.server_addr.take() {
+            addr
+        } else {
+            let default = env.default_server_addr();
+            info!("SERVER_ADDR not set, defaulting to {default} for {env} environment");
+            default.to_string()
         };
 
         // Port: required for non-local, defaults to 8080 for local
         let port = match raw.port {
             Some(p) => p,
             None if env.is_local_or_test() => {
-                info!("PORT not set, defaulting to 8080 for {} environment", env);
+                info!("PORT not set, defaulting to 8080 for {env} environment");
                 8080
             }
-            None => anyhow::bail!("PORT must be set for {} environment", env),
+            None => anyhow::bail!("PORT must be set for {env} environment"),
         };
 
         // JWT secret: required for production environments
         let jwt_secret = match raw.jwt_secret.take() {
             Some(secret) => secret,
             None if !env.requires_jwt_secret() => {
-                info!("JWT_SECRET not set, using default for {} environment", env);
+                info!("JWT_SECRET not set, using default for {env} environment");
                 "default-jwt-secret-for-local-development-only".to_string()
             }
-            None => anyhow::bail!("JWT_SECRET must be set for {} environment", env),
+            None => anyhow::bail!("JWT_SECRET must be set for {env} environment"),
         };
 
         // Build and validate R2 config
@@ -404,12 +400,11 @@ impl Config {
         if env.requires_r2() && r2.is_none() {
             anyhow::bail!(
                 "R2 storage credentials (CF_ACCOUNT_ID, CF_ACCESS_KEY_ID, CF_SECRET_ACCESS_KEY, CF_BUCKET) \
-                 must be set for {} environment",
-                env
+                 must be set for {env} environment"
             );
         }
         if r2.is_some() {
-            info!("R2 storage credentials validated for {} environment", env);
+            info!("R2 storage credentials validated for {env} environment");
         }
 
         // Build and validate Zero Trust config
@@ -417,15 +412,14 @@ impl Config {
         if env.requires_zero_trust() && zero_trust.is_none() {
             anyhow::bail!(
                 "Zero Trust credentials (CF_ACCESS_TEAM_DOMAIN, CF_ACCESS_AUD) \
-                 must be set for {} environment. Internal routes require Zero Trust authentication.",
-                env
+                 must be set for {env} environment. Internal routes require Zero Trust authentication."
             );
         }
 
         // Build GCS config (optional)
         let gcs = raw.try_gcs_config();
 
-        Ok(Config {
+        Ok(Self {
             env,
             database_url: raw.database_url,
             server_addr,

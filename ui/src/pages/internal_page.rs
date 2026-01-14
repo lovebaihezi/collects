@@ -14,7 +14,7 @@ use egui::{Response, Ui};
 /// Shows only the internal users management panel (table) without the App title
 /// or signed-in header, providing a clean, focused data view.
 pub fn internal_page(state: &mut State, ui: &mut Ui) -> Response {
-    let api_base_url = state.ctx.state::<BusinessConfig>().api_url().to_string();
+    let api_base_url = state.ctx.state::<BusinessConfig>().api_url().to_owned();
 
     ui.vertical(|ui| {
         // Show internal users panel (table only, no header decorations)

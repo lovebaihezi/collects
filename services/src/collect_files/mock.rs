@@ -55,7 +55,7 @@ impl CollectFileStorage for MockCollectFileStorage {
             .split('/')
             .next_back()
             .unwrap_or(&upload.path)
-            .to_string();
+            .to_owned();
 
         let file = CollectFile {
             id: id.clone(),
@@ -125,7 +125,7 @@ impl CollectFileStorage for MockCollectFileStorage {
 
         let stored = files
             .get_mut(file_id)
-            .ok_or_else(|| CollectFileError::NotFound(file_id.to_string()))?;
+            .ok_or_else(|| CollectFileError::NotFound(file_id.to_owned()))?;
 
         stored.metadata.status = status;
         Ok(stored.metadata.clone())
@@ -140,7 +140,7 @@ impl CollectFileStorage for MockCollectFileStorage {
 
         let stored = files
             .get_mut(file_id)
-            .ok_or_else(|| CollectFileError::NotFound(file_id.to_string()))?;
+            .ok_or_else(|| CollectFileError::NotFound(file_id.to_owned()))?;
 
         stored.metadata.description = description;
         Ok(stored.metadata.clone())
@@ -151,7 +151,7 @@ impl CollectFileStorage for MockCollectFileStorage {
         files
             .get(file_id)
             .map(|f| f.content.clone())
-            .ok_or_else(|| CollectFileError::NotFound(file_id.to_string()))
+            .ok_or_else(|| CollectFileError::NotFound(file_id.to_owned()))
     }
 }
 

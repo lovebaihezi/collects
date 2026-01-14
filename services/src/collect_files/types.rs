@@ -108,7 +108,7 @@ impl BatchUploadResult {
 }
 
 /// Error type for collect file operations.
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, Clone, thiserror::Error)]
 pub enum CollectFileError {
     #[error("File not found: {0}")]
     NotFound(String),

@@ -230,7 +230,7 @@ fn render_raw_input_events(ui: &mut Ui) {
                     .path
                     .as_ref()
                     .map(|p| p.display().to_string())
-                    .unwrap_or_else(|| "(no path)".to_string());
+                    .unwrap_or_else(|| "(no path)".to_owned());
                 (path_str, f.mime.clone())
             })
             .collect();
@@ -245,7 +245,7 @@ fn render_raw_input_events(ui: &mut Ui) {
                     .path
                     .as_ref()
                     .map(|p| p.display().to_string())
-                    .unwrap_or_else(|| "(no path)".to_string());
+                    .unwrap_or_else(|| "(no path)".to_owned());
                 (f.name.clone(), path_str, f.bytes.is_some())
             })
             .collect();
@@ -396,12 +396,12 @@ fn render_key_event(ui: &mut Ui, event: &KeyEventType) {
     let (icon, text, color) = match event {
         KeyEventType::CtrlV => (
             "⌨",
-            "Ctrl+V detected".to_string(),
+            "Ctrl+V detected".to_owned(),
             Color32::from_rgb(100, 200, 255),
         ),
         KeyEventType::CmdV => (
             "⌨",
-            "Cmd+V detected".to_string(),
+            "Cmd+V detected".to_owned(),
             Color32::from_rgb(100, 200, 255),
         ),
         KeyEventType::Press { key, modifiers } => (
@@ -581,7 +581,7 @@ fn format_bytes(bytes: usize) -> String {
 /// Truncate a string with ellipsis
 fn truncate_string(s: &str, max_len: usize) -> String {
     if s.len() <= max_len {
-        s.to_string()
+        s.to_owned()
     } else {
         format!("{}...", &s[..max_len.saturating_sub(3)])
     }

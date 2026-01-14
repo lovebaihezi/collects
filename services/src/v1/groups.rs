@@ -171,7 +171,7 @@ where
 
     let input = database::GroupCreate {
         user_id: user.id,
-        name: name.to_string(),
+        name: name.to_owned(),
         description: request.description,
         visibility,
     };
@@ -369,7 +369,7 @@ where
     };
 
     let changes = database::GroupUpdate {
-        name: request.name.map(|n| n.trim().to_string()),
+        name: request.name.map(|n| n.trim().to_owned()),
         description: request.description,
         visibility,
     };
@@ -422,8 +422,8 @@ where
         Err(SqlStorageError::Unauthorized) => (
             StatusCode::FORBIDDEN,
             Json(V1ErrorResponse {
-                error: "forbidden".to_string(),
-                message: "You do not have permission to modify this group".to_string(),
+                error: "forbidden".to_owned(),
+                message: "You do not have permission to modify this group".to_owned(),
             }),
         )
             .into_response(),

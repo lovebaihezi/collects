@@ -47,7 +47,7 @@ mod home_page_test {
         let mut ctx = StateCtx::new();
         ctx.record_compute(AuthCompute {
             status: AuthStatus::Authenticated {
-                username: "TestUser".to_string(),
+                username: "TestUser".to_owned(),
                 token: None,
             },
         });

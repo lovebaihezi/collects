@@ -40,10 +40,10 @@ pub enum KeyEventType {
 impl std::fmt::Display for KeyEventType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            KeyEventType::CtrlV => write!(f, "Ctrl+V"),
-            KeyEventType::CmdV => write!(f, "Cmd+V"),
-            KeyEventType::Press { key, modifiers } => write!(f, "Press: {}+{}", modifiers, key),
-            KeyEventType::Release { key, modifiers } => write!(f, "Release: {}+{}", modifiers, key),
+            Self::CtrlV => write!(f, "Ctrl+V"),
+            Self::CmdV => write!(f, "Cmd+V"),
+            Self::Press { key, modifiers } => write!(f, "Press: {modifiers}+{key}"),
+            Self::Release { key, modifiers } => write!(f, "Release: {modifiers}+{key}"),
         }
     }
 }
@@ -431,19 +431,19 @@ impl ImageDiagState {
         } else {
             "Unknown"
         };
-        parts.push(format!("Display: {}", server));
+        parts.push(format!("Display: {server}"));
 
         // Add session type if available
         if let Some(st) = &session_type {
-            parts.push(format!("Session: {}", st));
+            parts.push(format!("Session: {st}"));
         }
 
         // Add specific display values for debugging
         if let Some(wd) = &wayland_display {
-            parts.push(format!("WAYLAND_DISPLAY={}", wd));
+            parts.push(format!("WAYLAND_DISPLAY={wd}"));
         }
         if let Some(xd) = &x11_display {
-            parts.push(format!("DISPLAY={}", xd));
+            parts.push(format!("DISPLAY={xd}"));
         }
 
         parts.join(" | ")
@@ -452,7 +452,7 @@ impl ImageDiagState {
     /// Get Linux display server info (non-Linux stub)
     #[cfg(not(all(target_os = "linux", not(target_arch = "wasm32"))))]
     pub fn linux_display_server_info() -> String {
-        "N/A (not Linux)".to_string()
+        "N/A (not Linux)".to_owned()
     }
 
     /// Get environment info string
@@ -575,7 +575,7 @@ mod tests {
             width: 100,
             height: 100,
             bytes_len: 40000,
-            format: "RGBA".to_string(),
+            format: "RGBA".to_owned(),
         });
 
         assert_eq!(state.log_entries.len(), 1);
@@ -609,7 +609,7 @@ mod tests {
     fn test_record_drop_success() {
         let mut state = ImageDiagState::default();
         state.record_drop(DropResult::Success {
-            file_name: Some("test.png".to_string()),
+            file_name: Some("test.png".to_owned()),
             width: 200,
             height: 200,
             bytes_len: 160000,
@@ -627,8 +627,8 @@ mod tests {
 
         state.record_drop_hover_start(DropHoverEvent {
             file_count: 1,
-            file_names: vec!["test.png".to_string()],
-            mime_types: vec!["image/png".to_string()],
+            file_names: vec!["test.png".to_owned()],
+            mime_types: vec!["image/png".to_owned()],
         });
         assert!(state.is_hovering());
 
@@ -642,7 +642,7 @@ mod tests {
 
         // Add more than MAX_LOG_ENTRIES
         for i in 0..60 {
-            state.record_info(format!("Test log {}", i));
+            state.record_info(format!("Test log {i}"));
         }
 
         assert_eq!(state.log_entries.len(), MAX_LOG_ENTRIES);
@@ -689,8 +689,7 @@ mod tests {
         {
             assert!(
                 info.contains("Display:"),
-                "Linux display server info should contain 'Display:' but got: {}",
-                info
+                "Linux display server info should contain 'Display:' but got: {info}"
             );
         }
 
@@ -713,8 +712,8 @@ mod tests {
             format!(
                 "{}",
                 KeyEventType::Press {
-                    key: "V".to_string(),
-                    modifiers: "Ctrl".to_string()
+                    key: "V".to_owned(),
+                    modifiers: "Ctrl".to_owned()
                 }
             ),
             "Press: Ctrl+V"

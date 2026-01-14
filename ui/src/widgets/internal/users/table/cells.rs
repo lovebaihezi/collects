@@ -158,9 +158,9 @@ fn format_timestamp(timestamp: &str) -> String {
     } else {
         // If parsing fails, just show the raw timestamp truncated
         if timestamp.len() > 16 {
-            timestamp[..16].to_string()
+            timestamp[..16].to_owned()
         } else {
-            timestamp.to_string()
+            timestamp.to_owned()
         }
     }
 }

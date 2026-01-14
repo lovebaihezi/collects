@@ -201,13 +201,13 @@ where
         user_id: user.id,
         title: payload.title,
         description: payload.description,
-        storage_backend: "inline".to_string(),
-        storage_profile: "inline".to_string(),
-        storage_key: "".to_string(), // No storage key for inline content
+        storage_backend: "inline".to_owned(),
+        storage_profile: "inline".to_owned(),
+        storage_key: "".to_owned(), // No storage key for inline content
         content_type: payload.content_type,
         file_size,
         visibility,
-        kind: Some("text".to_string()),
+        kind: Some("text".to_owned()),
         body: Some(payload.body),
     };
 
@@ -434,8 +434,8 @@ where
         Err(SqlStorageError::Unauthorized) => (
             StatusCode::FORBIDDEN,
             Json(V1ErrorResponse {
-                error: "forbidden".to_string(),
-                message: "You do not have permission to update this content".to_string(),
+                error: "forbidden".to_owned(),
+                message: "You do not have permission to update this content".to_owned(),
             }),
         )
             .into_response(),
@@ -637,8 +637,8 @@ where
         Err(SqlStorageError::Unauthorized) => (
             StatusCode::FORBIDDEN,
             Json(V1ErrorResponse {
-                error: "forbidden".to_string(),
-                message: "You do not have permission to modify this content".to_string(),
+                error: "forbidden".to_owned(),
+                message: "You do not have permission to modify this content".to_owned(),
             }),
         )
             .into_response(),

@@ -145,7 +145,7 @@ pub fn compile_windows_resource(ico_path: &std::path::Path, out_dir: &str) {
 
 /// Prints cargo directives for build script rerun conditions.
 pub fn print_rerun_directives(png_path: &str) {
-    println!("cargo:rerun-if-changed={}", png_path);
+    println!("cargo:rerun-if-changed={png_path}");
     println!("cargo:rerun-if-env-changed=CARGO_FEATURE_ENV_INTERNAL");
     println!("cargo:rerun-if-env-changed=CARGO_FEATURE_ENV_TEST_INTERNAL");
     println!("cargo:rerun-if-env-changed=CARGO_FEATURE_ENV_TEST");

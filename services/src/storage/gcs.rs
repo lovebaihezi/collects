@@ -12,7 +12,6 @@ pub struct GDDiskConfig {
 /// Google Cloud Storage connectivity checker.
 #[derive(Clone)]
 pub struct GDDisk {
-    #[allow(dead_code)]
     config: Option<GDDiskConfig>,
 }
 

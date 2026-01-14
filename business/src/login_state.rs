@@ -173,7 +173,7 @@ impl AuthCompute {
     pub fn zero_trust_authenticated() -> Self {
         Self {
             status: AuthStatus::Authenticated {
-                username: "Zero Trust User".to_string(),
+                username: "Zero Trust User".to_owned(),
                 token: None,
             },
         }
@@ -220,8 +220,8 @@ impl State for AuthCompute {
 /// Extracts an error message from a response, falling back to a default message.
 fn extract_error_message(response_bytes: &[u8], default: &str) -> String {
     serde_json::from_slice::<VerifyOtpResponse>(response_bytes)
-        .map(|r| r.message.unwrap_or_else(|| default.to_string()))
-        .unwrap_or_else(|_| default.to_string())
+        .map(|r| r.message.unwrap_or_else(|| default.to_owned()))
+        .unwrap_or_else(|_| default.to_owned())
 }
 
 /// Manual-only command that handles login.
@@ -242,6 +242,7 @@ fn extract_error_message(response_bytes: &[u8], default: &str) -> String {
 pub struct LoginCommand;
 
 impl Command for LoginCommand {
+    #[expect(clippy::too_many_lines)]
     fn run(
         &self,
         snap: CommandSnapshot,
@@ -252,13 +253,13 @@ impl Command for LoginCommand {
         let config: BusinessConfig = snap.state::<BusinessConfig>().clone();
 
         Box::pin(async move {
-            let username = input.username.trim().to_string();
-            let otp = input.otp.trim().to_string();
+            let username = input.username.trim().to_owned();
+            let otp = input.otp.trim().to_owned();
 
             if username.is_empty() {
                 info!("LoginCommand: username is empty");
                 updater.set(AuthCompute {
-                    status: AuthStatus::Failed("Username is required".to_string()),
+                    status: AuthStatus::Failed("Username is required".to_owned()),
                 });
                 return;
             }
@@ -266,7 +267,7 @@ impl Command for LoginCommand {
             if otp.is_empty() {
                 info!("LoginCommand: OTP is empty");
                 updater.set(AuthCompute {
-                    status: AuthStatus::Failed("OTP code is required".to_string()),
+                    status: AuthStatus::Failed("OTP code is required".to_owned()),
                 });
                 return;
             }
@@ -276,12 +277,12 @@ impl Command for LoginCommand {
             if !is_valid_format {
                 info!("LoginCommand: OTP format invalid");
                 updater.set(AuthCompute {
-                    status: AuthStatus::Failed("OTP code must be 6 digits".to_string()),
+                    status: AuthStatus::Failed("OTP code must be 6 digits".to_owned()),
                 });
                 return;
             }
 
-            info!("LoginCommand: verifying OTP for user '{}'", username);
+            info!("LoginCommand: verifying OTP for user '{username}'");
 
             // Set status to authenticating while we wait for the backend response
             updater.set(AuthCompute {
@@ -296,7 +297,7 @@ impl Command for LoginCommand {
             }) {
                 Ok(body) => body,
                 Err(e) => {
-                    error!("LoginCommand: Failed to serialize VerifyOtpRequest: {}", e);
+                    error!("LoginCommand: Failed to serialize VerifyOtpRequest: {e}");
                     updater.set(AuthCompute {
                         status: AuthStatus::Failed(format!("Internal error: {e}")),
                     });
@@ -317,8 +318,7 @@ impl Command for LoginCommand {
                             Ok(verify_response) => {
                                 if verify_response.valid {
                                     info!(
-                                        "LoginCommand: OTP verified successfully for user '{}'",
-                                        username
+                                        "LoginCommand: OTP verified successfully for user '{username}'"
                                     );
                                     updater.set(AuthCompute {
                                         status: AuthStatus::Authenticated {
@@ -329,19 +329,19 @@ impl Command for LoginCommand {
                                     });
                                 } else {
                                     let error_msg = verify_response.message.unwrap_or_else(|| {
-                                        "Invalid username or OTP code".to_string()
+                                        "Invalid username or OTP code".to_owned()
                                     });
-                                    info!("LoginCommand: OTP verification failed: {}", error_msg);
+                                    info!("LoginCommand: OTP verification failed: {error_msg}");
                                     updater.set(AuthCompute {
                                         status: AuthStatus::Failed(error_msg),
                                     });
                                 }
                             }
                             Err(e) => {
-                                error!("LoginCommand: Failed to parse VerifyOtpResponse: {}", e);
+                                error!("LoginCommand: Failed to parse VerifyOtpResponse: {e}");
                                 updater.set(AuthCompute {
                                     status: AuthStatus::Failed(
-                                        "Failed to parse server response".to_string(),
+                                        "Failed to parse server response".to_owned(),
                                     ),
                                 });
                             }
@@ -350,7 +350,7 @@ impl Command for LoginCommand {
                         // Bad request - likely invalid input format
                         let error_msg =
                             extract_error_message(&response.body, "Invalid request format");
-                        info!("LoginCommand: Bad request: {}", error_msg);
+                        info!("LoginCommand: Bad request: {error_msg}");
                         updater.set(AuthCompute {
                             status: AuthStatus::Failed(error_msg),
                         });
@@ -358,21 +358,21 @@ impl Command for LoginCommand {
                         // Unauthorized - invalid credentials
                         let error_msg =
                             extract_error_message(&response.body, "Invalid username or OTP code");
-                        info!("LoginCommand: Authentication failed: {}", error_msg);
+                        info!("LoginCommand: Authentication failed: {error_msg}");
                         updater.set(AuthCompute {
                             status: AuthStatus::Failed(error_msg),
                         });
                     } else {
                         let error_msg = format!("Server error (status {})", response.status);
-                        error!("LoginCommand: {}", error_msg);
+                        error!("LoginCommand: {error_msg}");
                         updater.set(AuthCompute {
                             status: AuthStatus::Failed(error_msg),
                         });
                     }
                 }
                 Err(err) => {
-                    let error_msg = format!("Network error: {}", err);
-                    error!("LoginCommand: {}", error_msg);
+                    let error_msg = format!("Network error: {err}");
+                    error!("LoginCommand: {error_msg}");
                     updater.set(AuthCompute {
                         status: AuthStatus::Failed(error_msg),
                     });
@@ -489,10 +489,7 @@ impl Command for ValidateTokenCommand {
             }) {
                 Ok(body) => body,
                 Err(e) => {
-                    error!(
-                        "ValidateTokenCommand: Failed to serialize ValidateTokenRequest: {}",
-                        e
-                    );
+                    error!("ValidateTokenCommand: Failed to serialize ValidateTokenRequest: {e}");
                     updater.set(AuthCompute {
                         status: AuthStatus::NotAuthenticated,
                     });
@@ -513,27 +510,23 @@ impl Command for ValidateTokenCommand {
                             Ok(validate_response) => {
                                 if validate_response.valid {
                                     // Username must be present for a valid token response
-                                    match validate_response.username {
-                                        Some(username) => {
-                                            info!(
-                                                "ValidateTokenCommand: token validated successfully for user '{}'",
-                                                username
-                                            );
-                                            updater.set(AuthCompute {
-                                                status: AuthStatus::Authenticated {
-                                                    username,
-                                                    token: Some(token),
-                                                },
-                                            });
-                                        }
-                                        None => {
-                                            error!(
-                                                "ValidateTokenCommand: token valid but username missing"
-                                            );
-                                            updater.set(AuthCompute {
-                                                status: AuthStatus::NotAuthenticated,
-                                            });
-                                        }
+                                    if let Some(username) = validate_response.username {
+                                        info!(
+                                            "ValidateTokenCommand: token validated successfully for user '{username}'"
+                                        );
+                                        updater.set(AuthCompute {
+                                            status: AuthStatus::Authenticated {
+                                                username,
+                                                token: Some(token),
+                                            },
+                                        });
+                                    } else {
+                                        error!(
+                                            "ValidateTokenCommand: token valid but username missing"
+                                        );
+                                        updater.set(AuthCompute {
+                                            status: AuthStatus::NotAuthenticated,
+                                        });
                                     }
                                 } else {
                                     info!("ValidateTokenCommand: token is invalid");
@@ -544,8 +537,7 @@ impl Command for ValidateTokenCommand {
                             }
                             Err(e) => {
                                 error!(
-                                    "ValidateTokenCommand: Failed to parse ValidateTokenResponse: {}",
-                                    e
+                                    "ValidateTokenCommand: Failed to parse ValidateTokenResponse: {e}"
                                 );
                                 updater.set(AuthCompute {
                                     status: AuthStatus::NotAuthenticated,
@@ -563,7 +555,7 @@ impl Command for ValidateTokenCommand {
                     }
                 }
                 Err(err) => {
-                    error!("ValidateTokenCommand: Network error: {}", err);
+                    error!("ValidateTokenCommand: Network error: {err}");
                     updater.set(AuthCompute {
                         status: AuthStatus::NotAuthenticated,
                     });
@@ -608,8 +600,8 @@ mod tests {
     #[test]
     fn test_auth_status_authenticated() {
         let status = AuthStatus::Authenticated {
-            username: "test_user".to_string(),
-            token: Some("test_token".to_string()),
+            username: "test_user".to_owned(),
+            token: Some("test_token".to_owned()),
         };
 
         assert!(status.is_authenticated());
@@ -629,8 +621,8 @@ mod tests {
     #[test]
     fn test_verify_otp_request_serialization() {
         let request = VerifyOtpRequest {
-            username: "testuser".to_string(),
-            code: "123456".to_string(),
+            username: "testuser".to_owned(),
+            code: "123456".to_owned(),
         };
 
         let json = serde_json::to_string(&request).expect("Should serialize");
@@ -653,7 +645,7 @@ mod tests {
         let response: VerifyOtpResponse = serde_json::from_str(json).expect("Should deserialize");
         assert!(response.valid);
         assert!(response.message.is_none());
-        assert_eq!(response.token, Some("test-jwt-token".to_string()));
+        assert_eq!(response.token, Some("test-jwt-token".to_owned()));
     }
 
     #[test]
@@ -661,14 +653,14 @@ mod tests {
         let json = r#"{"valid": false, "message": "Invalid OTP code"}"#;
         let response: VerifyOtpResponse = serde_json::from_str(json).expect("Should deserialize");
         assert!(!response.valid);
-        assert_eq!(response.message, Some("Invalid OTP code".to_string()));
+        assert_eq!(response.message, Some("Invalid OTP code".to_owned()));
         assert!(response.token.is_none());
     }
 
     #[test]
     fn test_validate_token_request_serialization() {
         let request = ValidateTokenRequest {
-            token: "test-jwt-token".to_string(),
+            token: "test-jwt-token".to_owned(),
         };
 
         let json = serde_json::to_string(&request).expect("Should serialize");
@@ -681,7 +673,7 @@ mod tests {
         let response: ValidateTokenResponse =
             serde_json::from_str(json).expect("Should deserialize");
         assert!(response.valid);
-        assert_eq!(response.username, Some("testuser".to_string()));
+        assert_eq!(response.username, Some("testuser".to_owned()));
         assert!(response.message.is_none());
     }
 
@@ -692,7 +684,7 @@ mod tests {
             serde_json::from_str(json).expect("Should deserialize");
         assert!(!response.valid);
         assert!(response.username.is_none());
-        assert_eq!(response.message, Some("Token expired".to_string()));
+        assert_eq!(response.message, Some("Token expired".to_owned()));
     }
 
     #[test]

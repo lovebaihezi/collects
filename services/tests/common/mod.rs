@@ -113,9 +113,9 @@ impl SqlStorage for MockSqlStorage {
             storage_key: input.storage_key,
             content_type: input.content_type,
             file_size: input.file_size,
-            status: "active".to_string(),
-            visibility: input.visibility.as_db_str().to_string(),
-            kind: input.kind.unwrap_or_else(|| "file".to_string()),
+            status: "active".to_owned(),
+            visibility: input.visibility.as_db_str().to_owned(),
+            kind: input.kind.unwrap_or_else(|| "file".to_owned()),
             body: input.body,
             trashed_at: None,
             archived_at: None,
@@ -131,16 +131,16 @@ impl SqlStorage for MockSqlStorage {
             return Ok(Some(ContentRow {
                 id: TEST_CONTENT_ID,
                 user_id,
-                title: "Test Content".to_string(),
+                title: "Test Content".to_owned(),
                 description: None,
-                storage_backend: "r2".to_string(),
-                storage_profile: "default".to_string(),
+                storage_backend: "r2".to_owned(),
+                storage_profile: "default".to_owned(),
                 storage_key: format!("{}/test-uuid/test-file.jpg", user_id),
-                content_type: "image/jpeg".to_string(),
+                content_type: "image/jpeg".to_owned(),
                 file_size: 1234,
-                status: "active".to_string(),
-                visibility: "private".to_string(),
-                kind: "file".to_string(),
+                status: "active".to_owned(),
+                visibility: "private".to_owned(),
+                kind: "file".to_owned(),
                 body: None,
                 trashed_at: None,
                 archived_at: None,
@@ -180,7 +180,7 @@ impl SqlStorage for MockSqlStorage {
 
     async fn groups_create(&self, _input: GroupCreate) -> Result<ContentGroupRow, SqlStorageError> {
         Err(SqlStorageError::Db(
-            "MockSqlStorage.groups_create: unimplemented".to_string(),
+            "MockSqlStorage.groups_create: unimplemented".to_owned(),
         ))
     }
 
@@ -253,7 +253,7 @@ impl SqlStorage for MockSqlStorage {
 
     async fn tags_create(&self, _input: TagCreate) -> Result<TagRow, SqlStorageError> {
         Err(SqlStorageError::Db(
-            "MockSqlStorage.tags_create: unimplemented".to_string(),
+            "MockSqlStorage.tags_create: unimplemented".to_owned(),
         ))
     }
 
@@ -309,7 +309,7 @@ impl SqlStorage for MockSqlStorage {
         _input: ShareLinkCreate,
     ) -> Result<ShareLinkRow, SqlStorageError> {
         Err(SqlStorageError::Db(
-            "MockSqlStorage.share_links_create: unimplemented".to_string(),
+            "MockSqlStorage.share_links_create: unimplemented".to_owned(),
         ))
     }
 
@@ -401,7 +401,7 @@ impl SqlStorage for MockSqlStorage {
         _input: ContentShareCreateForUser,
     ) -> Result<ContentShareRow, SqlStorageError> {
         Err(SqlStorageError::Db(
-            "MockSqlStorage.content_shares_create_for_user: unimplemented".to_string(),
+            "MockSqlStorage.content_shares_create_for_user: unimplemented".to_owned(),
         ))
     }
 
@@ -410,7 +410,7 @@ impl SqlStorage for MockSqlStorage {
         _input: ContentShareCreateForLink,
     ) -> Result<ContentShareRow, SqlStorageError> {
         Err(SqlStorageError::Db(
-            "MockSqlStorage.content_shares_create_for_link: unimplemented".to_string(),
+            "MockSqlStorage.content_shares_create_for_link: unimplemented".to_owned(),
         ))
     }
 
@@ -419,7 +419,7 @@ impl SqlStorage for MockSqlStorage {
         _input: GroupShareCreateForUser,
     ) -> Result<ContentGroupShareRow, SqlStorageError> {
         Err(SqlStorageError::Db(
-            "MockSqlStorage.group_shares_create_for_user: unimplemented".to_string(),
+            "MockSqlStorage.group_shares_create_for_user: unimplemented".to_owned(),
         ))
     }
 
@@ -428,7 +428,7 @@ impl SqlStorage for MockSqlStorage {
         _input: GroupShareCreateForLink,
     ) -> Result<ContentGroupShareRow, SqlStorageError> {
         Err(SqlStorageError::Db(
-            "MockSqlStorage.group_shares_create_for_link: unimplemented".to_string(),
+            "MockSqlStorage.group_shares_create_for_link: unimplemented".to_owned(),
         ))
     }
 
@@ -454,7 +454,7 @@ impl SqlStorage for MockSqlStorage {
             storage_key: input.storage_key,
             content_type: input.content_type,
             file_size: input.file_size,
-            status: "initiated".to_string(),
+            status: "initiated".to_owned(),
             expires_at: input.expires_at,
             created_at: chrono::Utc::now(),
             completed_at: None,

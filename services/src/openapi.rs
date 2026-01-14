@@ -1,4 +1,4 @@
-//! OpenAPI documentation module.
+//! `OpenAPI` documentation module.
 //!
 //! This module provides OpenAPI/Swagger documentation for the Collects API.
 //! Routes are only accessible in internal environments (internal, test-internal)
@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use axum::{Router, middleware, routing::get};
 use utoipa::OpenApi;
-use utoipa_scalar::{Scalar, Servable};
+use utoipa_scalar::{Scalar, Servable as _};
 
 use crate::auth::{self, JwksKeyResolver};
 use crate::config::{Config, Env};
@@ -17,7 +17,8 @@ use crate::users::routes::AppState;
 use crate::users::storage::UserStorage;
 use crate::v1::{content_tags, contents, groups, me, public, share_links, tags, types, uploads};
 
-/// OpenAPI documentation structure.
+/// `OpenAPI` documentation structure.
+#[allow(clippy::needless_for_each)] // Triggered by OpenApi derive macro
 #[derive(OpenApi)]
 #[openapi(
     info(
@@ -168,7 +169,7 @@ impl utoipa::Modify for SecurityAddon {
     }
 }
 
-/// Check if OpenAPI documentation should be enabled for the given config.
+/// Check if `OpenAPI` documentation should be enabled for the given config.
 ///
 /// Returns true only for internal environments:
 /// - `internal` (collects-internal.lqxclqxc.com)
@@ -177,10 +178,10 @@ pub fn is_openapi_enabled(config: &Config) -> bool {
     matches!(config.environment(), Env::Internal | Env::TestInternal)
 }
 
-/// Create OpenAPI documentation routes if enabled for the environment.
+/// Create `OpenAPI` documentation routes if enabled for the environment.
 ///
 /// Routes are protected by Cloudflare Zero Trust authentication when configured.
-/// Returns `Some(Router)` with `/docs` and `/openapi.json` routes if OpenAPI is enabled,
+/// Returns `Some(Router)` with `/docs` and `/openapi.json` routes if `OpenAPI` is enabled,
 /// otherwise returns `None`.
 pub fn create_openapi_routes<S, U>(config: &Config) -> Option<Router<AppState<S, U>>>
 where
@@ -190,7 +191,7 @@ where
     create_openapi_routes_with_resolver(config, Arc::new(auth::ReqwestJwksKeyResolver))
 }
 
-/// Create OpenAPI documentation routes with a custom JWKS resolver.
+/// Create `OpenAPI` documentation routes with a custom JWKS resolver.
 ///
 /// This exists primarily for deterministic tests without making external network calls.
 pub fn create_openapi_routes_with_resolver<S, U>(
@@ -219,8 +220,8 @@ where
     let protected_routes = match (config.cf_access_team_domain(), config.cf_access_aud()) {
         (Some(team_domain), Some(audience)) => {
             let zero_trust_config = Arc::new(auth::ZeroTrustConfig::new(
-                team_domain.to_string(),
-                audience.to_string(),
+                team_domain.to_owned(),
+                audience.to_owned(),
             ));
 
             routes.layer(middleware::from_fn(move |req, next| {

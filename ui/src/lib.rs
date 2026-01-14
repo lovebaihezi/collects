@@ -33,14 +33,12 @@ pub mod test_utils {
             &mut self.harness
         }
 
-        #[allow(unused)]
         pub fn harness(&self) -> &Harness<'a, T> {
             &self.harness
         }
     }
 
     impl<'a> TestCtx<'a, State> {
-        #[allow(unused)]
         pub async fn new(app: impl FnMut(&mut egui::Ui, &mut State) + 'a) -> Self {
             let _ = env_logger::builder().is_test(true).try_init();
             let (mock_server, state) = setup_test_state().await;
@@ -52,7 +50,6 @@ pub mod test_utils {
             }
         }
 
-        #[allow(unused)]
         pub async fn new_with_status(
             app: impl FnMut(&mut egui::Ui, &mut State) + 'a,
             status_code: u16,

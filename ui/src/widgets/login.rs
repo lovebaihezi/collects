@@ -350,7 +350,7 @@ mod login_widget_zero_trust_tests {
     #[test]
     fn test_login_widget_shows_signed_in_when_authenticated() {
         let ctx = create_state_ctx_with_auth(AuthStatus::Authenticated {
-            username: "Test User".to_string(),
+            username: "Test User".to_owned(),
             token: None,
         });
 

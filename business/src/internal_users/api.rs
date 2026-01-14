@@ -114,7 +114,7 @@ pub async fn update_username(
     let url = format!("{api_base_url}/internal/users/{old_username}");
 
     let body = UpdateUsernameRequest {
-        new_username: new_username.to_string(),
+        new_username: new_username.to_owned(),
     };
 
     let mut request = Client::put(&url).header("content-type", "application/json");
@@ -246,7 +246,7 @@ pub async fn create_user(
     let url = format!("{api_base_url}/internal/users");
 
     let body = CreateUserRequest {
-        username: username.to_string(),
+        username: username.to_owned(),
     };
 
     let mut request = Client::post(&url).header("content-type", "application/json");

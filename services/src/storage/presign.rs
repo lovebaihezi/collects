@@ -165,8 +165,8 @@ impl R2Presigner {
 
         // Set content disposition header override
         let disposition_value = match disposition {
-            ContentDisposition::Inline => "inline".to_string(),
-            ContentDisposition::Attachment => "attachment".to_string(),
+            ContentDisposition::Inline => "inline".to_owned(),
+            ContentDisposition::Attachment => "attachment".to_owned(),
         };
         presign_builder = presign_builder.override_content_disposition(&disposition_value);
 
@@ -205,7 +205,7 @@ impl R2Presigner {
         // For test mode, return mock metadata
         if self.config.is_none() {
             return Ok(Some(FileMetadata {
-                content_type: "application/octet-stream".to_string(),
+                content_type: "application/octet-stream".to_owned(),
                 content_length: 1024,
             }));
         }
@@ -216,7 +216,7 @@ impl R2Presigner {
                 content_type: meta
                     .content_type()
                     .unwrap_or("application/octet-stream")
-                    .to_string(),
+                    .to_owned(),
                 content_length: meta.content_length(),
             })),
             Err(e) if e.kind() == opendal::ErrorKind::NotFound => Ok(None),

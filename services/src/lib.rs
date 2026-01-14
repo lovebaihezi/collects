@@ -13,7 +13,7 @@ use axum::{
 use collects_utils::version_info::{RuntimeEnv, format_version_for_runtime_env};
 use opentelemetry::{global, propagation::Extractor};
 use tower_http::trace::TraceLayer;
-use tracing_opentelemetry::OpenTelemetrySpanExt;
+use tracing_opentelemetry::OpenTelemetrySpanExt as _;
 
 pub mod auth;
 pub mod collect_files;
@@ -72,10 +72,10 @@ where
     // Add R2 presigner extension if R2 is configured
     if let Some(r2_config) = config.r2() {
         let presigner = R2Presigner::new(CFDiskConfig {
-            account_id: r2_config.account_id().to_string(),
-            access_key_id: r2_config.access_key_id().to_string(),
-            secret_access_key: r2_config.secret_access_key().to_string(),
-            bucket: r2_config.bucket().to_string(),
+            account_id: r2_config.account_id().to_owned(),
+            access_key_id: r2_config.access_key_id().to_owned(),
+            secret_access_key: r2_config.secret_access_key().to_owned(),
+            bucket: r2_config.bucket().to_owned(),
         });
         router = router.layer(Extension(presigner));
     }
@@ -202,7 +202,7 @@ mod tests {
             .users
             .write()
             .expect("lock poisoned")
-            .insert("testuser".to_string(), user);
+            .insert("testuser".to_owned(), user);
         storage
     }
 
@@ -226,9 +226,9 @@ mod tests {
                 storage_key: input.storage_key,
                 content_type: input.content_type,
                 file_size: input.file_size,
-                status: "active".to_string(),
-                visibility: input.visibility.as_db_str().to_string(),
-                kind: input.kind.unwrap_or_else(|| "file".to_string()),
+                status: "active".to_owned(),
+                visibility: input.visibility.as_db_str().to_owned(),
+                kind: input.kind.unwrap_or_else(|| "file".to_owned()),
                 body: input.body,
                 trashed_at: None,
                 archived_at: None,
@@ -248,16 +248,16 @@ mod tests {
                 return Ok(Some(crate::database::ContentRow {
                     id: TEST_CONTENT_ID,
                     user_id,
-                    title: "Test Content".to_string(),
+                    title: "Test Content".to_owned(),
                     description: None,
-                    storage_backend: "r2".to_string(),
-                    storage_profile: "default".to_string(),
+                    storage_backend: "r2".to_owned(),
+                    storage_profile: "default".to_owned(),
                     storage_key: format!("{}/test-uuid/test-file.jpg", user_id),
-                    content_type: "image/jpeg".to_string(),
+                    content_type: "image/jpeg".to_owned(),
                     file_size: 1234,
-                    status: "active".to_string(),
-                    visibility: "private".to_string(),
-                    kind: "file".to_string(),
+                    status: "active".to_owned(),
+                    visibility: "private".to_owned(),
+                    kind: "file".to_owned(),
                     body: None,
                     trashed_at: None,
                     archived_at: None,
@@ -300,7 +300,7 @@ mod tests {
             _input: crate::database::GroupCreate,
         ) -> Result<crate::database::ContentGroupRow, crate::database::SqlStorageError> {
             Err(crate::database::SqlStorageError::Db(
-                "MockSqlStorage.groups_create: unimplemented".to_string(),
+                "MockSqlStorage.groups_create: unimplemented".to_owned(),
             ))
         }
 
@@ -381,7 +381,7 @@ mod tests {
             _input: crate::database::TagCreate,
         ) -> Result<crate::database::TagRow, crate::database::SqlStorageError> {
             Err(crate::database::SqlStorageError::Db(
-                "MockSqlStorage.tags_create: unimplemented".to_string(),
+                "MockSqlStorage.tags_create: unimplemented".to_owned(),
             ))
         }
 
@@ -437,7 +437,7 @@ mod tests {
             _input: crate::database::ShareLinkCreate,
         ) -> Result<crate::database::ShareLinkRow, crate::database::SqlStorageError> {
             Err(crate::database::SqlStorageError::Db(
-                "MockSqlStorage.share_links_create: unimplemented".to_string(),
+                "MockSqlStorage.share_links_create: unimplemented".to_owned(),
             ))
         }
 
@@ -545,7 +545,7 @@ mod tests {
             _input: crate::database::ContentShareCreateForUser,
         ) -> Result<crate::database::ContentShareRow, crate::database::SqlStorageError> {
             Err(crate::database::SqlStorageError::Db(
-                "MockSqlStorage.content_shares_create_for_user: unimplemented".to_string(),
+                "MockSqlStorage.content_shares_create_for_user: unimplemented".to_owned(),
             ))
         }
 
@@ -554,7 +554,7 @@ mod tests {
             _input: crate::database::ContentShareCreateForLink,
         ) -> Result<crate::database::ContentShareRow, crate::database::SqlStorageError> {
             Err(crate::database::SqlStorageError::Db(
-                "MockSqlStorage.content_shares_create_for_link: unimplemented".to_string(),
+                "MockSqlStorage.content_shares_create_for_link: unimplemented".to_owned(),
             ))
         }
 
@@ -564,7 +564,7 @@ mod tests {
         ) -> Result<crate::database::ContentGroupShareRow, crate::database::SqlStorageError>
         {
             Err(crate::database::SqlStorageError::Db(
-                "MockSqlStorage.group_shares_create_for_user: unimplemented".to_string(),
+                "MockSqlStorage.group_shares_create_for_user: unimplemented".to_owned(),
             ))
         }
 
@@ -574,7 +574,7 @@ mod tests {
         ) -> Result<crate::database::ContentGroupShareRow, crate::database::SqlStorageError>
         {
             Err(crate::database::SqlStorageError::Db(
-                "MockSqlStorage.group_shares_create_for_link: unimplemented".to_string(),
+                "MockSqlStorage.group_shares_create_for_link: unimplemented".to_owned(),
             ))
         }
 
@@ -609,7 +609,7 @@ mod tests {
                 storage_key: input.storage_key,
                 content_type: input.content_type,
                 file_size: input.file_size,
-                status: "initiated".to_string(),
+                status: "initiated".to_owned(),
                 expires_at: input.expires_at,
                 created_at: chrono::Utc::now(),
                 completed_at: None,
@@ -1931,20 +1931,20 @@ mod tests {
                     .unwrap(),
             )
             .await
-            .unwrap();
+            .expect("Request failed");
 
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 
         let body = axum::body::to_bytes(response.into_body(), usize::MAX)
             .await
-            .unwrap();
-        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+            .expect("Failed to read body");
+        let json: serde_json::Value = serde_json::from_slice(&body).expect("Invalid JSON");
 
         assert_eq!(json["error"], "bad_request");
         assert!(
             json["message"]
                 .as_str()
-                .unwrap()
+                .expect("Message not str")
                 .contains("Invalid visibility")
         );
     }
@@ -1965,9 +1965,9 @@ mod tests {
                     .method("POST")
                     .uri("/v1/contents")
                     .header("content-type", "application/json")
-                    .header("Authorization", format!("Bearer {}", token))
+                    .header("Authorization", format!("Bearer {token}"))
                     .body(Body::from(r#"{"title":"Note","body":"Some text"}"#))
-                    .unwrap(),
+                    .expect("Invalid request"),
             )
             .await
             .unwrap();
@@ -1976,8 +1976,8 @@ mod tests {
 
         let body = axum::body::to_bytes(response.into_body(), usize::MAX)
             .await
-            .unwrap();
-        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+            .expect("Failed to read body");
+        let json: serde_json::Value = serde_json::from_slice(&body).expect("Invalid JSON");
 
         assert_eq!(json["content"]["content_type"], "text/plain");
     }

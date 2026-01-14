@@ -31,7 +31,7 @@ pub fn show_edit_username_modal(
             let mut draft: String = ui
                 .ctx()
                 .data_mut(|d| d.get_temp::<String>(draft_id))
-                .unwrap_or_else(|| username.as_str().to_string());
+                .unwrap_or_else(|| username.as_str().to_owned());
 
             // Typed action state from business compute.
             let action_state = state_ctx
@@ -593,7 +593,7 @@ pub fn show_create_user_modal(state_ctx: &mut StateCtx, ui: &mut Ui) {
                                 .state::<InternalUsersState>()
                                 .new_username
                                 .trim()
-                                .to_string();
+                                .to_owned();
                             super::panel::trigger_create_user(state_ctx, &username);
                         }
 

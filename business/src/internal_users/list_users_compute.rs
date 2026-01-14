@@ -122,7 +122,7 @@ impl State for InternalUsersListUsersCompute {
 /// Pattern mirrors `CreateUserInput`.
 #[derive(Default, Debug, Clone)]
 pub struct InternalUsersListUsersInput {
-    /// Base URL for the API (e.g. "https://example.com/api").
+    /// Base URL for the API (e.g. <https://example.com/api>).
     ///
     /// Use `Ustr` to avoid repeated allocations/clones; this is frequently reused.
     pub api_base_url: Option<Ustr>,
@@ -172,14 +172,14 @@ impl Command for RefreshInternalUsersCommand {
             // - Prefer explicit input when set (UI/tests can override).
             // - Fall back to `BusinessConfig::api_url()` (the canonical base for `/api`).
             let api_base_url: String = match input.api_base_url.as_ref() {
-                Some(u) => u.as_str().to_string(),
-                None => config.api_url().as_str().to_string(),
+                Some(u) => u.as_str().to_owned(),
+                None => config.api_url().as_str().to_owned(),
             };
 
             if api_base_url.trim().is_empty() {
                 updater.set(InternalUsersListUsersCompute {
                     result: InternalUsersListUsersResult::Error(
-                        "RefreshInternalUsersCommand: missing api_base_url (set InternalUsersListUsersInput.api_base_url or BusinessConfig.api_base_url)".to_string(),
+                        "RefreshInternalUsersCommand: missing api_base_url (set InternalUsersListUsersInput.api_base_url or BusinessConfig.api_base_url)".to_owned(),
                     ),
                 });
                 return;

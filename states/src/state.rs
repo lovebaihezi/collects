@@ -85,7 +85,7 @@ impl LatestOnlyUpdater {
     /// This is a small ergonomic helper so call sites can do:
     /// `latest.run(async move { ... latest.set(...) ... }).await`
     pub async fn run<Fut: std::future::Future<Output = ()>>(self, fut: Fut) {
-        fut.await
+        fut.await;
     }
 }
 
@@ -151,10 +151,11 @@ pub fn state_assign_impl<T: State + 'static>(old: &mut T, new: Box<dyn Any + Sen
             );
             *old = *value;
         }
-        Err(_) => {
+        Err(boxed_any) => {
             panic!(
-                "Failed to assign state: type mismatch, expected {:?}, but any unable to downcast to it",
+                "Failed to assign state: type mismatch, expected {:?}, got {:?}",
                 type_name::<T>(),
+                (*boxed_any).type_id(),
             );
         }
     }
@@ -216,7 +217,9 @@ impl Updater {
     pub fn set<T: Compute + Send + 'static>(&self, compute: T) {
         let id = TypeId::of::<T>();
         let boxed: Box<dyn Any + Send> = Box::new(compute);
-        self.send.send(UpdateMessage::Compute(id, boxed)).unwrap();
+        self.send
+            .send(UpdateMessage::Compute(id, boxed))
+            .expect("Updater channel closed unexpectedly");
     }
 
     /// Set a State value via the updater channel.
@@ -226,7 +229,9 @@ impl Updater {
     pub fn set_state<T: State + Send + 'static>(&self, state: T) {
         let id = TypeId::of::<T>();
         let boxed: Box<dyn Any + Send> = Box::new(state);
-        self.send.send(UpdateMessage::State(id, boxed)).unwrap();
+        self.send
+            .send(UpdateMessage::State(id, boxed))
+            .expect("Updater channel closed unexpectedly");
     }
 
     /// Enqueue a command to be executed at end-of-frame.
@@ -254,10 +259,14 @@ impl Updater {
     /// ```
     pub fn enqueue_command<T: crate::Command + 'static>(&self) {
         let id = TypeId::of::<T>();
-        self.send.send(UpdateMessage::EnqueueCommand(id)).unwrap();
+        self.send
+            .send(UpdateMessage::EnqueueCommand(id))
+            .expect("Updater channel closed unexpectedly");
     }
 }
 
+// SAFETY: Updater only contains a Sender<UpdateMessage> which is Send.
+// The channel is thread-safe and messages are self-contained values.
 unsafe impl Send for Updater {}
 
 pub struct Reader {
@@ -289,4 +298,6 @@ impl From<&StateRuntime> for Reader {
     }
 }
 
+// SAFETY: Reader only contains a Receiver<UpdateMessage> which is Send.
+// The channel is thread-safe and messages are self-contained values.
 unsafe impl Send for Reader {}

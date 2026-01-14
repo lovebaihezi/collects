@@ -156,16 +156,16 @@ pub async fn zero_trust_middleware_with_resolver(
 ) -> Result<Response, AuthError> {
     // Extract token from headers
     let token = extract_token_from_headers(request.headers()).ok_or_else(|| AuthError {
-        error: "missing_token".to_string(),
-        message: "No authentication token provided".to_string(),
+        error: "missing_token".to_owned(),
+        message: "No authentication token provided".to_owned(),
     })?;
 
     // Validate token
     let claims = validate_token_with_resolver(token, &config, resolver.as_ref())
         .await
         .map_err(|e| AuthError {
-            error: "invalid_token".to_string(),
-            message: format!("Token validation failed: {}", e),
+            error: "invalid_token".to_owned(),
+            message: format!("Token validation failed: {e}"),
         })?;
 
     // Insert claims into request extensions for later use
@@ -174,7 +174,7 @@ pub async fn zero_trust_middleware_with_resolver(
     Ok(next.run(request).await)
 }
 
-/// Extract token from CF-Authorization header, Authorization header, or CF_Authorization cookie.
+/// Extract token from CF-Authorization header, Authorization header, or `CF_Authorization` cookie.
 ///
 /// This supports multiple authentication flows:
 /// 1. `cf-authorization` header - Cloudflare Access standard header
@@ -224,7 +224,7 @@ async fn validate_token_with_resolver(
     resolver: &dyn JwksKeyResolver,
 ) -> Result<AccessClaims, String> {
     // Decode header to get key ID
-    let header = decode_header(token).map_err(|e| format!("Failed to decode JWT header: {}", e))?;
+    let header = decode_header(token).map_err(|e| format!("Failed to decode JWT header: {e}"))?;
 
     let kid = header.kid.ok_or("JWT header missing kid field")?;
 
@@ -232,7 +232,7 @@ async fn validate_token_with_resolver(
     let public_key = resolver
         .resolve_decoding_key(config.jwks_url(), kid)
         .await
-        .map_err(|e| format!("Failed to fetch public key: {}", e))?;
+        .map_err(|e| format!("Failed to fetch public key: {e}"))?;
 
     // Set up validation parameters
     let mut validation = Validation::new(Algorithm::RS256);
@@ -241,7 +241,7 @@ async fn validate_token_with_resolver(
 
     // Validate and decode token
     let token_data = decode::<AccessClaims>(token, &public_key, &validation)
-        .map_err(|e| format!("Failed to validate token: {}", e))?;
+        .map_err(|e| format!("Failed to validate token: {e}"))?;
 
     Ok(token_data.claims)
 }
@@ -254,11 +254,11 @@ struct JwksKey {
     e: String,
     /// Algorithm field - unused but part of JWKS spec
     #[serde(default)]
-    #[allow(dead_code)]
+    #[expect(dead_code)]
     alg: Option<String>,
     /// Key type field - unused but part of JWKS spec
     #[serde(default)]
-    #[allow(dead_code)]
+    #[expect(dead_code)]
     kty: Option<String>,
 }
 
@@ -277,7 +277,7 @@ async fn fetch_public_key(jwks_url: &str, kid: &str) -> Result<DecodingKey, Stri
     // Fetch JWKS from Cloudflare
     let response = reqwest::get(jwks_url)
         .await
-        .map_err(|e| format!("Failed to fetch JWKS: {}", e))?;
+        .map_err(|e| format!("Failed to fetch JWKS: {e}"))?;
 
     if !response.status().is_success() {
         return Err(format!(
@@ -289,23 +289,23 @@ async fn fetch_public_key(jwks_url: &str, kid: &str) -> Result<DecodingKey, Stri
     let jwks: JwksResponse = response
         .json()
         .await
-        .map_err(|e| format!("Failed to parse JWKS: {}", e))?;
+        .map_err(|e| format!("Failed to parse JWKS: {e}"))?;
 
     // Find the key with matching kid
     let key = jwks
         .keys
         .iter()
         .find(|k| k.kid == kid)
-        .ok_or(format!("Key with kid '{}' not found in JWKS", kid))?;
+        .ok_or(format!("Key with kid '{kid}' not found in JWKS"))?;
 
     // Create decoding key from RSA components
     DecodingKey::from_rsa_components(&key.n, &key.e)
-        .map_err(|e| format!("Failed to create decoding key: {}", e))
+        .map_err(|e| format!("Failed to create decoding key: {e}"))
 }
 
-/// Extractor implementation for ZeroTrustAuth
+/// Extractor implementation for `ZeroTrustAuth`
 ///
-/// This allows using ZeroTrustAuth directly as a parameter in route handlers
+/// This allows using `ZeroTrustAuth` directly as a parameter in route handlers
 /// after the middleware has validated the token.
 impl<S> FromRequestParts<S> for ZeroTrustAuth
 where
@@ -319,12 +319,12 @@ where
             .extensions
             .get::<AccessClaims>()
             .ok_or_else(|| AuthError {
-                error: "missing_auth".to_string(),
-                message: "Authentication required but no valid token found".to_string(),
+                error: "missing_auth".to_owned(),
+                message: "Authentication required but no valid token found".to_owned(),
             })?
             .clone();
 
-        Ok(ZeroTrustAuth { claims })
+        Ok(Self { claims })
     }
 }
 
@@ -335,8 +335,8 @@ mod tests {
     #[test]
     fn test_zero_trust_config() {
         let config = ZeroTrustConfig::new(
-            "myteam.cloudflareaccess.com".to_string(),
-            "test-audience".to_string(),
+            "myteam.cloudflareaccess.com".to_owned(),
+            "test-audience".to_owned(),
         );
         assert_eq!(
             config.jwks_url(),
@@ -411,8 +411,8 @@ mod tests {
     #[test]
     fn test_auth_error_response() {
         let error = AuthError {
-            error: "test_error".to_string(),
-            message: "Test error message".to_string(),
+            error: "test_error".to_owned(),
+            message: "Test error message".to_owned(),
         };
 
         let response = error.into_response();

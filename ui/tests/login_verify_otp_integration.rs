@@ -188,7 +188,7 @@ async fn test_auth_compute_initial_state() {
         let compute = state.ctx.cached::<AuthCompute>();
         let status = match compute {
             Some(c) => format!("{:?}", c.status),
-            None => "No compute".to_string(),
+            None => "No compute".to_owned(),
         };
         ui.label(format!("Auth status: {}", status));
     })
@@ -241,8 +241,8 @@ async fn test_login_success_flow() {
     {
         let state = harness.state_mut();
         state.ctx.update::<LoginInput>(|input| {
-            input.username = "testuser".to_string();
-            input.otp = "123456".to_string();
+            input.username = "testuser".to_owned();
+            input.otp = "123456".to_owned();
         });
         state.ctx.enqueue_command::<LoginCommand>();
         state.ctx.flush_commands();
@@ -310,8 +310,8 @@ async fn test_login_invalid_otp_flow() {
     {
         let state = harness.state_mut();
         state.ctx.update::<LoginInput>(|input| {
-            input.username = "testuser".to_string();
-            input.otp = "000000".to_string();
+            input.username = "testuser".to_owned();
+            input.otp = "000000".to_owned();
         });
         state.ctx.enqueue_command::<LoginCommand>();
         state.ctx.flush_commands();
@@ -383,8 +383,8 @@ async fn test_login_unauthorized_flow() {
     {
         let state = harness.state_mut();
         state.ctx.update::<LoginInput>(|input| {
-            input.username = "nonexistent".to_string();
-            input.otp = "123456".to_string();
+            input.username = "nonexistent".to_owned();
+            input.otp = "123456".to_owned();
         });
         state.ctx.enqueue_command::<LoginCommand>();
         state.ctx.flush_commands();
@@ -452,8 +452,8 @@ async fn test_login_server_error_flow() {
     {
         let state = harness.state_mut();
         state.ctx.update::<LoginInput>(|input| {
-            input.username = "anyuser".to_string();
-            input.otp = "123456".to_string();
+            input.username = "anyuser".to_owned();
+            input.otp = "123456".to_owned();
         });
         state.ctx.enqueue_command::<LoginCommand>();
         state.ctx.flush_commands();
@@ -513,8 +513,8 @@ async fn test_login_empty_username_fails() {
     {
         let state = harness.state_mut();
         state.ctx.update::<LoginInput>(|input| {
-            input.username = "".to_string();
-            input.otp = "123456".to_string();
+            input.username = "".to_owned();
+            input.otp = "123456".to_owned();
         });
         state.ctx.enqueue_command::<LoginCommand>();
         state.ctx.flush_commands();
@@ -572,8 +572,8 @@ async fn test_login_empty_otp_fails() {
     {
         let state = harness.state_mut();
         state.ctx.update::<LoginInput>(|input| {
-            input.username = "testuser".to_string();
-            input.otp = "".to_string();
+            input.username = "testuser".to_owned();
+            input.otp = "".to_owned();
         });
         state.ctx.enqueue_command::<LoginCommand>();
         state.ctx.flush_commands();
@@ -631,8 +631,8 @@ async fn test_login_invalid_otp_format_fails() {
     {
         let state = harness.state_mut();
         state.ctx.update::<LoginInput>(|input| {
-            input.username = "testuser".to_string();
-            input.otp = "12345".to_string(); // Only 5 digits
+            input.username = "testuser".to_owned();
+            input.otp = "12345".to_owned(); // Only 5 digits
         });
         state.ctx.enqueue_command::<LoginCommand>();
         state.ctx.flush_commands();
@@ -693,8 +693,8 @@ async fn test_login_non_numeric_otp_fails() {
     {
         let state = harness.state_mut();
         state.ctx.update::<LoginInput>(|input| {
-            input.username = "testuser".to_string();
-            input.otp = "abcdef".to_string(); // Non-numeric
+            input.username = "testuser".to_owned();
+            input.otp = "abcdef".to_owned(); // Non-numeric
         });
         state.ctx.enqueue_command::<LoginCommand>();
         state.ctx.flush_commands();
@@ -772,8 +772,8 @@ async fn test_auth_compute_helper_methods() {
     {
         let state = harness.state_mut();
         state.ctx.update::<LoginInput>(|input| {
-            input.username = "helpertest".to_string();
-            input.otp = "123456".to_string();
+            input.username = "helpertest".to_owned();
+            input.otp = "123456".to_owned();
         });
         state.ctx.enqueue_command::<LoginCommand>();
         state.ctx.flush_commands();

@@ -57,10 +57,11 @@ pub fn assign_impl<T: Compute + 'static>(old: &mut T, new: Box<dyn Any + Send>) 
             );
             *old = *value;
         }
-        Err(_) => {
+        Err(boxed_any) => {
             panic!(
-                "Failed to assign compute: type mismatch, expected {:?}, but any unable to downcast to it",
+                "Failed to assign compute: type mismatch, expected {:?}, got {:?}",
                 type_name::<T>(),
+                (*boxed_any).type_id(),
             );
         }
     }

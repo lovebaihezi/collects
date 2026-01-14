@@ -7,7 +7,7 @@ use crate::{
     utils::paste_handler::{PasteHandler, SystemPasteHandler},
     widgets,
 };
-use chrono::{Timelike, Utc};
+use chrono::{Timelike as _, Utc};
 #[cfg(any(feature = "env_internal", feature = "env_test_internal"))]
 use collects_business::RefreshInternalUsersCommand;
 use collects_business::{
@@ -46,12 +46,12 @@ const API_STATUS_WINDOW_OFFSET_Y: f32 = 8.0;
 pub struct CollectsApp<P: PasteHandler = SystemPasteHandler, D: DropHandler = SystemDropHandler> {
     /// The application state (public for testing access).
     pub state: State,
-    /// Custom paste handler (defaults to SystemPasteHandler).
+    /// Custom paste handler (defaults to `SystemPasteHandler`).
     paste_handler: P,
     /// Whether token validation has been triggered on startup.
     #[cfg(not(any(feature = "env_internal", feature = "env_test_internal")))]
     token_validation_started: bool,
-    /// Custom drop handler (defaults to SystemDropHandler).
+    /// Custom drop handler (defaults to `SystemDropHandler`).
     drop_handler: D,
     /// When true, Time state is not auto-updated each frame.
     /// Tests can set this to control Time deterministically.
@@ -61,7 +61,7 @@ pub struct CollectsApp<P: PasteHandler = SystemPasteHandler, D: DropHandler = Sy
 
 #[bon::bon]
 impl CollectsApp<SystemPasteHandler, SystemDropHandler> {
-    /// Build a new CollectsApp with the builder pattern.
+    /// Build a new `CollectsApp` with the builder pattern.
     #[builder]
     pub fn new(state: State, #[builder(default)] manual_time_control: bool) -> Self {
         Self {
@@ -77,7 +77,7 @@ impl CollectsApp<SystemPasteHandler, SystemDropHandler> {
 
 #[bon::bon]
 impl<P: PasteHandler, D: DropHandler> CollectsApp<P, D> {
-    /// Build a new CollectsApp with custom handlers using the builder pattern.
+    /// Build a new `CollectsApp` with custom handlers using the builder pattern.
     #[builder]
     pub fn with_handlers(
         state: State,
@@ -98,6 +98,7 @@ impl<P: PasteHandler, D: DropHandler> CollectsApp<P, D> {
 
 impl<P: PasteHandler, D: DropHandler> eframe::App for CollectsApp<P, D> {
     /// Called each time the UI needs repainting, which may be many times per second.
+    #[expect(clippy::too_many_lines)]
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // On first frame (for non-internal builds), try to restore auth from storage
         #[cfg(not(any(feature = "env_internal", feature = "env_test_internal")))]
@@ -181,7 +182,7 @@ impl<P: PasteHandler, D: DropHandler> eframe::App for CollectsApp<P, D> {
                     width,
                     height,
                     bytes_len,
-                    format: "RGBA".to_string(),
+                    format: "RGBA".to_owned(),
                 });
             });
 
@@ -361,7 +362,7 @@ impl<P: PasteHandler, D: DropHandler> eframe::App for CollectsApp<P, D> {
                     file_count: dropped_files.len(),
                 });
                 if let Some(name) = first_name {
-                    diag.record_info(format!("Dropped file: {}", name));
+                    diag.record_info(format!("Dropped file: {name}"));
                 }
             });
         }
@@ -480,7 +481,7 @@ impl<P: PasteHandler, D: DropHandler> eframe::App for CollectsApp<P, D> {
         #[cfg(not(any(feature = "env_internal", feature = "env_test_internal")))]
         if let Some(auth) = self.state.ctx.cached::<AuthCompute>() {
             if let Some(token) = auth.token() {
-                _storage.set_string(AUTH_TOKEN_STORAGE_KEY, token.to_string());
+                _storage.set_string(AUTH_TOKEN_STORAGE_KEY, token.to_owned());
                 log::info!("Saved auth token to storage");
             } else {
                 // Clear the stored token if not authenticated

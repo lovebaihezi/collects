@@ -199,7 +199,7 @@ fn simulate_qr_button_click(harness: &mut Harness<'_, CollectsApp>, username: &s
     state
         .state
         .ctx
-        .update::<InternalUsersState>(|s| s.start_action(UserAction::ShowQrCode(username_ustr)));
+        .update::<InternalUsersState>(|s| s.start_action(&UserAction::ShowQrCode(username_ustr)));
 }
 
 // ===========================================

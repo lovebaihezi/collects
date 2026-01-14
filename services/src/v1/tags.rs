@@ -132,7 +132,7 @@ where
 
     let input = database::TagCreate {
         user_id: user.id,
-        name: name.to_string(),
+        name: name.to_owned(),
         color: request.color,
     };
 
@@ -141,8 +141,8 @@ where
         Err(SqlStorageError::Conflict) => (
             StatusCode::CONFLICT,
             Json(V1ErrorResponse {
-                error: "conflict".to_string(),
-                message: "A tag with this name already exists".to_string(),
+                error: "conflict".to_owned(),
+                message: "A tag with this name already exists".to_owned(),
             }),
         )
             .into_response(),
@@ -232,7 +232,7 @@ where
     }
 
     let input = database::TagUpdate {
-        name: request.name.map(|n| n.trim().to_string()),
+        name: request.name.map(|n| n.trim().to_owned()),
         color: request.color,
     };
 
@@ -246,8 +246,8 @@ where
         Err(SqlStorageError::Conflict) => (
             StatusCode::CONFLICT,
             Json(V1ErrorResponse {
-                error: "conflict".to_string(),
-                message: "A tag with this name already exists".to_string(),
+                error: "conflict".to_owned(),
+                message: "A tag with this name already exists".to_owned(),
             }),
         )
             .into_response(),

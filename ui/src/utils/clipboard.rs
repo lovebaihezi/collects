@@ -16,7 +16,7 @@
 //!
 //! ## Windows
 //! - Uses the Win32 Clipboard API (`OpenClipboard`, `GetClipboardData`, etc.)
-//! - Supports CF_DIB and CF_DIBV5 formats for images
+//! - Supports `CF_DIB` and `CF_DIBV5` formats for images
 //! - Images are typically in BGRA format, converted to RGBA by arboard
 //! - Clipboard access requires the calling thread to have a message queue
 //!
@@ -516,7 +516,7 @@ mod tests {
 
     impl ClipboardProvider for MockClipboardError {
         fn get_image(&self) -> Result<Option<ClipboardImage>, ClipboardError> {
-            Err(ClipboardError::AccessError("Mock error".to_string()))
+            Err(ClipboardError::AccessError("Mock error".to_owned()))
         }
     }
 

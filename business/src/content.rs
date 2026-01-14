@@ -57,7 +57,7 @@ impl State for CreateContentInput {
 }
 
 /// Status of the content creation operation.
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub enum ContentCreationStatus {
     #[default]
     Idle,
@@ -178,7 +178,7 @@ impl Command for CreateContentCommand {
         Box::pin(async move {
             if !auth.is_authenticated() {
                 updater.set(CreateContentCompute {
-                    status: ContentCreationStatus::Error("Not authenticated".to_string()),
+                    status: ContentCreationStatus::Error("Not authenticated".to_owned()),
                 });
                 return;
             }
@@ -202,8 +202,8 @@ impl Command for CreateContentCommand {
                         token,
                         &cf_token,
                         FileUploadParams {
-                            filename: "note.txt".to_string(),
-                            content_type: "text/plain".to_string(),
+                            filename: "note.txt".to_owned(),
+                            content_type: "text/plain".to_owned(),
                             data: body.into_bytes(),
                             title: input.title.clone(),
                             description: input.description.clone(),
@@ -225,7 +225,7 @@ impl Command for CreateContentCommand {
                         &config,
                         token,
                         &cf_token,
-                        input.title.unwrap_or_else(|| "Note".to_string()),
+                        input.title.unwrap_or_else(|| "Note".to_owned()),
                         input.description.clone(),
                         body,
                     )
@@ -288,12 +288,12 @@ async fn create_inline_content(
 ) -> Result<String, String> {
     let url = format!("{}/v1/contents", config.api_url());
     let request = Client::post(&url)
-        .header("Authorization", format!("Bearer {}", token))
+        .header("Authorization", format!("Bearer {token}"))
         .json(&CreateContentRequest {
             title,
             description,
-            visibility: "private".to_string(),
-            content_type: "text/plain".to_string(),
+            visibility: "private".to_owned(),
+            content_type: "text/plain".to_owned(),
             body,
         })
         .map_err(|e| e.to_string())?;
@@ -323,7 +323,7 @@ async fn upload_file(
     // 1. Init Upload
     let url = format!("{}/v1/uploads/init", config.api_url());
     let request = Client::post(&url)
-        .header("Authorization", format!("Bearer {}", token))
+        .header("Authorization", format!("Bearer {token}"))
         .json(&InitUploadRequest {
             filename: params.filename.clone(),
             content_type: params.content_type.clone(),
@@ -368,7 +368,7 @@ async fn upload_file(
     // 3. Complete Upload
     let complete_url = format!("{}/v1/uploads/complete", config.api_url());
     let request = Client::post(&complete_url)
-        .header("Authorization", format!("Bearer {}", token))
+        .header("Authorization", format!("Bearer {token}"))
         .json(&CompleteUploadRequest {
             upload_id: init_resp.upload_id,
             title: params.title,

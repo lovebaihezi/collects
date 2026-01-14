@@ -92,7 +92,7 @@ const OTP_STEP: u64 = 30;
 pub fn generate_otp_secret(username: &str) -> Result<(String, String), OtpError> {
     if username.is_empty() {
         return Err(OtpError::InvalidUsername(
-            "Username cannot be empty".to_string(),
+            "Username cannot be empty".to_owned(),
         ));
     }
 
@@ -101,7 +101,7 @@ pub fn generate_otp_secret(username: &str) -> Result<(String, String), OtpError>
     let secret_bytes = secret
         .to_bytes()
         .map_err(|e| OtpError::SecretGeneration(e.to_string()))?;
-    let secret_base32 = secret.to_encoded().to_string();
+    let secret_base32 = secret.to_encoded().to_owned();
 
     // Create TOTP configuration with issuer and account name
     let totp = TOTP::new(
@@ -110,15 +110,15 @@ pub fn generate_otp_secret(username: &str) -> Result<(String, String), OtpError>
         OTP_SKEW,
         OTP_STEP,
         secret_bytes,
-        Some(ISSUER.to_string()),
-        username.to_string(),
+        Some(ISSUER.to_owned()),
+        username.to_owned(),
     )
     .map_err(|e| OtpError::TotpCreation(e.to_string()))?;
 
     // Generate the otpauth URL (issuer and account_name are already part of TOTP)
     let otpauth_url = totp.get_url();
 
-    Ok((secret_base32, otpauth_url))
+    Ok((secret_base32.to_string(), otpauth_url))
 }
 
 /// Verifies an OTP code against a secret.
@@ -136,7 +136,7 @@ pub fn generate_otp_secret(username: &str) -> Result<(String, String), OtpError>
 ///
 /// Returns an error if the secret is invalid or TOTP creation fails.
 pub fn verify_otp(secret_base32: &str, code: &str) -> Result<bool, OtpError> {
-    let secret = Secret::Encoded(secret_base32.to_string());
+    let secret = Secret::Encoded(secret_base32.to_owned());
     let secret_bytes = secret
         .to_bytes()
         .map_err(|e| OtpError::SecretGeneration(e.to_string()))?;
@@ -147,7 +147,7 @@ pub fn verify_otp(secret_base32: &str, code: &str) -> Result<bool, OtpError> {
         OTP_SKEW,
         OTP_STEP,
         secret_bytes,
-        Some(ISSUER.to_string()),
+        Some(ISSUER.to_owned()),
         String::new(), // account_name not needed for verification
     )
     .map_err(|e| OtpError::TotpCreation(e.to_string()))?;
@@ -179,7 +179,7 @@ pub fn verify_otp(secret_base32: &str, code: &str) -> Result<bool, OtpError> {
 ///
 /// Returns an error if the secret is invalid or code generation fails.
 pub fn generate_current_otp(secret_base32: &str) -> Result<String, OtpError> {
-    let secret = Secret::Encoded(secret_base32.to_string());
+    let secret = Secret::Encoded(secret_base32.to_owned());
     let secret_bytes = secret
         .to_bytes()
         .map_err(|e| OtpError::SecretGeneration(e.to_string()))?;
@@ -190,7 +190,7 @@ pub fn generate_current_otp(secret_base32: &str) -> Result<String, OtpError> {
         OTP_SKEW,
         OTP_STEP,
         secret_bytes,
-        Some(ISSUER.to_string()),
+        Some(ISSUER.to_owned()),
         String::new(), // account_name not needed for code generation
     )
     .map_err(|e| OtpError::TotpCreation(e.to_string()))?;
@@ -289,10 +289,10 @@ pub fn generate_session_token(username: &str, jwt_secret: &str) -> Result<String
         .as_secs() as i64;
 
     let claims = SessionClaims {
-        sub: username.to_string(),
+        sub: username.to_owned(),
         iat: now,
         exp: now + SESSION_TOKEN_EXPIRY_SECS,
-        iss: ISSUER.to_string(),
+        iss: ISSUER.to_owned(),
     };
 
     let token = encode(

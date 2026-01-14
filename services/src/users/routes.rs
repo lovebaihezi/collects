@@ -21,8 +21,8 @@
 //!
 //! async fn whoami_handler(auth: ZeroTrustAuth) -> impl IntoResponse {
 //!     Json(WhoAmI {
-//!         email: auth.email().unwrap_or("unknown").to_string(),
-//!         subject: auth.subject().to_string(),
+//!         email: auth.email().unwrap_or("unknown").to_owned(),
+//!         subject: auth.subject().to_owned(),
 //!     })
 //! }
 //! ```
@@ -174,7 +174,7 @@ impl From<OtpError> for (StatusCode, Json<ErrorResponse>) {
         (
             status,
             Json(ErrorResponse {
-                error: error_type.to_string(),
+                error: error_type.to_owned(),
                 message: err.to_string(),
             }),
         )
@@ -195,7 +195,7 @@ impl From<UserStorageError> for (StatusCode, Json<ErrorResponse>) {
         (
             status,
             Json(ErrorResponse {
-                error: error_type.to_string(),
+                error: error_type.to_owned(),
                 message: err.to_string(),
             }),
         )
@@ -492,7 +492,7 @@ where
             StatusCode::BAD_REQUEST,
             Json(VerifyOtpResponse {
                 valid: false,
-                message: Some("Username cannot be empty".to_string()),
+                message: Some("Username cannot be empty".to_owned()),
                 token: None,
             }),
         )
@@ -508,7 +508,7 @@ where
             StatusCode::BAD_REQUEST,
             Json(VerifyOtpResponse {
                 valid: false,
-                message: Some("Invalid OTP code format. Code must be 6 digits.".to_string()),
+                message: Some("Invalid OTP code format. Code must be 6 digits.".to_owned()),
                 token: None,
             }),
         )
@@ -533,7 +533,7 @@ where
                 StatusCode::TOO_MANY_REQUESTS,
                 Json(VerifyOtpResponse {
                     valid: false,
-                    message: Some("Too many attempts. Please try again later.".to_string()),
+                    message: Some("Too many attempts. Please try again later.".to_owned()),
                     token: None,
                 }),
             )
@@ -561,7 +561,7 @@ where
                 StatusCode::UNAUTHORIZED,
                 Json(VerifyOtpResponse {
                     valid: false,
-                    message: Some("Invalid username or code".to_string()),
+                    message: Some("Invalid username or code".to_owned()),
                     token: None,
                 }),
             )
@@ -573,7 +573,7 @@ where
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(VerifyOtpResponse {
                     valid: false,
-                    message: Some("Internal server error".to_string()),
+                    message: Some("Internal server error".to_owned()),
                     token: None,
                 }),
             )
@@ -596,7 +596,7 @@ where
                         StatusCode::INTERNAL_SERVER_ERROR,
                         Json(VerifyOtpResponse {
                             valid: false,
-                            message: Some("Failed to generate session token".to_string()),
+                            message: Some("Failed to generate session token".to_owned()),
                             token: None,
                         }),
                     )
@@ -621,7 +621,7 @@ where
                 StatusCode::UNAUTHORIZED,
                 Json(VerifyOtpResponse {
                     valid: false,
-                    message: Some("Invalid username or code".to_string()),
+                    message: Some("Invalid username or code".to_owned()),
                     token: None,
                 }),
             )
@@ -633,7 +633,7 @@ where
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(VerifyOtpResponse {
                     valid: false,
-                    message: Some("Internal server error".to_string()),
+                    message: Some("Internal server error".to_owned()),
                     token: None,
                 }),
             )
@@ -691,7 +691,7 @@ async fn record_otp_attempt<S: SqlStorage>(
     ip_address: Option<IpAddr>,
 ) {
     let record = OtpAttemptRecord {
-        username: username.to_string(),
+        username: username.to_owned(),
         success,
         ip_address,
     };
@@ -751,7 +751,7 @@ async fn validate_token_handler(
             Json(ValidateTokenResponse {
                 valid: false,
                 username: None,
-                message: Some("Token cannot be empty".to_string()),
+                message: Some("Token cannot be empty".to_owned()),
             }),
         )
             .into_response();
@@ -777,7 +777,7 @@ async fn validate_token_handler(
                 Json(ValidateTokenResponse {
                     valid: false,
                     username: None,
-                    message: Some("Invalid or expired token".to_string()),
+                    message: Some("Invalid or expired token".to_owned()),
                 }),
             )
                 .into_response()
@@ -840,7 +840,7 @@ where
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(LogoutResponse {
                     success: false,
-                    message: Some("Failed to process logout".to_string()),
+                    message: Some("Failed to process logout".to_owned()),
                 }),
             )
                 .into_response();
@@ -879,7 +879,7 @@ where
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(LogoutResponse {
                     success: false,
-                    message: Some("Failed to process logout".to_string()),
+                    message: Some("Failed to process logout".to_owned()),
                 }),
             )
                 .into_response()
@@ -964,7 +964,7 @@ where
 fn generate_otp_secret_url(username: &str, secret_base32: &str) -> Result<String, OtpError> {
     use totp_rs::{Algorithm, Secret, TOTP};
 
-    let secret = Secret::Encoded(secret_base32.to_string());
+    let secret = Secret::Encoded(secret_base32.to_owned());
     let secret_bytes = secret
         .to_bytes()
         .map_err(|e| OtpError::SecretGeneration(e.to_string()))?;
@@ -975,8 +975,8 @@ fn generate_otp_secret_url(username: &str, secret_base32: &str) -> Result<String
         1,  // OTP_SKEW
         30, // OTP_STEP
         secret_bytes,
-        Some(super::otp::ISSUER.to_string()),
-        username.to_string(),
+        Some(super::otp::ISSUER.to_owned()),
+        username.to_owned(),
     )
     .map_err(|e| OtpError::TotpCreation(e.to_string()))?;
 
@@ -1017,7 +1017,7 @@ where
 
     if payload.new_username.is_empty() {
         let (status, json): (StatusCode, Json<ErrorResponse>) =
-            UserStorageError::InvalidInput("New username cannot be empty".to_string()).into();
+            UserStorageError::InvalidInput("New username cannot be empty".to_owned()).into();
         return (status, json).into_response();
     }
 
@@ -1292,7 +1292,7 @@ mod tests {
             _input: crate::database::ContentsInsert,
         ) -> Result<crate::database::ContentRow, crate::database::SqlStorageError> {
             Err(crate::database::SqlStorageError::Db(
-                "MockSqlStorage.contents_insert: unimplemented".to_string(),
+                "MockSqlStorage.contents_insert: unimplemented".to_owned(),
             ))
         }
 
@@ -1335,7 +1335,7 @@ mod tests {
             _input: crate::database::GroupCreate,
         ) -> Result<crate::database::ContentGroupRow, crate::database::SqlStorageError> {
             Err(crate::database::SqlStorageError::Db(
-                "MockSqlStorage.groups_create: unimplemented".to_string(),
+                "MockSqlStorage.groups_create: unimplemented".to_owned(),
             ))
         }
 
@@ -1416,7 +1416,7 @@ mod tests {
             _input: crate::database::TagCreate,
         ) -> Result<crate::database::TagRow, crate::database::SqlStorageError> {
             Err(crate::database::SqlStorageError::Db(
-                "MockSqlStorage.tags_create: unimplemented".to_string(),
+                "MockSqlStorage.tags_create: unimplemented".to_owned(),
             ))
         }
 
@@ -1472,7 +1472,7 @@ mod tests {
             _input: crate::database::ShareLinkCreate,
         ) -> Result<crate::database::ShareLinkRow, crate::database::SqlStorageError> {
             Err(crate::database::SqlStorageError::Db(
-                "MockSqlStorage.share_links_create: unimplemented".to_string(),
+                "MockSqlStorage.share_links_create: unimplemented".to_owned(),
             ))
         }
 
@@ -1580,7 +1580,7 @@ mod tests {
             _input: crate::database::ContentShareCreateForUser,
         ) -> Result<crate::database::ContentShareRow, crate::database::SqlStorageError> {
             Err(crate::database::SqlStorageError::Db(
-                "MockSqlStorage.content_shares_create_for_user: unimplemented".to_string(),
+                "MockSqlStorage.content_shares_create_for_user: unimplemented".to_owned(),
             ))
         }
 
@@ -1589,7 +1589,7 @@ mod tests {
             _input: crate::database::ContentShareCreateForLink,
         ) -> Result<crate::database::ContentShareRow, crate::database::SqlStorageError> {
             Err(crate::database::SqlStorageError::Db(
-                "MockSqlStorage.content_shares_create_for_link: unimplemented".to_string(),
+                "MockSqlStorage.content_shares_create_for_link: unimplemented".to_owned(),
             ))
         }
 
@@ -1599,7 +1599,7 @@ mod tests {
         ) -> Result<crate::database::ContentGroupShareRow, crate::database::SqlStorageError>
         {
             Err(crate::database::SqlStorageError::Db(
-                "MockSqlStorage.group_shares_create_for_user: unimplemented".to_string(),
+                "MockSqlStorage.group_shares_create_for_user: unimplemented".to_owned(),
             ))
         }
 
@@ -1609,7 +1609,7 @@ mod tests {
         ) -> Result<crate::database::ContentGroupShareRow, crate::database::SqlStorageError>
         {
             Err(crate::database::SqlStorageError::Db(
-                "MockSqlStorage.group_shares_create_for_link: unimplemented".to_string(),
+                "MockSqlStorage.group_shares_create_for_link: unimplemented".to_owned(),
             ))
         }
 
@@ -1636,7 +1636,7 @@ mod tests {
             _input: crate::database::UploadInsert,
         ) -> Result<crate::database::UploadRow, crate::database::SqlStorageError> {
             Err(crate::database::SqlStorageError::Db(
-                "MockSqlStorage.uploads_create: unimplemented".to_string(),
+                "MockSqlStorage.uploads_create: unimplemented".to_owned(),
             ))
         }
 
@@ -2624,7 +2624,7 @@ mod tests {
         assert!(response.valid, "Token should be valid");
         assert_eq!(
             response.username,
-            Some("testuser".to_string()),
+            Some("testuser".to_owned()),
             "Should return username"
         );
     }

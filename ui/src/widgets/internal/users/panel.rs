@@ -63,7 +63,7 @@ pub fn internal_users_panel(state_ctx: &mut StateCtx, api_base_url: &str, ui: &m
 
         // Start action if requested
         if let Some(action) = action_to_start {
-            state_ctx.update::<InternalUsersState>(|s| s.start_action(action));
+            state_ctx.update::<InternalUsersState>(|s| s.start_action(&action));
         }
 
         // Render QR code expansion inline (after table) if ShowQrCode action is active
@@ -298,10 +298,7 @@ fn render_users_table(state_ctx: &mut StateCtx, ui: &mut Ui) -> (Option<Ustr>, O
 /// Renders the inline QR code expansion if ShowQrCode action is active.
 #[inline]
 fn render_inline_qr_expansion(state_ctx: &mut StateCtx, api_base_url: &str, ui: &mut Ui) {
-    let current_action = state_ctx
-        .state::<InternalUsersState>()
-        .current_action
-        .clone();
+    let current_action = state_ctx.state::<InternalUsersState>().current_action;
 
     if let UserAction::ShowQrCode(username) = &current_action {
         let state = state_ctx.state_mut::<InternalUsersState>();
@@ -319,10 +316,7 @@ fn render_modals(state_ctx: &mut StateCtx, api_base_url: &str, ui: &mut Ui) {
     }
 
     // Action modals (except QR code which is now inline)
-    let current_action = state_ctx
-        .state::<InternalUsersState>()
-        .current_action
-        .clone();
+    let current_action = state_ctx.state::<InternalUsersState>().current_action;
     match &current_action {
         UserAction::EditUsername(username) => {
             show_edit_username_modal(state_ctx, api_base_url, *username, ui);
@@ -357,7 +351,7 @@ pub(crate) fn reset_create_user_compute(state_ctx: &mut StateCtx) {
 pub(crate) fn trigger_create_user(state_ctx: &mut StateCtx, username: &str) {
     // Update command input state
     state_ctx.update::<CreateUserInput>(|input| {
-        input.username = Some(username.to_string());
+        input.username = Some(username.to_owned());
     });
 
     // Enqueue only; flush at end-of-frame in the app loop.

@@ -24,5 +24,5 @@ fn main() {
 
     // Suppress unused variable warning on non-Windows
     #[cfg(not(target_os = "windows"))]
-    let _ = processed_img;
+    let _: image::ImageBuffer<image::Rgba<u8>, Vec<u8>> = processed_img;
 }

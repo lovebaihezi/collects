@@ -61,7 +61,7 @@ pub struct StateSnapshot {
 }
 
 impl StateSnapshot {
-    /// Creates a new state snapshot from an iterator of (TypeId, boxed state) pairs.
+    /// Creates a new state snapshot from an iterator of (`TypeId`, boxed state) pairs.
     pub fn new(states: impl Iterator<Item = (TypeId, Box<dyn Any + Send>)>) -> Self {
         Self {
             states: states.collect(),
@@ -102,7 +102,7 @@ pub struct ComputeSnapshot {
 }
 
 impl ComputeSnapshot {
-    /// Creates a new compute snapshot from an iterator of (TypeId, boxed compute) pairs.
+    /// Creates a new compute snapshot from an iterator of (`TypeId`, boxed compute) pairs.
     pub fn new(computes: impl Iterator<Item = (TypeId, Box<dyn Any + Send>)>) -> Self {
         Self {
             computes: computes.collect(),
@@ -226,6 +226,7 @@ impl CommandSnapshot {
 }
 
 #[cfg(test)]
+#[expect(clippy::unwrap_used)]
 mod tests {
     use super::*;
 
@@ -299,7 +300,7 @@ mod tests {
     #[test]
     fn compute_snapshot_get() {
         let compute = TestCompute {
-            result: "hello".to_string(),
+            result: "hello".to_owned(),
         };
         let snap = ComputeSnapshot::new(
             [(
@@ -316,7 +317,7 @@ mod tests {
     #[test]
     fn compute_snapshot_try_get() {
         let compute = TestCompute {
-            result: "hello".to_string(),
+            result: "hello".to_owned(),
         };
         let snap = ComputeSnapshot::new(
             [(
@@ -334,7 +335,7 @@ mod tests {
     fn command_snapshot_accessors() {
         let state = TestState { value: 123 };
         let compute = TestCompute {
-            result: "world".to_string(),
+            result: "world".to_owned(),
         };
 
         let snap = CommandSnapshot::from_iters(
@@ -378,7 +379,7 @@ mod tests {
     fn command_snapshot_has_methods() {
         let state = TestState { value: 1 };
         let compute = TestCompute {
-            result: "x".to_string(),
+            result: "x".to_owned(),
         };
 
         let snap = CommandSnapshot::from_iters(
@@ -404,7 +405,7 @@ mod tests {
     fn command_snapshot_inner_snapshots() {
         let state = TestState { value: 1 };
         let compute = TestCompute {
-            result: "x".to_string(),
+            result: "x".to_owned(),
         };
 
         let snap = CommandSnapshot::from_iters(
@@ -432,7 +433,7 @@ mod tests {
     // in docs/ai/send-safe-state.md
     // ═══════════════════════════════════════════════════════════════════════
 
-    /// A Send-safe state: all fields are Send, implements clone_boxed returning Some.
+    /// A Send-safe state: all fields are Send, implements `clone_boxed` returning Some.
     #[derive(Debug, Clone, PartialEq)]
     struct SendSafeState {
         value: i32,
@@ -445,10 +446,10 @@ mod tests {
         }
     }
 
-    /// A UI-affine state simulation: uses default SnapshotClone (returns None).
-    /// In real code, this would contain non-Send types like egui::TextureHandle.
+    /// A UI-affine state simulation: uses default `SnapshotClone` (returns None).
+    /// In real code, this would contain non-Send types like `egui::TextureHandle`.
     #[derive(Debug, Default)]
-    #[allow(dead_code)]
+    #[expect(dead_code)]
     struct UiAffineState {
         value: i32,
         // In real code: pub texture: Option<egui::TextureHandle>,
@@ -461,7 +462,7 @@ mod tests {
     fn send_safe_state_clone_boxed_returns_some() {
         let state = SendSafeState {
             value: 42,
-            name: "test".to_string(),
+            name: "test".to_owned(),
         };
 
         let boxed = state.clone_boxed();
@@ -491,7 +492,7 @@ mod tests {
     fn send_safe_state_included_in_snapshot() {
         let state = SendSafeState {
             value: 42,
-            name: "test".to_string(),
+            name: "test".to_owned(),
         };
 
         // Simulate how StateCtx creates snapshots: only include states where clone_boxed returns Some
@@ -533,7 +534,7 @@ mod tests {
     fn command_snapshot_excludes_ui_affine_states() {
         let send_safe = SendSafeState {
             value: 42,
-            name: "test".to_string(),
+            name: "test".to_owned(),
         };
         let ui_affine = UiAffineState { value: 100 };
 

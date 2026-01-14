@@ -154,7 +154,7 @@ impl State for InternalUsersActionCompute {
 /// This mirrors existing patterns like `CreateUserInput` and `InternalUsersListUsersInput`.
 #[derive(Debug, Clone, Default)]
 pub struct InternalUsersActionInput {
-    /// Optional override of API base URL (e.g. "https://example.com/api").
+    /// Optional override of API base URL (e.g. <https://example.com/api>).
     /// Falls back to `BusinessConfig::api_url()` when unset.
     pub api_base_url: Option<Ustr>,
 
@@ -193,8 +193,8 @@ impl State for InternalUsersActionInput {
 
 fn resolve_api_base_url(input: &InternalUsersActionInput, config: &BusinessConfig) -> String {
     match input.api_base_url.as_ref() {
-        Some(u) => u.as_str().to_string(),
-        None => config.api_url().as_str().to_string(),
+        Some(u) => u.as_str().to_owned(),
+        None => config.api_url().as_str().to_owned(),
     }
 }
 
@@ -225,7 +225,7 @@ impl Command for UpdateUsernameCommand {
                         user: input.username.unwrap_or_else(|| Ustr::from("")),
                         message:
                             "UpdateUsernameCommand: missing api_base_url (set InternalUsersActionInput.api_base_url or BusinessConfig.api_base_url)"
-                                .to_string(),
+                                .to_owned(),
                     },
                 });
                 return;
@@ -263,8 +263,8 @@ impl Command for UpdateUsernameCommand {
                 },
             });
 
-            let user_str = user.as_str().to_string();
-            let new_username_str = new_username.as_str().to_string();
+            let user_str = user.as_str().to_owned();
+            let new_username_str = new_username.as_str().to_owned();
 
             match internal_users_api::update_username(
                 &api_base_url,
@@ -320,7 +320,7 @@ impl Command for UpdateProfileCommand {
                         user: input.username.unwrap_or_else(|| Ustr::from("")),
                         message:
                             "UpdateProfileCommand: missing api_base_url (set InternalUsersActionInput.api_base_url or BusinessConfig.api_base_url)"
-                                .to_string(),
+                                .to_owned(),
                     },
                 });
                 return;
@@ -344,7 +344,7 @@ impl Command for UpdateProfileCommand {
                 },
             });
 
-            let user_str = user.as_str().to_string();
+            let user_str = user.as_str().to_owned();
             let nickname = input.nickname.clone();
             let avatar_url = input.avatar_url.clone();
 
@@ -403,7 +403,7 @@ impl Command for DeleteUserCommand {
                         user: input.username.unwrap_or_else(|| Ustr::from("")),
                         message:
                             "DeleteUserCommand: missing api_base_url (set InternalUsersActionInput.api_base_url or BusinessConfig.api_base_url)"
-                                .to_string(),
+                                .to_owned(),
                     },
                 });
                 return;
@@ -427,7 +427,7 @@ impl Command for DeleteUserCommand {
                 },
             });
 
-            let user_str = user.as_str().to_string();
+            let user_str = user.as_str().to_owned();
 
             match internal_users_api::delete_user(&api_base_url, &cf_token, &user_str).await {
                 Ok(resp) => {
@@ -444,7 +444,7 @@ impl Command for DeleteUserCommand {
                             state: InternalUsersActionState::Error {
                                 kind: InternalUsersActionKind::DeleteUser,
                                 user,
-                                message: "User not found".to_string(),
+                                message: "User not found".to_owned(),
                             },
                         });
                     }
@@ -486,7 +486,7 @@ impl Command for RevokeOtpCommand {
                         user: input.username.unwrap_or_else(|| Ustr::from("")),
                         message:
                             "RevokeOtpCommand: missing api_base_url (set InternalUsersActionInput.api_base_url or BusinessConfig.api_base_url)"
-                                .to_string(),
+                                .to_owned(),
                     },
                 });
                 return;
@@ -510,7 +510,7 @@ impl Command for RevokeOtpCommand {
                 },
             });
 
-            let user_str = user.as_str().to_string();
+            let user_str = user.as_str().to_owned();
 
             match internal_users_api::revoke_otp(&api_base_url, &cf_token, &user_str).await {
                 Ok(resp) => {
@@ -571,7 +571,7 @@ pub struct GetUserQrCommand;
 ///
 /// UI flow:
 /// - user clicks "Reveal" (or "Refresh OTP")
-/// - UI sets `InternalUsersActionInput` (api_base_url + username)
+/// - UI sets `InternalUsersActionInput` (`api_base_url` + username)
 /// - UI enqueues `GetUserOtpCommand`
 /// - command calls GET `/internal/users/{username}` and publishes `InternalUsersActionState::Otp { .. }`
 /// - UI displays the code and `time_remaining`, and may auto-hide after a short duration
@@ -598,7 +598,7 @@ impl Command for GetUserQrCommand {
                         user: input.username.unwrap_or_else(|| Ustr::from("")),
                         message:
                             "GetUserQrCommand: missing api_base_url (set InternalUsersActionInput.api_base_url or BusinessConfig.api_base_url)"
-                                .to_string(),
+                                .to_owned(),
                     },
                 });
                 return;
@@ -622,7 +622,7 @@ impl Command for GetUserQrCommand {
                 },
             });
 
-            let user_str = user.as_str().to_string();
+            let user_str = user.as_str().to_owned();
 
             match internal_users_api::get_user(&api_base_url, &cf_token, &user_str).await {
                 Ok(resp) => {
@@ -670,7 +670,7 @@ impl Command for GetUserOtpCommand {
                         user: input.username.unwrap_or_else(|| Ustr::from("")),
                         message:
                             "GetUserOtpCommand: missing api_base_url (set InternalUsersActionInput.api_base_url or BusinessConfig.api_base_url)"
-                                .to_string(),
+                                .to_owned(),
                     },
                 });
                 return;
@@ -694,7 +694,7 @@ impl Command for GetUserOtpCommand {
                 },
             });
 
-            let user_str = user.as_str().to_string();
+            let user_str = user.as_str().to_owned();
 
             match internal_users_api::get_user(&api_base_url, &cf_token, &user_str).await {
                 Ok(resp) => {

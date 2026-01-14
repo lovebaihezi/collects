@@ -189,14 +189,14 @@ impl Command for CreateUserCommand {
 
         Box::pin(async move {
             let username = match &input.username {
-                Some(name) if !name.trim().is_empty() => name.trim().to_string(),
+                Some(name) if !name.trim().is_empty() => name.trim().to_owned(),
                 _ => {
                     info!("CreateUserCommand: No username set, skipping");
                     return;
                 }
             };
 
-            info!("CreateUserCommand: Creating user '{}'", username);
+            info!("CreateUserCommand: Creating user '{username}'");
 
             // Update cache to pending immediately.
             updater.set(CreateUserCompute {
@@ -209,10 +209,7 @@ impl Command for CreateUserCommand {
             }) {
                 Ok(body) => body,
                 Err(e) => {
-                    error!(
-                        "CreateUserCommand: Failed to serialize CreateUserRequest: {}",
-                        e
-                    );
+                    error!("CreateUserCommand: Failed to serialize CreateUserRequest: {e}");
                     updater.set(CreateUserCompute {
                         result: CreateUserResult::Error(format!("Serialization error: {e}")),
                     });
@@ -235,18 +232,14 @@ impl Command for CreateUserCommand {
                     if response.status == 201 {
                         match serde_json::from_slice::<CreateUserResponse>(&response.body) {
                             Ok(create_response) => {
-                                info!(
-                                    "CreateUserCommand: User '{}' created successfully",
-                                    username
-                                );
+                                info!("CreateUserCommand: User '{username}' created successfully");
                                 updater.set(CreateUserCompute {
                                     result: CreateUserResult::Success(create_response),
                                 });
                             }
                             Err(e) => {
                                 error!(
-                                    "CreateUserCommand: Failed to parse CreateUserResponse: {}",
-                                    e
+                                    "CreateUserCommand: Failed to parse CreateUserResponse: {e}"
                                 );
                                 updater.set(CreateUserCompute {
                                     result: CreateUserResult::Error(format!("Parse error: {e}")),
@@ -255,7 +248,7 @@ impl Command for CreateUserCommand {
                         }
                     } else {
                         let error_msg = format!("API returned status: {}", response.status);
-                        error!("CreateUserCommand: {}", error_msg);
+                        error!("CreateUserCommand: {error_msg}");
                         updater.set(CreateUserCompute {
                             result: CreateUserResult::Error(error_msg),
                         });
@@ -263,7 +256,7 @@ impl Command for CreateUserCommand {
                 }
                 Err(err) => {
                     let error_msg = err.to_string();
-                    error!("CreateUserCommand: Request failed: {}", error_msg);
+                    error!("CreateUserCommand: Request failed: {error_msg}");
                     updater.set(CreateUserCompute {
                         result: CreateUserResult::Error(error_msg),
                     });

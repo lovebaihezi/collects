@@ -108,7 +108,7 @@ impl RequireAuth {
                 sub: username.into(),
                 iat: now,
                 exp: now + 3600,
-                iss: ISSUER.to_string(),
+                iss: ISSUER.to_owned(),
             },
         }
     }
@@ -124,36 +124,36 @@ pub struct SessionAuthError {
 impl SessionAuthError {
     fn missing_token() -> Self {
         Self {
-            error: "missing_token".to_string(),
-            message: "Authorization header with Bearer token is required".to_string(),
+            error: "missing_token".to_owned(),
+            message: "Authorization header with Bearer token is required".to_owned(),
         }
     }
 
     fn invalid_format() -> Self {
         Self {
-            error: "invalid_format".to_string(),
-            message: "Authorization header must be in format: Bearer <token>".to_string(),
+            error: "invalid_format".to_owned(),
+            message: "Authorization header must be in format: Bearer <token>".to_owned(),
         }
     }
 
     fn invalid_token(reason: impl Into<String>) -> Self {
         Self {
-            error: "invalid_token".to_string(),
+            error: "invalid_token".to_owned(),
             message: reason.into(),
         }
     }
 
     fn revoked_token() -> Self {
         Self {
-            error: "revoked_token".to_string(),
-            message: "Token has been revoked".to_string(),
+            error: "revoked_token".to_owned(),
+            message: "Token has been revoked".to_owned(),
         }
     }
 
     fn missing_config() -> Self {
         Self {
-            error: "server_error".to_string(),
-            message: "Server configuration error".to_string(),
+            error: "server_error".to_owned(),
+            message: "Server configuration error".to_owned(),
         }
     }
 }
@@ -189,9 +189,9 @@ fn validate_session_token(token: &str, jwt_secret: &str) -> Result<SessionClaims
         &validation,
     )
     .map_err(|e| match e.kind() {
-        jsonwebtoken::errors::ErrorKind::ExpiredSignature => "Token has expired".to_string(),
-        jsonwebtoken::errors::ErrorKind::InvalidSignature => "Invalid token signature".to_string(),
-        jsonwebtoken::errors::ErrorKind::InvalidIssuer => "Invalid token issuer".to_string(),
+        jsonwebtoken::errors::ErrorKind::ExpiredSignature => "Token has expired".to_owned(),
+        jsonwebtoken::errors::ErrorKind::InvalidSignature => "Invalid token signature".to_owned(),
+        jsonwebtoken::errors::ErrorKind::InvalidIssuer => "Invalid token issuer".to_owned(),
         _ => format!("Token validation failed: {e}"),
     })?;
 

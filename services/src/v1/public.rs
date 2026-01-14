@@ -81,7 +81,7 @@ where
             (
                 StatusCode::OK,
                 Json(V1PublicShareResponse {
-                    content_type: "content".to_string(),
+                    content_type: "content".to_owned(),
                     title: content.title,
                     description: content.description,
                     permission: share_link.permission,
@@ -104,7 +104,7 @@ where
                     (
                         StatusCode::OK,
                         Json(V1PublicShareResponse {
-                            content_type: "group".to_string(),
+                            content_type: "group".to_owned(),
                             title: group.name,
                             description: group.description,
                             permission: share_link.permission,
@@ -339,9 +339,9 @@ mod tests {
         ShareLinkRow {
             id: Uuid::new_v4(),
             owner_id: Uuid::new_v4(),
-            token: "test-token".to_string(),
+            token: "test-token".to_owned(),
             name: None,
-            permission: "view".to_string(),
+            permission: "view".to_owned(),
             password_hash: None,
             max_access_count,
             access_count,

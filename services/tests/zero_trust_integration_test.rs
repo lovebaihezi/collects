@@ -32,7 +32,7 @@ impl SqlStorage for MockSqlStorage {
 
     async fn contents_insert(&self, _input: ContentsInsert) -> Result<ContentRow, SqlStorageError> {
         Err(SqlStorageError::Db(
-            "MockSqlStorage.contents_insert: unimplemented".to_string(),
+            "MockSqlStorage.contents_insert: unimplemented".to_owned(),
         ))
     }
 
@@ -69,7 +69,7 @@ impl SqlStorage for MockSqlStorage {
 
     async fn groups_create(&self, _input: GroupCreate) -> Result<ContentGroupRow, SqlStorageError> {
         Err(SqlStorageError::Db(
-            "MockSqlStorage.groups_create: unimplemented".to_string(),
+            "MockSqlStorage.groups_create: unimplemented".to_owned(),
         ))
     }
 
@@ -142,7 +142,7 @@ impl SqlStorage for MockSqlStorage {
 
     async fn tags_create(&self, _input: TagCreate) -> Result<TagRow, SqlStorageError> {
         Err(SqlStorageError::Db(
-            "MockSqlStorage.tags_create: unimplemented".to_string(),
+            "MockSqlStorage.tags_create: unimplemented".to_owned(),
         ))
     }
 
@@ -198,7 +198,7 @@ impl SqlStorage for MockSqlStorage {
         _input: ShareLinkCreate,
     ) -> Result<ShareLinkRow, SqlStorageError> {
         Err(SqlStorageError::Db(
-            "MockSqlStorage.share_links_create: unimplemented".to_string(),
+            "MockSqlStorage.share_links_create: unimplemented".to_owned(),
         ))
     }
 
@@ -290,7 +290,7 @@ impl SqlStorage for MockSqlStorage {
         _input: ContentShareCreateForUser,
     ) -> Result<ContentShareRow, SqlStorageError> {
         Err(SqlStorageError::Db(
-            "MockSqlStorage.content_shares_create_for_user: unimplemented".to_string(),
+            "MockSqlStorage.content_shares_create_for_user: unimplemented".to_owned(),
         ))
     }
 
@@ -299,7 +299,7 @@ impl SqlStorage for MockSqlStorage {
         _input: ContentShareCreateForLink,
     ) -> Result<ContentShareRow, SqlStorageError> {
         Err(SqlStorageError::Db(
-            "MockSqlStorage.content_shares_create_for_link: unimplemented".to_string(),
+            "MockSqlStorage.content_shares_create_for_link: unimplemented".to_owned(),
         ))
     }
 
@@ -308,7 +308,7 @@ impl SqlStorage for MockSqlStorage {
         _input: GroupShareCreateForUser,
     ) -> Result<ContentGroupShareRow, SqlStorageError> {
         Err(SqlStorageError::Db(
-            "MockSqlStorage.group_shares_create_for_user: unimplemented".to_string(),
+            "MockSqlStorage.group_shares_create_for_user: unimplemented".to_owned(),
         ))
     }
 
@@ -317,7 +317,7 @@ impl SqlStorage for MockSqlStorage {
         _input: GroupShareCreateForLink,
     ) -> Result<ContentGroupShareRow, SqlStorageError> {
         Err(SqlStorageError::Db(
-            "MockSqlStorage.group_shares_create_for_link: unimplemented".to_string(),
+            "MockSqlStorage.group_shares_create_for_link: unimplemented".to_owned(),
         ))
     }
 
@@ -341,7 +341,7 @@ impl SqlStorage for MockSqlStorage {
 
     async fn uploads_create(&self, _input: UploadInsert) -> Result<UploadRow, SqlStorageError> {
         Err(SqlStorageError::Db(
-            "MockSqlStorage.uploads_create: unimplemented".to_string(),
+            "MockSqlStorage.uploads_create: unimplemented".to_owned(),
         ))
     }
 
@@ -446,8 +446,8 @@ async fn test_health_check_always_accessible() {
 #[test]
 fn test_zero_trust_config_creation() {
     let config = ZeroTrustConfig::new(
-        "myteam.cloudflareaccess.com".to_string(),
-        "test-aud-123".to_string(),
+        "myteam.cloudflareaccess.com".to_owned(),
+        "test-aud-123".to_owned(),
     );
 
     assert_eq!(config.team_domain, "myteam.cloudflareaccess.com");

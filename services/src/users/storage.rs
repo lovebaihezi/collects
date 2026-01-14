@@ -291,7 +291,7 @@ pub trait UserStorage: Clone + Send + Sync + 'static {
 ///     assert_eq!(user.username, "alice");
 ///
 ///     let secret = storage.get_user_secret("alice").await.unwrap();
-///     assert_eq!(secret, Some("SECRET123".to_string()));
+///     assert_eq!(secret, Some("SECRET123".to_owned()));
 /// }
 /// ```
 #[derive(Clone, Default)]
@@ -353,24 +353,24 @@ impl UserStorage for MockUserStorage {
     async fn create_user(&self, username: &str, secret: &str) -> Result<StoredUser, Self::Error> {
         if username.is_empty() {
             return Err(UserStorageError::InvalidInput(
-                "Username cannot be empty".to_string(),
+                "Username cannot be empty".to_owned(),
             ));
         }
 
         if secret.is_empty() {
             return Err(UserStorageError::InvalidInput(
-                "Secret cannot be empty".to_string(),
+                "Secret cannot be empty".to_owned(),
             ));
         }
 
         let mut users = self.users.write().expect("lock poisoned");
 
         if users.contains_key(username) {
-            return Err(UserStorageError::UserAlreadyExists(username.to_string()));
+            return Err(UserStorageError::UserAlreadyExists(username.to_owned()));
         }
 
         let user = StoredUser::new(username, secret);
-        users.insert(username.to_string(), user.clone());
+        users.insert(username.to_owned(), user.clone());
 
         Ok(user)
     }
@@ -407,7 +407,7 @@ impl UserStorage for MockUserStorage {
     ) -> Result<StoredUser, Self::Error> {
         if new_username.trim().is_empty() {
             return Err(UserStorageError::InvalidInput(
-                "Username cannot be empty".to_string(),
+                "Username cannot be empty".to_owned(),
             ));
         }
 
@@ -417,13 +417,11 @@ impl UserStorage for MockUserStorage {
         let old_user = users
             .get(old_username)
             .cloned()
-            .ok_or_else(|| UserStorageError::UserNotFound(old_username.to_string()))?;
+            .ok_or_else(|| UserStorageError::UserNotFound(old_username.to_owned()))?;
 
         // Check if new username is already taken (unless it's the same)
         if old_username != new_username && users.contains_key(new_username) {
-            return Err(UserStorageError::UserAlreadyExists(
-                new_username.to_string(),
-            ));
+            return Err(UserStorageError::UserAlreadyExists(new_username.to_owned()));
         }
 
         // Remove old entry and insert new one, preserving profile data
@@ -437,7 +435,7 @@ impl UserStorage for MockUserStorage {
             old_user.created_at,
             Utc::now(),
         );
-        users.insert(new_username.to_string(), updated_user.clone());
+        users.insert(new_username.to_owned(), updated_user.clone());
 
         Ok(updated_user)
     }
@@ -449,7 +447,7 @@ impl UserStorage for MockUserStorage {
     ) -> Result<StoredUser, Self::Error> {
         if new_secret.trim().is_empty() {
             return Err(UserStorageError::InvalidInput(
-                "Secret cannot be empty".to_string(),
+                "Secret cannot be empty".to_owned(),
             ));
         }
 
@@ -459,7 +457,7 @@ impl UserStorage for MockUserStorage {
         let old_user = users
             .get(username)
             .cloned()
-            .ok_or_else(|| UserStorageError::UserNotFound(username.to_string()))?;
+            .ok_or_else(|| UserStorageError::UserNotFound(username.to_owned()))?;
 
         // Update the secret, preserving profile data
         let updated_user = StoredUser::with_profile(
@@ -471,7 +469,7 @@ impl UserStorage for MockUserStorage {
             old_user.created_at,
             Utc::now(),
         );
-        users.insert(username.to_string(), updated_user.clone());
+        users.insert(username.to_owned(), updated_user.clone());
 
         Ok(updated_user)
     }
@@ -488,7 +486,7 @@ impl UserStorage for MockUserStorage {
         let old_user = users
             .get(username)
             .cloned()
-            .ok_or_else(|| UserStorageError::UserNotFound(username.to_string()))?;
+            .ok_or_else(|| UserStorageError::UserNotFound(username.to_owned()))?;
 
         // Update the profile fields
         let new_nickname = match nickname {
@@ -509,7 +507,7 @@ impl UserStorage for MockUserStorage {
             old_user.created_at,
             Utc::now(),
         );
-        users.insert(username.to_string(), updated_user.clone());
+        users.insert(username.to_owned(), updated_user.clone());
 
         Ok(updated_user)
     }
@@ -580,13 +578,13 @@ impl UserStorage for PgUserStorage {
     async fn create_user(&self, username: &str, secret: &str) -> Result<StoredUser, Self::Error> {
         if username.is_empty() {
             return Err(UserStorageError::InvalidInput(
-                "Username cannot be empty".to_string(),
+                "Username cannot be empty".to_owned(),
             ));
         }
 
         if secret.is_empty() {
             return Err(UserStorageError::InvalidInput(
-                "Secret cannot be empty".to_string(),
+                "Secret cannot be empty".to_owned(),
             ));
         }
 
@@ -616,7 +614,7 @@ impl UserStorage for PgUserStorage {
                 row.created_at,
                 row.updated_at,
             )),
-            None => Err(UserStorageError::UserAlreadyExists(username.to_string())),
+            None => Err(UserStorageError::UserAlreadyExists(username.to_owned())),
         }
     }
 
@@ -726,7 +724,7 @@ impl UserStorage for PgUserStorage {
     ) -> Result<StoredUser, Self::Error> {
         if new_username.trim().is_empty() {
             return Err(UserStorageError::InvalidInput(
-                "Username cannot be empty".to_string(),
+                "Username cannot be empty".to_owned(),
             ));
         }
 
@@ -748,7 +746,7 @@ impl UserStorage for PgUserStorage {
             // Check for unique constraint violation
             let error_str = e.to_string();
             if error_str.contains("duplicate key") || error_str.contains("unique constraint") {
-                return UserStorageError::UserAlreadyExists(new_username.to_string());
+                return UserStorageError::UserAlreadyExists(new_username.to_owned());
             }
             UserStorageError::StorageError(error_str)
         })?;
@@ -765,7 +763,7 @@ impl UserStorage for PgUserStorage {
                     row.updated_at,
                 )
             })
-            .ok_or_else(|| UserStorageError::UserNotFound(old_username.to_string()))
+            .ok_or_else(|| UserStorageError::UserNotFound(old_username.to_owned()))
     }
 
     async fn revoke_otp(
@@ -775,7 +773,7 @@ impl UserStorage for PgUserStorage {
     ) -> Result<StoredUser, Self::Error> {
         if new_secret.trim().is_empty() {
             return Err(UserStorageError::InvalidInput(
-                "Secret cannot be empty".to_string(),
+                "Secret cannot be empty".to_owned(),
             ));
         }
 
@@ -807,7 +805,7 @@ impl UserStorage for PgUserStorage {
                     row.updated_at,
                 )
             })
-            .ok_or_else(|| UserStorageError::UserNotFound(username.to_string()))
+            .ok_or_else(|| UserStorageError::UserNotFound(username.to_owned()))
     }
 
     async fn update_profile(
@@ -866,7 +864,7 @@ impl UserStorage for PgUserStorage {
                 return self
                     .get_user(username)
                     .await?
-                    .ok_or_else(|| UserStorageError::UserNotFound(username.to_string()));
+                    .ok_or_else(|| UserStorageError::UserNotFound(username.to_owned()));
             }
         };
 
@@ -882,7 +880,7 @@ impl UserStorage for PgUserStorage {
                     row.updated_at,
                 )
             })
-            .ok_or_else(|| UserStorageError::UserNotFound(username.to_string()))
+            .ok_or_else(|| UserStorageError::UserNotFound(username.to_owned()))
     }
 }
 
@@ -958,7 +956,7 @@ mod tests {
             .await
             .expect("should not error");
 
-        assert_eq!(secret, Some("SECRET123".to_string()));
+        assert_eq!(secret, Some("SECRET123".to_owned()));
     }
 
     #[tokio::test]
@@ -1066,7 +1064,7 @@ mod tests {
                 .get_user_secret("bob")
                 .await
                 .expect("should not error"),
-            Some("SECRET_B".to_string())
+            Some("SECRET_B".to_owned())
         );
     }
 
@@ -1182,17 +1180,17 @@ mod tests {
         let updated = storage
             .update_profile(
                 "alice",
-                Some(Some("Alice Nickname".to_string())),
-                Some(Some("https://example.com/avatar.png".to_string())),
+                Some(Some("Alice Nickname".to_owned())),
+                Some(Some("https://example.com/avatar.png".to_owned())),
             )
             .await
             .expect("should update profile");
 
         assert_eq!(updated.username, "alice");
-        assert_eq!(updated.nickname, Some("Alice Nickname".to_string()));
+        assert_eq!(updated.nickname, Some("Alice Nickname".to_owned()));
         assert_eq!(
             updated.avatar_url,
-            Some("https://example.com/avatar.png".to_string())
+            Some("https://example.com/avatar.png".to_owned())
         );
     }
 
@@ -1208,11 +1206,11 @@ mod tests {
 
         // Update only nickname
         let updated = storage
-            .update_profile("alice", Some(Some("New Nickname".to_string())), None)
+            .update_profile("alice", Some(Some("New Nickname".to_owned())), None)
             .await
             .expect("should update profile");
 
-        assert_eq!(updated.nickname, Some("New Nickname".to_string()));
+        assert_eq!(updated.nickname, Some("New Nickname".to_owned()));
         assert_eq!(updated.avatar_url, None);
     }
 
@@ -1230,8 +1228,8 @@ mod tests {
         storage
             .update_profile(
                 "alice",
-                Some(Some("Initial".to_string())),
-                Some(Some("https://example.com/initial.png".to_string())),
+                Some(Some("Initial".to_owned())),
+                Some(Some("https://example.com/initial.png".to_owned())),
             )
             .await
             .expect("should update profile");
@@ -1251,7 +1249,7 @@ mod tests {
         let storage = MockUserStorage::new();
 
         let result = storage
-            .update_profile("nonexistent", Some(Some("Nick".to_string())), Some(None))
+            .update_profile("nonexistent", Some(Some("Nick".to_owned())), Some(None))
             .await;
 
         assert!(result.is_err());
@@ -1286,8 +1284,8 @@ mod tests {
             id,
             "alice",
             "SECRET123",
-            Some("Nickname".to_string()),
-            Some("https://example.com/avatar.png".to_string()),
+            Some("Nickname".to_owned()),
+            Some("https://example.com/avatar.png".to_owned()),
             now,
             now,
         );
@@ -1295,10 +1293,10 @@ mod tests {
         assert_eq!(user.id, id);
         assert_eq!(user.username, "alice");
         assert_eq!(user.secret, "SECRET123");
-        assert_eq!(user.nickname, Some("Nickname".to_string()));
+        assert_eq!(user.nickname, Some("Nickname".to_owned()));
         assert_eq!(
             user.avatar_url,
-            Some("https://example.com/avatar.png".to_string())
+            Some("https://example.com/avatar.png".to_owned())
         );
         assert_eq!(user.created_at, now);
         assert_eq!(user.updated_at, now);

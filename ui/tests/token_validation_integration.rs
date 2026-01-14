@@ -104,7 +104,7 @@ async fn test_validate_token_success() {
     {
         let state = harness.state_mut();
         state.ctx.update::<PendingTokenValidation>(|pending| {
-            pending.token = Some("valid-test-token".to_string());
+            pending.token = Some("valid-test-token".to_owned());
         });
         state.ctx.enqueue_command::<ValidateTokenCommand>();
         state.ctx.flush_commands();
@@ -177,7 +177,7 @@ async fn test_validate_token_invalid() {
     {
         let state = harness.state_mut();
         state.ctx.update::<PendingTokenValidation>(|pending| {
-            pending.token = Some("invalid-token".to_string());
+            pending.token = Some("invalid-token".to_owned());
         });
         state.ctx.enqueue_command::<ValidateTokenCommand>();
         state.ctx.flush_commands();
@@ -244,7 +244,7 @@ async fn test_validate_token_expired() {
     {
         let state = harness.state_mut();
         state.ctx.update::<PendingTokenValidation>(|pending| {
-            pending.token = Some("expired-token".to_string());
+            pending.token = Some("expired-token".to_owned());
         });
         state.ctx.enqueue_command::<ValidateTokenCommand>();
         state.ctx.flush_commands();
@@ -353,7 +353,7 @@ async fn test_validate_token_server_error() {
     {
         let state = harness.state_mut();
         state.ctx.update::<PendingTokenValidation>(|pending| {
-            pending.token = Some("some-token".to_string());
+            pending.token = Some("some-token".to_owned());
         });
         state.ctx.enqueue_command::<ValidateTokenCommand>();
         state.ctx.flush_commands();

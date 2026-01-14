@@ -2,7 +2,7 @@
 
 use collects_business::{AuthCompute, AuthStatus};
 
-/// Tests for AuthStatus enum
+/// Tests for `AuthStatus` enum
 mod auth_status_tests {
     use super::*;
 
@@ -27,8 +27,8 @@ mod auth_status_tests {
     #[test]
     fn test_auth_status_authenticated_is_authenticated() {
         let status = AuthStatus::Authenticated {
-            username: "test_user".to_string(),
-            token: Some("test_token".to_string()),
+            username: "test_user".to_owned(),
+            token: Some("test_token".to_owned()),
         };
         assert!(status.is_authenticated());
     }
@@ -36,8 +36,8 @@ mod auth_status_tests {
     #[test]
     fn test_auth_status_authenticated_returns_username() {
         let status = AuthStatus::Authenticated {
-            username: "test_user".to_string(),
-            token: Some("test_token".to_string()),
+            username: "test_user".to_owned(),
+            token: Some("test_token".to_owned()),
         };
         assert_eq!(status.username(), Some("test_user"));
     }
@@ -45,8 +45,8 @@ mod auth_status_tests {
     #[test]
     fn test_auth_status_authenticated_returns_token() {
         let status = AuthStatus::Authenticated {
-            username: "test_user".to_string(),
-            token: Some("test_token".to_string()),
+            username: "test_user".to_owned(),
+            token: Some("test_token".to_owned()),
         };
         assert_eq!(status.token(), Some("test_token"));
     }
@@ -54,7 +54,7 @@ mod auth_status_tests {
     #[test]
     fn test_auth_status_authenticated_with_no_token() {
         let status = AuthStatus::Authenticated {
-            username: "test_user".to_string(),
+            username: "test_user".to_owned(),
             token: None,
         };
         assert!(status.is_authenticated());
@@ -82,24 +82,24 @@ mod auth_status_tests {
 
     #[test]
     fn test_auth_status_failed_is_not_authenticated() {
-        let status = AuthStatus::Failed("Error message".to_string());
+        let status = AuthStatus::Failed("Error message".to_owned());
         assert!(!status.is_authenticated());
     }
 
     #[test]
     fn test_auth_status_failed_has_no_username() {
-        let status = AuthStatus::Failed("Error message".to_string());
+        let status = AuthStatus::Failed("Error message".to_owned());
         assert!(status.username().is_none());
     }
 
     #[test]
     fn test_auth_status_failed_has_no_token() {
-        let status = AuthStatus::Failed("Error message".to_string());
+        let status = AuthStatus::Failed("Error message".to_owned());
         assert!(status.token().is_none());
     }
 }
 
-/// Tests for AuthCompute
+/// Tests for `AuthCompute`
 mod auth_compute_tests {
     use super::*;
 
@@ -125,8 +125,8 @@ mod auth_compute_tests {
     fn test_auth_compute_with_authenticated_status() {
         let compute = AuthCompute {
             status: AuthStatus::Authenticated {
-                username: "test_user".to_string(),
-                token: Some("test_token".to_string()),
+                username: "test_user".to_owned(),
+                token: Some("test_token".to_owned()),
             },
         };
         assert!(compute.is_authenticated());
@@ -137,7 +137,7 @@ mod auth_compute_tests {
     #[test]
     fn test_auth_compute_delegates_to_status() {
         let compute = AuthCompute {
-            status: AuthStatus::Failed("error".to_string()),
+            status: AuthStatus::Failed("error".to_owned()),
         };
         assert!(!compute.is_authenticated());
         assert!(compute.username().is_none());

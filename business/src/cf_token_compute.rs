@@ -83,13 +83,13 @@ pub enum CFTokenResult {
 impl CFTokenResult {
     pub fn as_str(&self) -> Option<&str> {
         match self {
-            CFTokenResult::Set(s) => Some(s.as_str()),
-            CFTokenResult::Idle => None,
+            Self::Set(s) => Some(s.as_str()),
+            Self::Idle => None,
         }
     }
 
     pub fn is_set(&self) -> bool {
-        matches!(self, CFTokenResult::Set(_))
+        matches!(self, Self::Set(_))
     }
 }
 
@@ -178,21 +178,18 @@ impl Command for SetCFTokenCommand {
                 .as_deref()
                 .map(str::trim)
                 .filter(|t| !t.is_empty())
-                .map(str::to_string);
+                .map(str::to_owned);
 
-            match token {
-                Some(token) => {
-                    info!("SetCFTokenCommand: token set ({} chars)", token.len());
-                    updater.set(CFTokenCompute {
-                        result: CFTokenResult::Set(token),
-                    });
-                }
-                None => {
-                    info!("SetCFTokenCommand: token cleared");
-                    updater.set(CFTokenCompute {
-                        result: CFTokenResult::Idle,
-                    });
-                }
+            if let Some(token) = token {
+                info!("SetCFTokenCommand: token set ({} chars)", token.len());
+                updater.set(CFTokenCompute {
+                    result: CFTokenResult::Set(token),
+                });
+            } else {
+                info!("SetCFTokenCommand: token cleared");
+                updater.set(CFTokenCompute {
+                    result: CFTokenResult::Idle,
+                });
             }
         })
     }

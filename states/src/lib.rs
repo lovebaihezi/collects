@@ -1,10 +1,15 @@
 #![feature(box_as_ptr)]
+// SAFETY: This crate uses unsafe code for performance-critical state management operations.
+// The unsafe blocks are carefully audited and documented. State/Compute storage uses raw
+// pointers to avoid RefCell overhead in the hot path. All unsafe operations maintain Rust's
+// aliasing rules by ensuring exclusive access during mutations.
+#![allow(unsafe_code)]
 
 mod basic_state;
 mod compute;
 mod ctx;
 mod dep;
-mod enum_states;
+
 mod graph;
 mod runtime;
 mod snapshot;
@@ -16,7 +21,7 @@ pub use basic_state::Time;
 pub use compute::{Compute, ComputeDeps, assign_impl};
 pub use ctx::StateCtx;
 pub use dep::Dep;
-pub use enum_states::BasicStates;
+
 pub use graph::{DepRoute, Graph, TopologyError};
 pub use runtime::StateRuntime;
 pub use snapshot::{CommandSnapshot, ComputeSnapshot, SnapshotClone, StateSnapshot};
@@ -109,6 +114,8 @@ pub trait Command: std::fmt::Debug + Send + Sync + 'static {
 }
 
 #[cfg(test)]
+#[expect(clippy::unwrap_used)]
+#[expect(clippy::use_self)]
 mod state_runtime_test {
     use std::{
         any::{Any, TypeId},
@@ -474,7 +481,7 @@ mod state_runtime_test {
         assert_eq!(ctx.cached::<DummyComputeC>().unwrap().quadrupled, 20);
     }
 
-    #[allow(dead_code)]
+    #[expect(dead_code)]
     #[derive(Default, Debug, Clone)]
     struct SideEffectCountState {
         count: usize,
@@ -631,7 +638,7 @@ mod state_runtime_test {
         assert_eq!(ctx.cached::<DummyComputeFromCommand>().unwrap().value, 123);
     }
 
-    #[allow(dead_code)]
+    #[expect(dead_code)]
     #[derive(Debug, Clone)]
     struct UnregisteredCompute {
         value: i32,
@@ -698,7 +705,7 @@ mod state_runtime_test {
     }
 
     #[test]
-    #[should_panic]
+    #[should_panic(expected = "No compute registered")]
     fn test_updater_set_on_unregistered_compute_panics_strictly() {
         let mut ctx = StateCtx::new();
 
@@ -769,7 +776,7 @@ mod state_runtime_test {
     /// Test that verifies compute execution behavior when state changes rapidly.
     ///
     /// This test simulates the scenario where Time state updates frequently (e.g., every second)
-    /// and a compute (like ApiStatus) depends on it. The compute should:
+    /// and a compute (like `ApiStatus`) depends on it. The compute should:
     /// 1. Be marked dirty when dependency changes
     /// 2. Only execute once per `run_all_dirty()` call
     /// 3. Not spam logs at INFO level (tested by verifying execution count)
@@ -812,10 +819,10 @@ mod state_runtime_test {
     /// Test that verifies command receives snapshot with correct state/compute values.
     ///
     /// This test ensures that:
-    /// 1. Commands receive a CommandSnapshot instead of Dep
-    /// 2. CommandSnapshot provides access to state via snap.state::<T>()
-    /// 3. CommandSnapshot provides access to compute via snap.compute::<T>()
-    /// 4. Commands can update compute values via Updater::set()
+    /// 1. Commands receive a `CommandSnapshot` instead of Dep
+    /// 2. `CommandSnapshot` provides access to state via `snap.state::<T>()`
+    /// 3. `CommandSnapshot` provides access to compute via `snap.compute::<T>()`
+    /// 4. Commands can update compute values via `Updater::set()`
     #[derive(Debug)]
     struct SnapshotReadingCommand {
         expected_state_value: i32,
@@ -902,7 +909,7 @@ mod state_runtime_test {
     // COMMAND QUEUE TESTS
     // ═══════════════════════════════════════════════════════════════════════
 
-    /// Tests that enqueue_command adds commands to the queue without executing them.
+    /// Tests that `enqueue_command` adds commands to the queue without executing them.
     #[test]
     fn test_enqueue_command_does_not_execute_immediately() {
         let shared = Arc::new(AtomicUsize::new(0));
@@ -920,7 +927,7 @@ mod state_runtime_test {
         assert_eq!(ctx.command_queue_len(), 1);
     }
 
-    /// Tests that flush_commands executes all queued commands.
+    /// Tests that `flush_commands` executes all queued commands.
     #[tokio::test]
     async fn test_flush_commands_executes_queued_commands() {
         let shared = Arc::new(AtomicUsize::new(0));
@@ -948,7 +955,7 @@ mod state_runtime_test {
         assert_eq!(ctx.command_queue_len(), 0);
     }
 
-    /// Tests that flush_commands with empty queue does nothing.
+    /// Tests that `flush_commands` with empty queue does nothing.
     #[test]
     fn test_flush_commands_empty_queue() {
         let mut ctx = StateCtx::new();
@@ -1009,7 +1016,7 @@ mod state_runtime_test {
         assert_eq!(counter2.load(Ordering::SeqCst), 1);
     }
 
-    /// Tests that enqueue_command panics for unregistered commands.
+    /// Tests that `enqueue_command` panics for unregistered commands.
     #[test]
     #[should_panic(expected = "No command found")]
     fn test_enqueue_unregistered_command_panics() {
@@ -1275,8 +1282,8 @@ mod state_runtime_test {
     // ASYNC COMMAND TRAIT TESTS
     // ═══════════════════════════════════════════════════════════════════════
 
-    /// Tests that async Command receives a CancellationToken.
-    /// This verifies that the new Command trait signature with CancellationToken works correctly.
+    /// Tests that async Command receives a `CancellationToken`.
+    /// This verifies that the new Command trait signature with `CancellationToken` works correctly.
     #[derive(Debug)]
     struct CancellationAwareCommand {
         cancel_received: Arc<AtomicUsize>,
@@ -1323,7 +1330,7 @@ mod state_runtime_test {
     // TASK MANAGEMENT TESTS
     // ═══════════════════════════════════════════════════════════════════════
 
-    /// Tests that StateCtx initializes with empty task management state.
+    /// Tests that `StateCtx` initializes with empty task management state.
     #[test]
     fn test_task_management_initial_state() {
         let ctx = StateCtx::new();
@@ -1488,7 +1495,7 @@ mod state_runtime_test {
         assert!(!ctx.has_active_task::<DummyState>());
     }
 
-    /// Tests that clear() clears task management state.
+    /// Tests that `clear()` clears task management state.
     #[test]
     fn test_clear_clears_tasks() {
         use tokio_util::sync::CancellationToken;
@@ -1508,7 +1515,7 @@ mod state_runtime_test {
         assert_eq!(ctx.active_task_type_count(), 0);
     }
 
-    /// Tests task_id_generator produces unique sequential IDs.
+    /// Tests `task_id_generator` produces unique sequential IDs.
     #[test]
     fn test_task_id_generator_sequential() {
         let ctx = StateCtx::new();
@@ -1528,7 +1535,7 @@ mod state_runtime_test {
         assert_eq!(id3.generation(), 2);
     }
 
-    /// Tests that task_set can be accessed mutably.
+    /// Tests that `task_set` can be accessed mutably.
     #[test]
     fn test_task_set_mut_access() {
         let mut ctx = StateCtx::new();
@@ -1582,7 +1589,7 @@ mod state_runtime_test {
     // SPAWN_TASK, CANCEL_TASK, SHUTDOWN TESTS
     // ═══════════════════════════════════════════════════════════════════════
 
-    /// Tests that spawn_task creates a task and returns a valid handle.
+    /// Tests that `spawn_task` creates a task and returns a valid handle.
     #[tokio::test]
     async fn test_spawn_task_returns_handle() {
         let mut ctx = StateCtx::new();
@@ -1601,7 +1608,7 @@ mod state_runtime_test {
         assert_eq!(ctx.active_task_type_count(), 1);
     }
 
-    /// Tests that spawn_task auto-cancels previous task for same type.
+    /// Tests that `spawn_task` auto-cancels previous task for same type.
     #[tokio::test]
     async fn test_spawn_task_auto_cancels_previous() {
         let mut ctx = StateCtx::new();
@@ -1634,7 +1641,7 @@ mod state_runtime_test {
         assert_eq!(active.id(), handle2.id());
     }
 
-    /// Tests that spawn_task increments task generation.
+    /// Tests that `spawn_task` increments task generation.
     #[tokio::test]
     async fn test_spawn_task_increments_generation() {
         let mut ctx = StateCtx::new();
@@ -1648,7 +1655,7 @@ mod state_runtime_test {
         assert_eq!(handle3.id().generation(), 2);
     }
 
-    /// Tests that cancel_task cancels the specified task.
+    /// Tests that `cancel_task` cancels the specified task.
     #[tokio::test]
     async fn test_cancel_task() {
         let mut ctx = StateCtx::new();
@@ -1664,7 +1671,7 @@ mod state_runtime_test {
         assert!(handle.is_cancelled());
     }
 
-    /// Tests that cancel_task only cancels the specified task.
+    /// Tests that `cancel_task` only cancels the specified task.
     #[tokio::test]
     async fn test_cancel_task_only_cancels_specified() {
         let mut ctx = StateCtx::new();
@@ -1804,7 +1811,7 @@ mod state_runtime_test {
         ctx.shutdown().await;
     }
 
-    /// Tests that spawn_task works with the updater pattern.
+    /// Tests that `spawn_task` works with the updater pattern.
     #[tokio::test]
     async fn test_spawn_task_with_updater() {
         let mut ctx = StateCtx::new();

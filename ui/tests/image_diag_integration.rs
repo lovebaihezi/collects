@@ -211,7 +211,7 @@ async fn test_record_clipboard_access() {
                 width: 100,
                 height: 100,
                 bytes_len: 40000,
-                format: "RGBA".to_string(),
+                format: "RGBA".to_owned(),
             });
         });
 
@@ -267,7 +267,7 @@ async fn test_record_drop_event() {
         .ctx
         .update::<ImageDiagState>(|diag| {
             diag.record_drop(DropResult::Success {
-                file_name: Some("test.png".to_string()),
+                file_name: Some("test.png".to_owned()),
                 width: 200,
                 height: 200,
                 bytes_len: 160000,
@@ -334,8 +334,8 @@ async fn test_drop_hover_tracking() {
         .update::<ImageDiagState>(|diag| {
             diag.record_drop_hover_start(DropHoverEvent {
                 file_count: 1,
-                file_names: vec!["test.png".to_string()],
-                mime_types: vec!["image/png".to_string()],
+                file_names: vec!["test.png".to_owned()],
+                mime_types: vec!["image/png".to_owned()],
             });
         });
 

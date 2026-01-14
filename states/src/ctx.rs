@@ -15,8 +15,8 @@ use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    Command, CommandSnapshot, Dep, LatestOnlyUpdater, Reader, TaskHandle, TaskId, TaskIdGenerator,
-    Updater, state::UpdateMessage,
+    Command, CommandSnapshot, Dep, Reader, TaskHandle, TaskId, TaskIdGenerator, Updater,
+    state::UpdateMessage,
 };
 
 use super::{Compute, Stage, State, StateRuntime};
@@ -148,7 +148,7 @@ impl StateCtx {
     /// The state is initialized and marked as `BeforeInit`.
     pub fn add_state<T: State>(&mut self, state: T) {
         let id = TypeId::of::<T>();
-        trace!("Record State: id={:?}, state={:?}", id, state);
+        trace!("Record State: id={id:?}, state={state:?}");
         self.states
             .insert(id, (RefCell::new(Box::new(state)), Stage::BeforeInit));
     }
@@ -158,7 +158,7 @@ impl StateCtx {
     /// The compute is recorded in the runtime and initialized.
     pub fn record_compute<T: Compute>(&mut self, compute: T) {
         let id = TypeId::of::<T>();
-        trace!("Record Compute: id={:?}, compute={:?}", id, compute);
+        trace!("Record Compute: id={id:?}, compute={compute:?}");
         self.runtime.record(&compute);
         self.computes
             .insert(id, (RefCell::new(Box::new(compute)), Stage::BeforeInit));
@@ -171,7 +171,7 @@ impl StateCtx {
     /// at the call-site (i.e. you dispatch by type).
     pub fn record_command<T: Command>(&mut self, command: T) {
         let id = TypeId::of::<T>();
-        trace!("Record Command: id={:?}, command={:?}", id, command);
+        trace!("Record Command: id={id:?}, command={command:?}");
         self.commands.insert(id, RefCell::new(Box::new(command)));
     }
 
@@ -198,7 +198,10 @@ impl StateCtx {
         // Apply the mutation
         {
             let state = self.get_state_mut(&id);
-            f(state.as_any_mut().downcast_mut::<T>().unwrap());
+            f(state
+                .as_any_mut()
+                .downcast_mut::<T>()
+                .expect("State type mismatch during update"));
         }
 
         // Auto-propagate dirty to all dependent computes
@@ -218,10 +221,7 @@ impl StateCtx {
         for dep_id in dependent_ids {
             // Only mark computes as dirty (states don't get dirty from propagation)
             if self.computes.contains_key(&dep_id) {
-                trace!(
-                    "Auto-marking compute {:?} as dirty (dependency changed)",
-                    dep_id
-                );
+                trace!("Auto-marking compute {dep_id:?} as dirty (dependency changed)");
                 self.mark_dirty(&dep_id);
             }
         }
@@ -241,7 +241,7 @@ impl StateCtx {
     /// ```ignore
     /// // User clicks "Create User" button
     /// ctx.update::<CreateUserInput>(|input| {
-    ///     input.username = Some("alice".to_string());
+    ///     input.username = Some("alice".to_owned());
     /// });
     /// ctx.run::<CreateUserCompute>(); // Run immediately
     /// ```
@@ -273,12 +273,11 @@ impl StateCtx {
     /// ```
     pub fn enqueue_command<T: Command + 'static>(&mut self) {
         let id = TypeId::of::<T>();
-        if !self.commands.contains_key(&id) {
-            panic!(
-                "No command found for type {}. Did you forget to call `record_command::<T>()`?",
-                std::any::type_name::<T>()
-            );
-        }
+        assert!(
+            self.commands.contains_key(&id),
+            "No command found for type {}. Did you forget to call `record_command::<T>()`?",
+            std::any::type_name::<T>()
+        );
         trace!("Enqueue command: {}", std::any::type_name::<T>());
         self.command_queue.push_back(id);
     }
@@ -306,7 +305,7 @@ impl StateCtx {
             return;
         }
 
-        trace!("Flushing {} queued commands", queue_len);
+        trace!("Flushing {queue_len} queued commands");
 
         // Execute each queued command with a fresh snapshot
         // Each command gets a snapshot of the current state at execution time
@@ -323,7 +322,7 @@ impl StateCtx {
     /// Executes a single command by spawning it as an async task.
     ///
     /// The command is given a snapshot of current state/compute values and a cancellation token.
-    /// Results are delivered via the Updater channel and applied during subsequent sync_computes() calls.
+    /// Results are delivered via the Updater channel and applied during subsequent `sync_computes()` calls.
     ///
     /// ## Out-of-order safety (latest-only)
     ///
@@ -365,14 +364,14 @@ impl StateCtx {
 
         let updater = self.updater();
         let task_id = TaskId::new(command_id, generation);
-        let latest: LatestOnlyUpdater = updater.latest_only(task_id, current_check);
+        let latest = updater.latest_only(task_id, current_check);
 
         // We must not hold any borrows into `self.commands` across a call that mutably borrows
         // `self` (spawning). So we create the future inside a short scope and drop the `Ref`
         // before spawning.
         let future = {
             let borrowed = cell.borrow();
-            trace!("Executing command: id={:?}", id);
+            trace!("Executing command: id={id:?}");
             borrowed.run(snapshot, latest, cancel)
         };
 
@@ -415,7 +414,7 @@ impl StateCtx {
         CommandSnapshot::from_iters(states.into_iter(), computes.into_iter())
     }
 
-    /// Runs a compute by TypeId, first running any dirty dependencies in topological order.
+    /// Runs a compute by `TypeId`, first running any dirty dependencies in topological order.
     /// Each dependency is synced before the next one runs, ensuring dependent computes
     /// can read the updated values.
     fn run_by_id_with_deps(&mut self, target_id: &TypeId) {
@@ -438,7 +437,7 @@ impl StateCtx {
         }
     }
 
-    /// Checks if a compute is in a state that requires running (Dirty or BeforeInit).
+    /// Checks if a compute is in a state that requires running (Dirty or `BeforeInit`).
     fn is_compute_dirty(&self, id: &TypeId) -> bool {
         self.computes
             .get(id)
@@ -446,15 +445,13 @@ impl StateCtx {
             .unwrap_or(false)
     }
 
-    /// Runs a single compute by TypeId (without checking dependencies).
+    /// Runs a single compute by `TypeId` (without checking dependencies).
     fn run_single_compute(&mut self, id: &TypeId) {
-        let compute = self.computes.get(id);
-        if compute.is_none() {
-            trace!("Skipping non-compute dependency: {:?}", id);
+        let Some(compute) = self.computes.get(id) else {
+            trace!("Skipping non-compute dependency: {id:?}");
             return;
-        }
+        };
 
-        let compute = compute.unwrap();
         let borrowed = compute.0.borrow();
         let (state_deps, compute_deps) = borrowed.deps();
 
@@ -494,7 +491,8 @@ impl StateCtx {
                     .iter()
                     .map(|&dep_id| (dep_id, self.get_compute_ptr(&dep_id))),
             );
-            trace!("Run compute: {:?}", dirty_compute.name());
+            let compute_name = dirty_compute.name();
+            trace!("Run compute: {compute_name:?}");
             if log_enabled!(Level::Trace) {
                 pending_compute_names.push(dirty_compute.name());
             }
@@ -506,7 +504,7 @@ impl StateCtx {
         }
         if log_enabled!(Level::Trace) {
             for name in pending_compute_names {
-                trace!("Compute pending: {:?}", name);
+                trace!("Compute pending: {name:?}");
             }
         }
     }
@@ -522,13 +520,16 @@ impl StateCtx {
     // ═══════════════════════════════════════════════════════════════════════
 
     fn get_state_mut(&self, id: &TypeId) -> &'static mut dyn State {
+        // SAFETY: We hold exclusive access to the state via RefCell. The 'static lifetime
+        // is valid because states live for the duration of the StateCtx. The pointer is
+        // guaranteed non-null since we index into a known-valid entry.
         unsafe {
             self.states[id]
                 .0
                 .as_ptr()
                 .as_mut()
                 .map(|v| v.as_mut())
-                .unwrap()
+                .expect("State pointer should be valid")
         }
     }
 
@@ -540,7 +541,7 @@ impl StateCtx {
         self.get_state_mut(&TypeId::of::<T>())
             .as_any()
             .downcast_ref::<T>()
-            .unwrap()
+            .expect("State type mismatch")
     }
 
     /// Returns a mutable reference to a state.
@@ -551,26 +552,31 @@ impl StateCtx {
         self.get_state_mut(&TypeId::of::<T>())
             .as_any_mut()
             .downcast_mut::<T>()
-            .unwrap()
+            .expect("State type mismatch")
     }
 
     fn get_state_ptr(&self, id: &TypeId) -> NonNull<dyn State> {
-        // TODO: Maybe we should use more serius error here, cause the state should exists in state
+        // SAFETY: get_state_mut returns a valid mutable reference, so the pointer is non-null.
+        // TODO: Maybe we should use more serious error here, cause the state should exist in state
         unsafe { NonNull::new_unchecked(self.get_state_mut(id)) }
     }
 
     fn get_compute_mut(&self, id: &TypeId) -> &'static mut dyn Compute {
+        // SAFETY: We hold exclusive access to the compute via RefCell. The 'static lifetime
+        // is valid because computes live for the duration of the StateCtx. The pointer is
+        // guaranteed non-null since we index into a known-valid entry.
         unsafe {
             self.computes[id]
                 .0
                 .as_ptr()
                 .as_mut()
                 .map(|v| v.as_mut())
-                .unwrap()
+                .expect("Compute pointer should be valid")
         }
     }
 
     fn get_compute_ptr(&self, id: &TypeId) -> NonNull<dyn Compute> {
+        // SAFETY: get_compute_mut returns a valid mutable reference, so the pointer is non-null.
         unsafe { NonNull::new_unchecked(self.get_compute_mut(id)) }
     }
 
@@ -586,11 +592,14 @@ impl StateCtx {
         self.get_compute_mut(&TypeId::of::<T>())
             .as_any()
             .downcast_ref::<T>()
-            .unwrap()
+            .expect("Compute type mismatch")
     }
 
     /// Retrieves a reference to a cached compute value if available.
     pub fn cached<T: Compute + Sized>(&self) -> Option<&'static T> {
+        // SAFETY: We hold exclusive access to the compute via RefCell. The 'static lifetime
+        // is valid because computes live for the duration of the StateCtx. Downcast is safe
+        // because we use TypeId to ensure type correctness.
         unsafe {
             self.computes[&TypeId::of::<T>()]
                 .0
@@ -610,19 +619,15 @@ impl StateCtx {
     /// to the respective computes or states, marking computes as clean.
     pub fn sync_computes(&mut self) {
         let cur_len = self.runtime().receiver().len();
-        trace!(
-            "Start Sync Updates, Cur Received {:?} Update Messages",
-            cur_len
-        );
+        trace!("Start Sync Updates, Cur Received {cur_len:?} Update Messages");
         for _ in 0..cur_len {
             if let Ok(msg) = self.runtime().receiver().try_recv() {
                 match msg {
                     UpdateMessage::Compute(id, boxed) => {
                         let compute = self.computes.get_mut(&id).unwrap_or_else(|| {
                             panic!(
-                                "Received compute update for an unregistered compute id={:?}. \
-This is a programmer error (e.g. a Command/Compute called `Updater::set(...)` for a compute type that was never `record_compute(...)`).",
-                                id
+                                "Received compute update for an unregistered compute id={id:?}. \
+This is a programmer error (e.g. a Command/Compute called `Updater::set(...)` for a compute type that was never `record_compute(...)`)."
                             )
                         });
 
@@ -633,9 +638,9 @@ This is a programmer error (e.g. a Command/Compute called `Updater::set(...)` fo
                         // - Clean: compute was already synced (e.g., from a previous async response)
                         // - Dirty/BeforeInit: compute was re-triggered before previous result arrived
                         // In all cases, we should apply the result if it arrives.
+                        let current_stage = compute.1;
                         trace!(
-                            "Received Compute Update, compute={:?}, current_stage={:?}",
-                            computed_name, compute.1
+                            "Received Compute Update, compute={computed_name:?}, current_stage={current_stage:?}"
                         );
                         compute.0.borrow_mut().assign_box(boxed);
                         self.mark_clean(&id);
@@ -643,16 +648,15 @@ This is a programmer error (e.g. a Command/Compute called `Updater::set(...)` fo
                     UpdateMessage::State(id, boxed) => {
                         let state = self.states.get_mut(&id).unwrap_or_else(|| {
                             panic!(
-                                "Received state update for an unregistered state id={:?}. \
-This is a programmer error (e.g. a Command called `Updater::set_state(...)` for a state type that was never `add_state(...)`).",
-                                id
+                                "Received state update for an unregistered state id={id:?}. \
+This is a programmer error (e.g. a Command called `Updater::set_state(...)` for a state type that was never `add_state(...)`)."
                             )
                         });
 
                         let state_name = state.0.borrow().name();
+                        let current_stage = state.1;
                         trace!(
-                            "Received State Update, state={:?}, current_stage={:?}",
-                            state_name, state.1
+                            "Received State Update, state={state_name:?}, current_stage={current_stage:?}"
                         );
 
                         // Replace the state with the new value using assign_box
@@ -664,14 +668,12 @@ This is a programmer error (e.g. a Command called `Updater::set_state(...)` for 
                     UpdateMessage::EnqueueCommand(id) => {
                         // Enqueue command requested by a Compute via Updater.
                         // This allows Computes to trigger commands without doing IO themselves.
-                        if !self.commands.contains_key(&id) {
-                            panic!(
-                                "Received enqueue request for an unregistered command id={:?}. \
-This is a programmer error (e.g. a Compute called `Updater::enqueue_command::<T>()` for a command type that was never `record_command(...)`).",
-                                id
-                            );
-                        }
-                        trace!("Enqueue command from Updater: id={:?}", id);
+                        assert!(
+                            self.commands.contains_key(&id),
+                            "Received enqueue request for an unregistered command id={id:?}. \
+This is a programmer error (e.g. a Compute called `Updater::enqueue_command::<T>()` for a command type that was never `record_command(...)`)."
+                        );
+                        trace!("Enqueue command from Updater: id={id:?}");
                         self.command_queue.push_back(id);
                     }
                 }
@@ -693,11 +695,8 @@ This is a programmer error (e.g. a Compute called `Updater::enqueue_command::<T>
             .iter()
             .filter_map(|(type_id, (state_cell, compute_state))| {
                 if matches!(compute_state, &Stage::Dirty | &Stage::BeforeInit) {
-                    trace!(
-                        "Run Compute which is {:?} = {:?}",
-                        compute_state,
-                        state_cell.borrow().name()
-                    );
+                    let compute_name = state_cell.borrow().name();
+                    trace!("Run Compute which is {compute_state:?} = {compute_name:?}");
                     Some((type_id, state_cell.borrow_mut()))
                 } else {
                     None
@@ -721,7 +720,7 @@ This is a programmer error (e.g. a Compute called `Updater::enqueue_command::<T>
                 compute.1 = tobe;
             }
             _ => {
-                panic!("No state or compute found for id: {:?}", id);
+                panic!("No state or compute found for id: {id:?}");
             }
         }
     }
@@ -869,10 +868,8 @@ This is a programmer error (e.g. a Compute called `Updater::enqueue_command::<T>
     /// existed for the type.
     pub fn cancel_active_task<T: 'static>(&mut self) -> bool {
         if let Some(handle) = self.active_tasks.remove(&TypeId::of::<T>()) {
-            trace!(
-                "Cancelling active task for type {:?}",
-                std::any::type_name::<T>()
-            );
+            let type_name = std::any::type_name::<T>();
+            trace!("Cancelling active task for type {type_name:?}");
             handle.cancel();
             true
         } else {
@@ -885,9 +882,12 @@ This is a programmer error (e.g. a Compute called `Updater::enqueue_command::<T>
     /// This triggers the cancellation token for all tracked tasks and clears
     /// the active tasks map. Additionally, aborts all tasks in the `JoinSet`.
     pub fn cancel_all_tasks(&mut self) {
-        trace!("Cancelling all {} active tasks", self.active_tasks.len());
-        for (type_id, handle) in self.active_tasks.drain() {
-            trace!("Cancelling task for type {:?}", type_id);
+        let task_count = self.active_tasks.len();
+        trace!("Cancelling all {task_count} active tasks");
+        // Note: drain order is non-deterministic but cancellation order doesn't matter
+        let handles: Vec<_> = self.active_tasks.drain().collect();
+        for (type_id, handle) in handles {
+            trace!("Cancelling task for type {type_id:?}");
             handle.cancel();
         }
         #[cfg(not(target_arch = "wasm32"))]
@@ -906,19 +906,15 @@ This is a programmer error (e.g. a Compute called `Updater::enqueue_command::<T>
 
         // Cancel previous task for this type if it exists
         if let Some(old_handle) = self.active_tasks.remove(&type_id) {
-            trace!(
-                "Auto-cancelling previous task for type {} (generation {})",
-                std::any::type_name::<T>(),
-                old_handle.id().generation()
-            );
+            let type_name = std::any::type_name::<T>();
+            let generation = old_handle.id().generation();
+            trace!("Auto-cancelling previous task for type {type_name} (generation {generation})");
             old_handle.cancel();
         }
 
-        trace!(
-            "Registering new task for type {} (generation {})",
-            std::any::type_name::<T>(),
-            handle.id().generation()
-        );
+        let type_name = std::any::type_name::<T>();
+        let generation = handle.id().generation();
+        trace!("Registering new task for type {type_name} (generation {generation})");
         self.active_tasks.insert(type_id, handle);
     }
 
@@ -1112,8 +1108,10 @@ This is a programmer error (e.g. a Compute called `Updater::enqueue_command::<T>
         );
 
         // Cancel all active tasks via their cancellation tokens
-        for (type_id, handle) in self.active_tasks.drain() {
-            trace!("Cancelling task for type {:?} during shutdown", type_id);
+        // Note: drain order is non-deterministic but cancellation order doesn't matter
+        let handles: Vec<_> = self.active_tasks.drain().collect();
+        for (type_id, handle) in handles {
+            trace!("Cancelling task for type {type_id:?} during shutdown");
             handle.cancel();
         }
 

@@ -28,7 +28,7 @@ mod home_page_tests {
     fn create_authenticated_state(state: &mut State) {
         state.ctx.record_compute(AuthCompute {
             status: AuthStatus::Authenticated {
-                username: "TestUser".to_string(),
+                username: "TestUser".to_owned(),
                 token: None,
             },
         });

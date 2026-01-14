@@ -72,8 +72,8 @@ where
     // Create upload record in database
     let upload_input = UploadInsert {
         user_id: user.id,
-        storage_backend: "r2".to_string(),
-        storage_profile: "default".to_string(),
+        storage_backend: "r2".to_owned(),
+        storage_profile: "default".to_owned(),
         storage_key: storage_key.clone(),
         content_type: payload.content_type.clone(),
         file_size: payload.file_size as i64,
@@ -125,7 +125,7 @@ where
         Json(V1UploadsInitResponse {
             upload_id: upload.id.to_string(),
             storage_key,
-            method: "PUT".to_string(),
+            method: "PUT".to_owned(),
             upload_url: presigned.url,
             expires_at: presigned.expires_at.to_rfc3339(),
         }),
@@ -310,7 +310,7 @@ where
             .split('/')
             .next_back()
             .unwrap_or("Untitled")
-            .to_string()
+            .to_owned()
     });
 
     let content_input = ContentsInsert {

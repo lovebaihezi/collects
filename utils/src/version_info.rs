@@ -47,7 +47,7 @@ pub fn build_version() -> &'static str {
 /// Returns the environment label and version/info string based on build features.
 ///
 /// Format: `(env_name, info_string)`
-/// - PR: ("pr", "number") - number from PR_NUMBER env var or "unknown"
+/// - PR: ("pr", "number") - number from `PR_NUMBER` env var or "unknown"
 /// - Prod: ("stable", "version")
 /// - Nightly: ("nightly", "date")
 /// - Internal: ("internal", "commit")
@@ -76,7 +76,7 @@ pub fn format_env_version() -> String {
     if env_name == "nightly" && info.len() >= 10 {
         format!("{}:{}", env_name, &info[..10])
     } else {
-        format!("{}:{}", env_name, info)
+        format!("{env_name}:{info}")
     }
 }
 
@@ -86,7 +86,7 @@ pub fn format_env_version() -> String {
 /// rather than compile time. Uses build-time constants for commit/date/version.
 ///
 /// Format: `{env}:{info}` where:
-/// - PR: `pr:{pr_number}` (number from PR_NUMBER env var at build time)
+/// - PR: `pr:{pr_number}` (number from `PR_NUMBER` env var at build time)
 /// - Nightly: `nightly:{date}` (first 10 chars of build date)
 /// - Internal: `internal:{commit}`
 /// - Test-Internal: `test-internal:{commit}`

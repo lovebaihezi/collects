@@ -4,7 +4,7 @@ use sqlx::postgres::{PgPool, PgPoolOptions};
 use std::future::Future;
 use std::net::IpAddr;
 
-/// Initialize a PostgreSQL connection pool
+/// Initialize a `PostgreSQL` connection pool
 pub async fn create_pool(config: &Config) -> anyhow::Result<PgPool> {
     let pool = PgPoolOptions::new().connect(config.database_url()).await?;
 
@@ -20,7 +20,7 @@ pub async fn create_pool(config: &Config) -> anyhow::Result<PgPool> {
 ///
 /// Notes:
 /// - Methods return `impl Future` (instead of needing `async-trait`) to keep callsites ergonomic.
-/// - This file uses SQLx *macros* (`query!` / `query_as!`) for compile-time verification.
+/// - This file uses `SQLx` *macros* (`query!` / `query_as!`) for compile-time verification.
 ///   Remember to run `just services::prepare <env>` after changing queries or schema.
 pub trait SqlStorage: Clone + Send + Sync + 'static {
     // -------------------------------------------------------------------------
@@ -114,8 +114,8 @@ pub trait SqlStorage: Clone + Send + Sync + 'static {
         group_id: uuid::Uuid,
     ) -> impl Future<Output = Result<Vec<ContentGroupItemRow>, SqlStorageError>> + Send;
 
-    /// Batch update sort_order for items in a group.
-    /// `items` is a slice of (content_id, new_sort_order) pairs.
+    /// Batch update `sort_order` for items in a group.
+    /// `items` is a slice of (`content_id`, `new_sort_order`) pairs.
     fn group_items_reorder(
         &self,
         group_id: uuid::Uuid,
@@ -311,7 +311,7 @@ pub trait SqlStorage: Clone + Send + Sync + 'static {
     /// Add a token to the revocation list.
     ///
     /// Called when a user logs out to invalidate their JWT session token.
-    /// The token_hash should be a SHA256 hex digest of the JWT.
+    /// The `token_hash` should be a SHA256 hex digest of the JWT.
     fn revoked_tokens_add(
         &self,
         token_hash: &str,
@@ -321,7 +321,7 @@ pub trait SqlStorage: Clone + Send + Sync + 'static {
 
     /// Check if a token has been revoked.
     ///
-    /// Returns `true` if the token hash exists in the revoked_tokens table
+    /// Returns `true` if the token hash exists in the `revoked_tokens` table
     /// and hasn't expired yet.
     fn revoked_tokens_is_revoked(
         &self,
@@ -757,7 +757,7 @@ impl SqlStorage for PgStorage {
     }
 
     async fn contents_insert(&self, input: ContentsInsert) -> Result<ContentRow, SqlStorageError> {
-        let kind = input.kind.unwrap_or_else(|| "file".to_string());
+        let kind = input.kind.unwrap_or_else(|| "file".to_owned());
         let rec = sqlx::query!(
             r#"
             INSERT INTO contents (
@@ -856,7 +856,7 @@ impl SqlStorage for PgStorage {
     ) -> Result<Vec<ContentRow>, SqlStorageError> {
         let limit = if params.limit <= 0 { 50 } else { params.limit };
         let offset = if params.offset < 0 { 0 } else { params.offset };
-        let status = params.status.map(|s| s.as_db_str().to_string());
+        let status = params.status.map(|s| s.as_db_str().to_owned());
 
         let recs = sqlx::query!(
             r#"
@@ -911,7 +911,7 @@ impl SqlStorage for PgStorage {
         user_id: uuid::Uuid,
         changes: ContentsUpdate,
     ) -> Result<Option<ContentRow>, SqlStorageError> {
-        let visibility = changes.visibility.map(|v| v.as_db_str().to_string());
+        let visibility = changes.visibility.map(|v| v.as_db_str().to_owned());
         let description_set = changes.description.is_some();
         let description_value = changes.description.unwrap_or(None);
         let body_set = changes.body.is_some();
@@ -1111,7 +1111,7 @@ impl SqlStorage for PgStorage {
     ) -> Result<Vec<ContentGroupRow>, SqlStorageError> {
         let limit = if params.limit <= 0 { 50 } else { params.limit };
         let offset = if params.offset < 0 { 0 } else { params.offset };
-        let status = params.status.map(|s| s.as_db_str().to_string());
+        let status = params.status.map(|s| s.as_db_str().to_owned());
 
         let recs = sqlx::query!(
             r#"
@@ -1157,7 +1157,7 @@ impl SqlStorage for PgStorage {
         user_id: uuid::Uuid,
         changes: GroupUpdate,
     ) -> Result<Option<ContentGroupRow>, SqlStorageError> {
-        let visibility = changes.visibility.map(|v| v.as_db_str().to_string());
+        let visibility = changes.visibility.map(|v| v.as_db_str().to_owned());
         let description_set = changes.description.is_some();
         let description_value = changes.description.unwrap_or(None);
 
@@ -1756,7 +1756,7 @@ impl SqlStorage for PgStorage {
             input.name.is_some(),
             input.name.flatten(),
             input.permission.is_some(),
-            input.permission.map(|p| p.as_db_str().to_string()),
+            input.permission.map(|p| p.as_db_str().to_owned()),
             input.password_hash.is_some(),
             input.password_hash.flatten(),
             input.expires_at.is_some(),

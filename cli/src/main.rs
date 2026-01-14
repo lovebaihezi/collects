@@ -1,8 +1,7 @@
 #![allow(clippy::exit)]
 
-use std::io::{IsTerminal as _, Read as _};
+use std::io::IsTerminal as _;
 use std::path::PathBuf;
-use std::time::Duration;
 
 use anyhow::{Context as _, Result};
 use clap::{Parser, Subcommand};
@@ -13,8 +12,8 @@ use collects_business::{
 };
 use collects_states::StateCtx;
 use dirs::home_dir;
+use log::{error, info};
 use serde::{Deserialize, Serialize};
-use tokio::time::sleep;
 
 #[derive(Parser)]
 #[command(name = "collects")]
@@ -88,36 +87,68 @@ fn load_token() -> Result<Option<TokenStore>> {
     Ok(Some(store))
 }
 
+/// Initialize `StateCtx` with CLI-relevant states, computes, and commands.
+///
+/// This mirrors the pattern used in `State::build()` from the UI crate,
+/// but only registers components needed for CLI operations.
+fn build_state_ctx(config: BusinessConfig) -> StateCtx {
+    let mut ctx = StateCtx::new();
+
+    // Business config
+    ctx.add_state(config);
+
+    // Login states and computes
+    ctx.add_state(LoginInput::default());
+    ctx.add_state(PendingTokenValidation::default());
+    ctx.record_compute(CFTokenCompute::default());
+    ctx.record_compute(AuthCompute::default());
+
+    // Content creation states and computes
+    ctx.add_state(CreateContentInput::default());
+    ctx.record_compute(CreateContentCompute::default());
+
+    // Commands
+    ctx.record_command(LoginCommand);
+    ctx.record_command(ValidateTokenCommand);
+    ctx.record_command(CreateContentCommand);
+
+    ctx
+}
+
+/// Await all pending tasks in the `JoinSet` and sync computes.
+///
+/// This replaces the sleep-polling pattern with proper async awaiting.
+async fn await_pending_tasks(ctx: &mut StateCtx) {
+    while ctx.task_count() > 0 {
+        // Wait for the next task to complete
+        if ctx.task_set_mut().join_next().await.is_some() {
+            // Apply any updates from completed tasks
+            ctx.sync_computes();
+        }
+    }
+}
+
+/// Flush commands and await all spawned tasks.
+///
+/// This is the CLI equivalent of the end-of-frame pattern used in `CollectsApp`:
+/// 1. `sync_computes()` - apply any pending async results
+/// 2. `flush_commands()` - execute queued commands (may spawn async tasks)
+/// 3. await pending tasks and sync their results
+async fn flush_and_await(ctx: &mut StateCtx) {
+    ctx.sync_computes();
+    ctx.flush_commands();
+    await_pending_tasks(ctx).await;
+    ctx.sync_computes();
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     env_logger::init();
 
     let cli = Cli::parse();
 
-    // Initialize StateCtx
-    let mut ctx = StateCtx::new();
-
-    // Initialize required states
-    ctx.add_state(LoginInput::default());
-    ctx.add_state(CreateContentInput::default());
-    ctx.add_state(PendingTokenValidation::default());
-    ctx.add_state(BusinessConfig::default());
-
-    // Initialize required computes
-    ctx.record_compute(CFTokenCompute::default());
-    ctx.record_compute(AuthCompute::default());
-    ctx.record_compute(CreateContentCompute::default());
-
-    // Register commands
-    ctx.record_command(LoginCommand);
-    ctx.record_command(CreateContentCommand);
-    ctx.record_command(ValidateTokenCommand);
-
-    // Set BusinessConfig
-    // Note: features in Cargo.toml determine the actual URL used by BusinessConfig::default()
-    ctx.update::<BusinessConfig>(|s| {
-        *s = BusinessConfig::default();
-    });
+    // Initialize StateCtx like CollectsApp does
+    let ctx = build_state_ctx(BusinessConfig::default());
 
     match cli.command {
         Some(Commands::Login) => run_login(ctx).await,
@@ -130,10 +161,11 @@ async fn main() -> Result<()> {
 
             // Check if stdin has data
             if !std::io::stdin().is_terminal() {
-                let mut buffer = String::new();
-                std::io::stdin().read_to_string(&mut buffer)?;
+                use std::io::Read as _;
+                let mut buffer = Vec::new();
+                std::io::stdin().read_to_end(&mut buffer)?;
                 if !buffer.is_empty() {
-                    body = Some(buffer);
+                    body = Some(String::from_utf8(buffer)?);
                 }
             }
 
@@ -162,48 +194,40 @@ async fn run_login(mut ctx: StateCtx) -> Result<()> {
     });
 
     ctx.enqueue_command::<LoginCommand>();
+    flush_and_await(&mut ctx).await;
 
-    // Loop until authenticated or failed
-    loop {
-        ctx.sync_computes();
-        ctx.flush_commands();
-        ctx.sync_computes();
-
-        let auth = ctx.compute::<AuthCompute>();
-        match &auth.status {
-            AuthStatus::Authenticated { username: u, token } => {
-                println!("Successfully logged in as {u}");
-                if let Some(t) = token {
-                    save_token(u, t)?;
-                    println!("Token saved.");
-                }
-                break;
-            }
-            AuthStatus::Failed(msg) => {
-                eprintln!("Login failed: {msg}");
-                std::process::exit(1);
-            }
-            AuthStatus::NotAuthenticated | AuthStatus::Authenticating => {
-                // Waiting
+    let auth = ctx.compute::<AuthCompute>();
+    match &auth.status {
+        AuthStatus::Authenticated { username: u, token } => {
+            info!("Successfully logged in as {u}");
+            if let Some(t) = token {
+                save_token(u, t)?;
+                info!("Token saved.");
             }
         }
-
-        sleep(Duration::from_millis(50)).await;
+        AuthStatus::Failed(msg) => {
+            error!("Login failed: {msg}");
+            std::process::exit(1);
+        }
+        AuthStatus::NotAuthenticated | AuthStatus::Authenticating => {
+            error!("Login did not complete");
+            std::process::exit(1);
+        }
     }
 
+    ctx.shutdown().await;
     Ok(())
 }
 
 async fn run_create(ctx: StateCtx, files: Vec<PathBuf>, title: Option<String>) -> Result<()> {
-    // Check for stdin in this mode too?
-    // Usually 'create' subcommand might not implicitly read stdin unless specified.
-    // But let's support it if piped.
+    // Check for stdin in this mode too
     let mut body = None;
     if !std::io::stdin().is_terminal() {
-        let mut buffer = String::new();
-        std::io::stdin().read_to_string(&mut buffer)?;
+        use std::io::Read as _;
+        let mut buffer = Vec::new();
+        std::io::stdin().read_to_end(&mut buffer)?;
         if !buffer.is_empty() {
-            body = Some(buffer);
+            body = Some(String::from_utf8(buffer)?);
         }
     }
 
@@ -222,33 +246,24 @@ async fn run_create_impl(
             s.token = Some(store.token);
         });
         ctx.enqueue_command::<ValidateTokenCommand>();
+        flush_and_await(&mut ctx).await;
 
-        // Wait for validation
-        let mut attempts = 0;
-        loop {
-            ctx.sync_computes();
-            ctx.flush_commands();
-            ctx.sync_computes();
-
-            let auth = ctx.compute::<AuthCompute>();
-            match &auth.status {
-                AuthStatus::Authenticated { .. } => break,
-                AuthStatus::NotAuthenticated if attempts > 20 => {
-                    // Timeout/Failure after ~1s
-                    eprintln!("Session expired or invalid. Please login again.");
-                    std::process::exit(1);
-                }
-                AuthStatus::Failed(e) => {
-                    eprintln!("Auth error: {e}");
-                    std::process::exit(1);
-                }
-                _ => {}
+        let auth = ctx.compute::<AuthCompute>();
+        match &auth.status {
+            AuthStatus::Authenticated { .. } => {
+                // Session restored successfully
             }
-            sleep(Duration::from_millis(50)).await;
-            attempts += 1;
+            AuthStatus::Failed(e) => {
+                error!("Auth error: {e}");
+                std::process::exit(1);
+            }
+            AuthStatus::NotAuthenticated | AuthStatus::Authenticating => {
+                error!("Session expired or invalid. Please login again.");
+                std::process::exit(1);
+            }
         }
     } else {
-        eprintln!("Not logged in. Please run 'collects login' first.");
+        error!("Not logged in. Please run 'collects login' first.");
         std::process::exit(1);
     }
 
@@ -262,15 +277,13 @@ async fn run_create_impl(
             .to_string();
 
         // Simple mime guess
-        let mime_type = mime_guess::from_path(&path)
-            .first_or_octet_stream()
-            .to_string();
+        let mime_type = mime_guess::from_path(&path).first_or_octet_stream().clone();
 
         let data = std::fs::read(&path).context(format!("Failed to read file: {path:?}"))?;
 
         attachments.push(Attachment {
             filename,
-            mime_type,
+            mime_type: mime_type.to_string(),
             data,
         });
     }
@@ -284,33 +297,30 @@ async fn run_create_impl(
 
     // 3. Dispatch Command
     ctx.enqueue_command::<CreateContentCommand>();
+    flush_and_await(&mut ctx).await;
 
-    // 4. Wait for Result
-    loop {
-        ctx.sync_computes();
-        ctx.flush_commands();
-        ctx.sync_computes();
+    // 4. Check Result
+    let compute = ctx.compute::<CreateContentCompute>();
 
-        let compute = ctx.compute::<CreateContentCompute>();
-
-        match &compute.status {
-            ContentCreationStatus::Idle | ContentCreationStatus::Uploading => {
-                // Show progress?
-            }
-            ContentCreationStatus::Success(ids) => {
-                println!("Content created successfully!");
-                for id in ids {
-                    println!("ID: {id}");
-                }
-                break;
-            }
-            ContentCreationStatus::Error(e) => {
-                eprintln!("Error creating content: {e}");
-                std::process::exit(1);
+    match &compute.status {
+        ContentCreationStatus::Success(ids) => {
+            info!("Content created successfully!");
+            for id in ids {
+                info!("ID: {id}");
             }
         }
-        sleep(Duration::from_millis(50)).await;
+        ContentCreationStatus::Error(e) => {
+            error!("Error creating content: {e}");
+            ctx.shutdown().await;
+            std::process::exit(1);
+        }
+        ContentCreationStatus::Idle | ContentCreationStatus::Uploading => {
+            error!("Content creation did not complete");
+            ctx.shutdown().await;
+            std::process::exit(1);
+        }
     }
 
+    ctx.shutdown().await;
     Ok(())
 }

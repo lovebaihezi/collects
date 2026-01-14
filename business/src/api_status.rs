@@ -68,7 +68,6 @@ impl ApiStatus {
     pub fn api_availability(&self) -> APIAvailability<'_> {
         let version = self.service_version.as_deref();
         match (self.last_update_time, &self.last_error) {
-            (None, None) => APIAvailability::Unknown,
             (Some(time), None) => APIAvailability::Available { time, version },
             (Some(time), Some(err)) => APIAvailability::Unavailable {
                 time,
@@ -103,8 +102,8 @@ impl ApiStatus {
     ///
     /// Fetch conditions:
     /// 1. Never fetched before -> fetch
-    /// 2. FETCH_INTERVAL_MINUTES have passed since last update -> fetch
-    /// 3. Had an error and retry count < MAX_RETRY_COUNT -> retry immediately
+    /// 2. `FETCH_INTERVAL_MINUTES` have passed since last update -> fetch
+    /// 3. Had an error and retry count < `MAX_RETRY_COUNT` -> retry immediately
     pub fn should_fetch(&self, now: DateTime<Utc>) -> bool {
         if self.is_fetching {
             return false;
@@ -246,10 +245,7 @@ impl Command for FetchApiStatusCommand {
                     MAX_RETRY_COUNT
                 );
             } else {
-                info!(
-                    "API status interval passed, fetching new status at {:?}",
-                    now
-                );
+                info!("API status interval passed, fetching new status at {now:?}");
             }
 
             info!("Fetching API Status from {:?}", &url);
@@ -268,7 +264,7 @@ impl Command for FetchApiStatusCommand {
                 Ok(response) => {
                     let service_version = response.header(SERVICE_VERSION_HEADER).map(String::from);
                     if response.is_success() {
-                        debug!("BackEnd Available, checked at {:?}", now);
+                        debug!("BackEnd Available, checked at {now:?}");
                         updater.set(ApiStatus {
                             last_update_time: Some(now),
                             last_error: None,
@@ -290,8 +286,8 @@ impl Command for FetchApiStatusCommand {
                     }
                 }
                 Err(err) => {
-                    warn!("API status check failed: {:?}", err);
-                    error!("FetchApiStatusCommand: Network error: {}", err);
+                    warn!("API status check failed: {err:?}");
+                    error!("FetchApiStatusCommand: Network error: {err}");
                     updater.set(ApiStatus {
                         last_update_time: Some(now),
                         last_error: Some(err.to_string()),
@@ -310,14 +306,14 @@ impl Command for FetchApiStatusCommand {
 mod tests {
     use super::*;
 
-    /// Tests that ApiStatus defaults with is_fetching = false
+    /// Tests that `ApiStatus` defaults with `is_fetching` = false
     #[test]
     fn test_api_status_default_is_fetching_false() {
         let status = ApiStatus::default();
         assert!(!status.is_fetching, "is_fetching should default to false");
     }
 
-    /// Tests that is_fetching flag can be set to true
+    /// Tests that `is_fetching` flag can be set to true
     #[test]
     fn test_api_status_is_fetching_can_be_set() {
         let status = ApiStatus {
@@ -331,7 +327,7 @@ mod tests {
         assert!(status.is_fetching, "is_fetching should be settable to true");
     }
 
-    /// Tests that api_availability returns Unknown when is_fetching is true but no data
+    /// Tests that `api_availability` returns Unknown when `is_fetching` is true but no data
     #[test]
     fn test_api_availability_unknown_when_fetching() {
         let status = ApiStatus {
@@ -348,7 +344,7 @@ mod tests {
         );
     }
 
-    /// Tests that show_status returns correct value
+    /// Tests that `show_status` returns correct value
     #[test]
     fn test_show_status_getter() {
         let status_hidden = ApiStatus {
@@ -375,7 +371,7 @@ mod tests {
         assert!(status_shown.show_status(), "show_status should return true");
     }
 
-    /// Tests should_fetch returns true when never fetched
+    /// Tests `should_fetch` returns true when never fetched
     #[test]
     fn test_should_fetch_when_never_fetched() {
         let status = ApiStatus::default();
@@ -386,7 +382,7 @@ mod tests {
         );
     }
 
-    /// Tests should_fetch returns false when is_fetching is true
+    /// Tests `should_fetch` returns false when `is_fetching` is true
     #[test]
     fn test_should_fetch_false_when_fetching() {
         let status = ApiStatus {
@@ -404,7 +400,7 @@ mod tests {
         );
     }
 
-    /// Tests should_fetch returns false when recently fetched successfully
+    /// Tests `should_fetch` returns false when recently fetched successfully
     #[test]
     fn test_should_fetch_false_when_recently_fetched() {
         let now = Utc::now();
@@ -422,7 +418,7 @@ mod tests {
         );
     }
 
-    /// Tests should_fetch returns true when interval has passed
+    /// Tests `should_fetch` returns true when interval has passed
     #[test]
     fn test_should_fetch_true_when_interval_passed() {
         let now = Utc::now();
@@ -441,13 +437,13 @@ mod tests {
         );
     }
 
-    /// Tests should_fetch returns true for retry on error
+    /// Tests `should_fetch` returns true for retry on error
     #[test]
     fn test_should_fetch_true_for_retry_on_error() {
         let now = Utc::now();
         let status = ApiStatus {
             last_update_time: Some(now), // Just fetched
-            last_error: Some("Network error".to_string()),
+            last_error: Some("Network error".to_owned()),
             service_version: None,
             retry_count: 1, // Below MAX_RETRY_COUNT
             show_status: false,
@@ -459,13 +455,13 @@ mod tests {
         );
     }
 
-    /// Tests should_fetch returns false when max retries exceeded
+    /// Tests `should_fetch` returns false when max retries exceeded
     #[test]
     fn test_should_fetch_false_when_max_retries_exceeded() {
         let now = Utc::now();
         let status = ApiStatus {
             last_update_time: Some(now),
-            last_error: Some("Network error".to_string()),
+            last_error: Some("Network error".to_owned()),
             service_version: None,
             retry_count: MAX_RETRY_COUNT, // At max
             show_status: false,

@@ -44,7 +44,7 @@ impl FileStorage for MockFileStorage {
             .split('/')
             .next_back()
             .unwrap_or(&request.path)
-            .to_string();
+            .to_owned();
 
         let metadata = FileMetadata {
             id: request.path.clone(),
@@ -68,7 +68,7 @@ impl FileStorage for MockFileStorage {
         files
             .get(path)
             .map(|f| f.content.clone())
-            .ok_or_else(|| FileStorageError::NotFound(path.to_string()))
+            .ok_or_else(|| FileStorageError::NotFound(path.to_owned()))
     }
 
     async fn delete_file(&self, path: &str) -> Result<bool, Self::Error> {

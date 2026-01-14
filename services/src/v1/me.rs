@@ -32,7 +32,7 @@ where
     (
         StatusCode::OK,
         Json(V1MeResponse {
-            username: auth.username().to_string(),
+            username: auth.username().to_owned(),
             issued_at: auth.issued_at(),
             expires_at: auth.expires_at(),
         }),

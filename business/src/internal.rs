@@ -1,7 +1,7 @@
 //! Internal environment functionality.
 //!
 //! This module provides functionality only available in internal builds
-//! (env_internal and env_test_internal features). It includes:
+//! (`env_internal` and `env_test_internal` features). It includes:
 //! - Internal API status checking
 //! - User management (listing users, current OTP codes)
 //! - User creation with QR code display

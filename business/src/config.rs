@@ -42,17 +42,17 @@ impl Default for BusinessConfig {
     fn default() -> Self {
         Self {
             api_base_url: if cfg!(feature = "env_test") {
-                "https://collects-test.lqxclqxc.com".to_string()
+                "https://collects-test.lqxclqxc.com".to_owned()
             } else if cfg!(feature = "env_test_internal") {
-                "https://collects-test-internal.lqxclqxc.com".to_string()
+                "https://collects-test-internal.lqxclqxc.com".to_owned()
             } else if cfg!(feature = "env_pr") {
-                "https://collects-pr.lqxclqxc.com".to_string()
+                "https://collects-pr.lqxclqxc.com".to_owned()
             } else if cfg!(feature = "env_internal") {
-                "https://collects-internal.lqxclqxc.com".to_string()
+                "https://collects-internal.lqxclqxc.com".to_owned()
             } else if cfg!(feature = "env_nightly") {
-                "https://collects-nightly.lqxclqxc.com".to_string()
+                "https://collects-nightly.lqxclqxc.com".to_owned()
             } else {
-                "https://collects.lqxclqxc.com".to_string()
+                "https://collects.lqxclqxc.com".to_owned()
             },
             cf_authorization: None,
         }

@@ -16,7 +16,6 @@ pub struct CFDiskConfig {
 /// Cloudflare R2 connectivity checker.
 #[derive(Clone)]
 pub struct CFDisk {
-    #[allow(dead_code)]
     config: Option<CFDiskConfig>,
 }
 
@@ -89,7 +88,7 @@ impl CFFileStorage {
     #[cfg(not(test))]
     fn create_operator(&self) -> Result<opendal::Operator, FileStorageError> {
         let config = self.config.as_ref().ok_or_else(|| {
-            FileStorageError::ConnectionError("No configuration provided".to_string())
+            FileStorageError::ConnectionError("No configuration provided".to_owned())
         })?;
 
         let builder = opendal::services::S3::default()
@@ -134,7 +133,7 @@ impl FileStorage for CFFileStorage {
                 .split('/')
                 .next_back()
                 .unwrap_or(&request.path)
-                .to_string();
+                .to_owned();
 
             Ok(FileMetadata {
                 id: request.path,
@@ -147,7 +146,7 @@ impl FileStorage for CFFileStorage {
 
         #[cfg(test)]
         Err(FileStorageError::ConnectionError(
-            "No mock storage configured for test".to_string(),
+            "No mock storage configured for test".to_owned(),
         ))
     }
 
@@ -161,7 +160,7 @@ impl FileStorage for CFFileStorage {
             let op = self.create_operator()?;
             op.read(path).await.map(|buf| buf.to_vec()).map_err(|e| {
                 if e.kind() == opendal::ErrorKind::NotFound {
-                    FileStorageError::NotFound(path.to_string())
+                    FileStorageError::NotFound(path.to_owned())
                 } else {
                     FileStorageError::StorageError(e.to_string())
                 }
@@ -170,7 +169,7 @@ impl FileStorage for CFFileStorage {
 
         #[cfg(test)]
         Err(FileStorageError::ConnectionError(
-            "No mock storage configured for test".to_string(),
+            "No mock storage configured for test".to_owned(),
         ))
     }
 
@@ -199,7 +198,7 @@ impl FileStorage for CFFileStorage {
 
         #[cfg(test)]
         Err(FileStorageError::ConnectionError(
-            "No mock storage configured for test".to_string(),
+            "No mock storage configured for test".to_owned(),
         ))
     }
 
@@ -220,11 +219,11 @@ impl FileStorage for CFFileStorage {
             for entry in entries {
                 let path = entry.path();
                 if entry.metadata().is_file() {
-                    let filename = path.split('/').next_back().unwrap_or(path).to_string();
+                    let filename = path.split('/').next_back().unwrap_or(path).to_owned();
                     files.push(FileMetadata {
-                        id: path.to_string(),
+                        id: path.to_owned(),
                         filename,
-                        content_type: "application/octet-stream".to_string(),
+                        content_type: "application/octet-stream".to_owned(),
                         size: entry.metadata().content_length(),
                         description: None,
                     });
@@ -235,7 +234,7 @@ impl FileStorage for CFFileStorage {
 
         #[cfg(test)]
         Err(FileStorageError::ConnectionError(
-            "No mock storage configured for test".to_string(),
+            "No mock storage configured for test".to_owned(),
         ))
     }
 
@@ -254,7 +253,7 @@ impl FileStorage for CFFileStorage {
 
         #[cfg(test)]
         Err(FileStorageError::ConnectionError(
-            "No mock storage configured for test".to_string(),
+            "No mock storage configured for test".to_owned(),
         ))
     }
 
@@ -268,14 +267,14 @@ impl FileStorage for CFFileStorage {
             let op = self.create_operator()?;
             match op.stat(path).await {
                 Ok(meta) => {
-                    let filename = path.split('/').next_back().unwrap_or(path).to_string();
+                    let filename = path.split('/').next_back().unwrap_or(path).to_owned();
                     Ok(Some(FileMetadata {
-                        id: path.to_string(),
+                        id: path.to_owned(),
                         filename,
                         content_type: meta
                             .content_type()
                             .unwrap_or("application/octet-stream")
-                            .to_string(),
+                            .to_owned(),
                         size: meta.content_length(),
                         description: None,
                     }))
@@ -287,7 +286,7 @@ impl FileStorage for CFFileStorage {
 
         #[cfg(test)]
         Err(FileStorageError::ConnectionError(
-            "No mock storage configured for test".to_string(),
+            "No mock storage configured for test".to_owned(),
         ))
     }
 }

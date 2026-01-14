@@ -45,7 +45,7 @@ impl SqlStorage for MockSqlStorage {
 
     async fn contents_insert(&self, _input: ContentsInsert) -> Result<ContentRow, SqlStorageError> {
         Err(SqlStorageError::Db(
-            "MockSqlStorage.contents_insert: unimplemented".to_string(),
+            "MockSqlStorage.contents_insert: unimplemented".to_owned(),
         ))
     }
 
@@ -82,7 +82,7 @@ impl SqlStorage for MockSqlStorage {
 
     async fn groups_create(&self, _input: GroupCreate) -> Result<ContentGroupRow, SqlStorageError> {
         Err(SqlStorageError::Db(
-            "MockSqlStorage.groups_create: unimplemented".to_string(),
+            "MockSqlStorage.groups_create: unimplemented".to_owned(),
         ))
     }
 
@@ -155,7 +155,7 @@ impl SqlStorage for MockSqlStorage {
 
     async fn tags_create(&self, _input: TagCreate) -> Result<TagRow, SqlStorageError> {
         Err(SqlStorageError::Db(
-            "MockSqlStorage.tags_create: unimplemented".to_string(),
+            "MockSqlStorage.tags_create: unimplemented".to_owned(),
         ))
     }
 
@@ -211,7 +211,7 @@ impl SqlStorage for MockSqlStorage {
         _input: ShareLinkCreate,
     ) -> Result<ShareLinkRow, SqlStorageError> {
         Err(SqlStorageError::Db(
-            "MockSqlStorage.share_links_create: unimplemented".to_string(),
+            "MockSqlStorage.share_links_create: unimplemented".to_owned(),
         ))
     }
 
@@ -303,7 +303,7 @@ impl SqlStorage for MockSqlStorage {
         _input: collects_services::database::ContentShareCreateForUser,
     ) -> Result<ContentShareRow, SqlStorageError> {
         Err(SqlStorageError::Db(
-            "MockSqlStorage.content_shares_create_for_user: unimplemented".to_string(),
+            "MockSqlStorage.content_shares_create_for_user: unimplemented".to_owned(),
         ))
     }
 
@@ -312,7 +312,7 @@ impl SqlStorage for MockSqlStorage {
         _input: collects_services::database::ContentShareCreateForLink,
     ) -> Result<ContentShareRow, SqlStorageError> {
         Err(SqlStorageError::Db(
-            "MockSqlStorage.content_shares_create_for_link: unimplemented".to_string(),
+            "MockSqlStorage.content_shares_create_for_link: unimplemented".to_owned(),
         ))
     }
 
@@ -321,7 +321,7 @@ impl SqlStorage for MockSqlStorage {
         _input: GroupShareCreateForUser,
     ) -> Result<ContentGroupShareRow, SqlStorageError> {
         Err(SqlStorageError::Db(
-            "MockSqlStorage.group_shares_create_for_user: unimplemented".to_string(),
+            "MockSqlStorage.group_shares_create_for_user: unimplemented".to_owned(),
         ))
     }
 
@@ -330,7 +330,7 @@ impl SqlStorage for MockSqlStorage {
         _input: GroupShareCreateForLink,
     ) -> Result<ContentGroupShareRow, SqlStorageError> {
         Err(SqlStorageError::Db(
-            "MockSqlStorage.group_shares_create_for_link: unimplemented".to_string(),
+            "MockSqlStorage.group_shares_create_for_link: unimplemented".to_owned(),
         ))
     }
 
@@ -354,7 +354,7 @@ impl SqlStorage for MockSqlStorage {
 
     async fn uploads_create(&self, _input: UploadInsert) -> Result<UploadRow, SqlStorageError> {
         Err(SqlStorageError::Db(
-            "MockSqlStorage.uploads_create: unimplemented".to_string(),
+            "MockSqlStorage.uploads_create: unimplemented".to_owned(),
         ))
     }
 
@@ -417,22 +417,22 @@ impl UserStorage for RecordingUserStorage {
     async fn create_user(&self, username: &str, secret: &str) -> Result<StoredUser, Self::Error> {
         if username.trim().is_empty() {
             return Err(UserStorageError::InvalidInput(
-                "Username cannot be empty".to_string(),
+                "Username cannot be empty".to_owned(),
             ));
         }
         if secret.trim().is_empty() {
             return Err(UserStorageError::InvalidInput(
-                "Secret cannot be empty".to_string(),
+                "Secret cannot be empty".to_owned(),
             ));
         }
 
         let mut map = self.users.write().expect("lock poisoned");
         if map.contains_key(username) {
-            return Err(UserStorageError::UserAlreadyExists(username.to_string()));
+            return Err(UserStorageError::UserAlreadyExists(username.to_owned()));
         }
 
         let user = StoredUser::new(username, secret);
-        map.insert(username.to_string(), user.clone());
+        map.insert(username.to_owned(), user.clone());
         Ok(user)
     }
 
@@ -488,7 +488,7 @@ impl UserStorage for RecordingUserStorage {
     ) -> Result<StoredUser, Self::Error> {
         if new_username.trim().is_empty() {
             return Err(UserStorageError::InvalidInput(
-                "Username cannot be empty".to_string(),
+                "Username cannot be empty".to_owned(),
             ));
         }
 
@@ -496,17 +496,15 @@ impl UserStorage for RecordingUserStorage {
         let old_user = map
             .get(old_username)
             .cloned()
-            .ok_or_else(|| UserStorageError::UserNotFound(old_username.to_string()))?;
+            .ok_or_else(|| UserStorageError::UserNotFound(old_username.to_owned()))?;
 
         if old_username != new_username && map.contains_key(new_username) {
-            return Err(UserStorageError::UserAlreadyExists(
-                new_username.to_string(),
-            ));
+            return Err(UserStorageError::UserAlreadyExists(new_username.to_owned()));
         }
 
         map.remove(old_username);
         let updated_user = StoredUser::new(new_username, &old_user.secret);
-        map.insert(new_username.to_string(), updated_user.clone());
+        map.insert(new_username.to_owned(), updated_user.clone());
         Ok(updated_user)
     }
 
@@ -517,17 +515,17 @@ impl UserStorage for RecordingUserStorage {
     ) -> Result<StoredUser, Self::Error> {
         if new_secret.trim().is_empty() {
             return Err(UserStorageError::InvalidInput(
-                "Secret cannot be empty".to_string(),
+                "Secret cannot be empty".to_owned(),
             ));
         }
 
         let mut map = self.users.write().expect("lock poisoned");
         if !map.contains_key(username) {
-            return Err(UserStorageError::UserNotFound(username.to_string()));
+            return Err(UserStorageError::UserNotFound(username.to_owned()));
         }
 
         let updated_user = StoredUser::new(username, new_secret);
-        map.insert(username.to_string(), updated_user.clone());
+        map.insert(username.to_owned(), updated_user.clone());
         Ok(updated_user)
     }
 
@@ -541,7 +539,7 @@ impl UserStorage for RecordingUserStorage {
         let old_user = map
             .get(username)
             .cloned()
-            .ok_or_else(|| UserStorageError::UserNotFound(username.to_string()))?;
+            .ok_or_else(|| UserStorageError::UserNotFound(username.to_owned()))?;
 
         let new_nickname = match nickname {
             Some(value) => value,
@@ -561,7 +559,7 @@ impl UserStorage for RecordingUserStorage {
             old_user.created_at,
             chrono::Utc::now(),
         );
-        map.insert(username.to_string(), updated_user.clone());
+        map.insert(username.to_owned(), updated_user.clone());
         Ok(updated_user)
     }
 }
@@ -613,23 +611,23 @@ fn mint_rs256_token(team_domain: &str, audience: &str, kid: &str) -> (String, De
     let private_pem = private
         .to_pkcs1_pem(rsa::pkcs1::LineEnding::LF)
         .expect("private key pem")
-        .to_string();
+        .to_owned();
 
     let public_spki_pem = public
         .to_public_key_pem(rsa::pkcs8::LineEnding::LF)
         .expect("public key pem");
 
     let mut header = Header::new(Algorithm::RS256);
-    header.kid = Some(kid.to_string());
+    header.kid = Some(kid.to_owned());
 
     let now = OffsetDateTime::now_utc();
     let claims = AccessClaims {
         iss: format!("https://{team_domain}"),
-        aud: vec![audience.to_string()],
+        aud: vec![audience.to_owned()],
         iat: now.unix_timestamp(),
         exp: (now + Duration::minutes(10)).unix_timestamp(),
-        sub: "test-subject".to_string(),
-        email: Some("tester@example.com".to_string()),
+        sub: "test-subject".to_owned(),
+        email: Some("tester@example.com".to_owned()),
         custom: json!({"role":"internal-test"}),
     };
 
@@ -654,7 +652,7 @@ async fn test_internal_create_user_with_zerotrust_creates_and_persists_user() {
 
     let (token, decoding_key) = mint_rs256_token(team_domain, audience, kid);
     let resolver = Arc::new(TestJwksResolver {
-        expected_kid: kid.to_string(),
+        expected_kid: kid.to_owned(),
         decoding_key,
     });
 

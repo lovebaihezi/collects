@@ -73,9 +73,9 @@ impl ShareLinksMockSqlStorage {
         ShareLinkRow {
             id: uuid::Uuid::new_v4(),
             owner_id,
-            token: token.to_string(),
-            name: Some("Test Share".to_string()),
-            permission: permission.to_string(),
+            token: token.to_owned(),
+            name: Some("Test Share".to_owned()),
+            permission: permission.to_owned(),
             password_hash: None,
             max_access_count: None,
             access_count: 0,
@@ -89,16 +89,16 @@ impl ShareLinksMockSqlStorage {
         ContentRow {
             id: uuid::Uuid::new_v4(),
             user_id,
-            title: "Test Content".to_string(),
-            description: Some("Test description".to_string()),
-            storage_backend: "r2".to_string(),
-            storage_profile: "default".to_string(),
-            storage_key: "test/file.txt".to_string(),
-            content_type: "text/plain".to_string(),
+            title: "Test Content".to_owned(),
+            description: Some("Test description".to_owned()),
+            storage_backend: "r2".to_owned(),
+            storage_profile: "default".to_owned(),
+            storage_key: "test/file.txt".to_owned(),
+            content_type: "text/plain".to_owned(),
             file_size: 1024,
-            status: "active".to_string(),
-            visibility: "private".to_string(),
-            kind: "file".to_string(),
+            status: "active".to_owned(),
+            visibility: "private".to_owned(),
+            kind: "file".to_owned(),
             body: None,
             trashed_at: None,
             archived_at: None,
@@ -111,10 +111,10 @@ impl ShareLinksMockSqlStorage {
         ContentGroupRow {
             id: uuid::Uuid::new_v4(),
             user_id,
-            name: "Test Group".to_string(),
-            description: Some("Test group description".to_string()),
-            visibility: "private".to_string(),
-            status: "active".to_string(),
+            name: "Test Group".to_owned(),
+            description: Some("Test group description".to_owned()),
+            visibility: "private".to_owned(),
+            status: "active".to_owned(),
             trashed_at: None,
             archived_at: None,
             created_at: chrono::Utc::now(),
@@ -317,7 +317,7 @@ impl SqlStorage for ShareLinksMockSqlStorage {
             owner_id: input.owner_id,
             token: input.token,
             name: input.name,
-            permission: input.permission.as_db_str().to_string(),
+            permission: input.permission.as_db_str().to_owned(),
             password_hash: input.password_hash,
             max_access_count: input.max_access_count,
             access_count: 0,
@@ -393,7 +393,7 @@ impl SqlStorage for ShareLinksMockSqlStorage {
                 link.name = name;
             }
             if let Some(permission) = input.permission {
-                link.permission = permission.as_db_str().to_string();
+                link.permission = permission.as_db_str().to_owned();
             }
             if let Some(password_hash) = input.password_hash {
                 link.password_hash = password_hash;
@@ -1438,7 +1438,7 @@ async fn test_public_share_get_password_required() {
 
     let mut share_link =
         ShareLinksMockSqlStorage::create_test_share_link(TEST_USER_ID, "protected-token", "view");
-    share_link.password_hash = Some("hashed_password".to_string());
+    share_link.password_hash = Some("hashed_password".to_owned());
     let share_link_id = share_link.id;
 
     let sql_storage = ShareLinksMockSqlStorage::new()
@@ -1901,7 +1901,7 @@ async fn test_share_links_update_clear_name() {
 async fn test_share_links_update_remove_password() {
     let mut share_link =
         ShareLinksMockSqlStorage::create_test_share_link(TEST_USER_ID, "remove-pwd-token", "view");
-    share_link.password_hash = Some("some_hash".to_string());
+    share_link.password_hash = Some("some_hash".to_owned());
     let share_link_id = share_link.id;
 
     let sql_storage = ShareLinksMockSqlStorage::new().with_share_link(share_link);

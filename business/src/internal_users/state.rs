@@ -37,7 +37,7 @@ const OTP_AUTO_HIDE_SECONDS: i64 = 10;
 
 /// Action type for user management.
 /// This drives which modal/action UI is currently active.
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum UserAction {
     /// No action.
     #[default]
@@ -284,8 +284,8 @@ impl InternalUsersState {
     }
 
     /// Start an action.
-    pub fn start_action(&mut self, action: UserAction) {
-        self.current_action = action.clone();
+    pub fn start_action(&mut self, action: &UserAction) {
+        self.current_action = *action;
         self.action_in_progress = false;
         self.action_error = None;
         self.qr_texture = None;
@@ -294,7 +294,7 @@ impl InternalUsersState {
         // Initialize inputs based on action type
         match &action {
             UserAction::EditUsername(username) => {
-                self.edit_username_input = username.to_string();
+                self.edit_username_input = username.to_owned();
             }
             UserAction::EditProfile(username) => {
                 // Initialize with current values from the user
@@ -441,7 +441,7 @@ impl InternalUsersState {
     ///
     /// # Returns
     ///
-    /// `true` if the OTP has cycled at least once since last_fetch, meaning the
+    /// `true` if the OTP has cycled at least once since `last_fetch`, meaning the
     /// current OTP code in the cache is stale and needs to be refreshed.
     pub fn is_otp_stale(&self, original_time_remaining: u8, now: DateTime<Utc>) -> bool {
         let Some(last_fetch) = self.last_fetch else {
@@ -502,7 +502,7 @@ mod tests {
     use super::*;
     use chrono::Duration;
 
-    /// Creates a state with last_fetch set to the given time.
+    /// Creates a state with `last_fetch` set to the given time.
     fn state_with_last_fetch(last_fetch: DateTime<Utc>) -> InternalUsersState {
         let mut state = InternalUsersState::new();
         state.last_fetch = Some(last_fetch);
@@ -595,16 +595,16 @@ mod tests {
     fn test_start_action_edit_profile_initializes_fields() {
         let mut state = InternalUsersState::new();
         state.users = vec![InternalUserItem {
-            username: "alice".to_string(),
-            current_otp: "123456".to_string(),
+            username: "alice".to_owned(),
+            current_otp: "123456".to_owned(),
             time_remaining: 30,
-            nickname: Some("Alice".to_string()),
-            avatar_url: Some("https://example.com/avatar.png".to_string()),
-            created_at: "2020-01-01T00:00:00Z".to_string(),
-            updated_at: "2020-01-01T00:00:00Z".to_string(),
+            nickname: Some("Alice".to_owned()),
+            avatar_url: Some("https://example.com/avatar.png".to_owned()),
+            created_at: "2020-01-01T00:00:00Z".to_owned(),
+            updated_at: "2020-01-01T00:00:00Z".to_owned(),
         }];
 
-        state.start_action(UserAction::EditProfile(Ustr::from("alice")));
+        state.start_action(&UserAction::EditProfile(Ustr::from("alice")));
 
         assert_eq!(state.edit_nickname_input, "Alice");
         assert_eq!(
@@ -617,16 +617,16 @@ mod tests {
     fn test_start_action_edit_profile_empty_fields() {
         let mut state = InternalUsersState::new();
         state.users = vec![InternalUserItem {
-            username: "alice".to_string(),
-            current_otp: "123456".to_string(),
+            username: "alice".to_owned(),
+            current_otp: "123456".to_owned(),
             time_remaining: 30,
             nickname: None,
             avatar_url: None,
-            created_at: "2020-01-01T00:00:00Z".to_string(),
-            updated_at: "2020-01-01T00:00:00Z".to_string(),
+            created_at: "2020-01-01T00:00:00Z".to_owned(),
+            updated_at: "2020-01-01T00:00:00Z".to_owned(),
         }];
 
-        state.start_action(UserAction::EditProfile(Ustr::from("alice")));
+        state.start_action(&UserAction::EditProfile(Ustr::from("alice")));
 
         assert_eq!(state.edit_nickname_input, "");
         assert_eq!(state.edit_avatar_url_input, "");
@@ -636,7 +636,7 @@ mod tests {
     fn test_start_action_edit_profile_user_not_found() {
         let mut state = InternalUsersState::new();
 
-        state.start_action(UserAction::EditProfile(Ustr::from("missing")));
+        state.start_action(&UserAction::EditProfile(Ustr::from("missing")));
 
         assert_eq!(state.edit_nickname_input, "");
         assert_eq!(state.edit_avatar_url_input, "");
@@ -645,8 +645,8 @@ mod tests {
     #[test]
     fn test_close_action_clears_profile_fields() {
         let mut state = InternalUsersState::new();
-        state.edit_nickname_input = "Alice".to_string();
-        state.edit_avatar_url_input = "https://example.com/avatar.png".to_string();
+        state.edit_nickname_input = "Alice".to_owned();
+        state.edit_avatar_url_input = "https://example.com/avatar.png".to_owned();
 
         state.close_action();
 

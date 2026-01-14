@@ -41,8 +41,8 @@ where
     match (config.cf_access_team_domain(), config.cf_access_aud()) {
         (Some(team_domain), Some(audience)) => {
             let zero_trust_config = Arc::new(auth::ZeroTrustConfig::new(
-                team_domain.to_string(),
-                audience.to_string(),
+                team_domain.to_owned(),
+                audience.to_owned(),
             ));
 
             routes.layer(middleware::from_fn(move |req, next| {

@@ -28,7 +28,7 @@ where
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let len = self.route.len();
         for item in &self.route[..len - 1] {
-            write!(f, "{:?} -> ", item)?;
+            write!(f, "{item:?} -> ")?;
         }
         write!(f, "{:?}", self.route[len - 1])
     }
@@ -89,7 +89,7 @@ where
     fn cal_in_out(&self) -> BTreeMap<Node, (usize, usize)> {
         let mut in_out = BTreeMap::<Node, (usize, usize)>::new();
 
-        for edge in self.routes.iter() {
+        for edge in &self.routes {
             let (from, _via, to) = edge;
 
             let entry_from = in_out.entry(*from).or_insert((0, 0));
@@ -139,14 +139,17 @@ where
             let collected = self.collect_dependents(node);
             self.dependents_cache.insert(node, collected);
         }
-        self.dependents_cache.get(&node).unwrap().iter()
+        self.dependents_cache
+            .get(&node)
+            .expect("dependents_cache should contain node after insert")
+            .iter()
     }
 
     /// Returns nodes that directly depend on the given node (one level only)
     fn direct_dependents(&self, node: Node) -> Result<BTreeSet<Node>, TopologyError<Node>> {
         let mut collected = Vec::new();
 
-        for (from, _via, to) in self.routes.iter() {
+        for (from, _via, to) in &self.routes {
             if from == &node {
                 collected.push(*to);
             }
@@ -170,7 +173,7 @@ where
         queue.push_back(node);
 
         while let Some(current) = queue.pop_front() {
-            for (from, _via, to) in self.routes.iter() {
+            for (from, _via, to) in &self.routes {
                 if from == &current && !collected.contains(to) {
                     collected.insert(*to);
                     queue.push_back(*to);
@@ -195,7 +198,10 @@ where
             let collected = self.collect_dependencies(node);
             self.dependencies_cache.insert(node, collected);
         }
-        self.dependencies_cache.get(&node).unwrap().iter()
+        self.dependencies_cache
+            .get(&node)
+            .expect("dependencies_cache should contain node after insert")
+            .iter()
     }
 
     /// Collects all nodes that the given node transitively depends on (BFS)
@@ -206,7 +212,7 @@ where
         queue.push_back(node);
 
         while let Some(current) = queue.pop_front() {
-            for (from, _via, to) in self.routes.iter() {
+            for (from, _via, to) in &self.routes {
                 if to == &current && !collected.contains(from) {
                     collected.insert(*from);
                     queue.push_back(*from);
@@ -234,9 +240,11 @@ where
         let mut in_degree: BTreeMap<Node, usize> = deps.iter().map(|&n| (n, 0)).collect();
 
         // Calculate in-degrees within the dependency subgraph
-        for (from, _via, to) in self.routes.iter() {
+        for (from, _via, to) in &self.routes {
             if deps.contains(to) && deps.contains(from) {
-                *in_degree.get_mut(to).unwrap() += 1;
+                *in_degree
+                    .get_mut(to)
+                    .expect("in_degree should contain all deps") += 1;
             }
             // Also count edges from outside deps into deps (these start with 0 in-degree within subgraph)
         }
@@ -253,9 +261,11 @@ where
         while let Some(current) = queue.pop_front() {
             result.push(current);
 
-            for (from, _via, to) in self.routes.iter() {
+            for (from, _via, to) in &self.routes {
                 if from == &current && deps.contains(to) {
-                    let deg = in_degree.get_mut(to).unwrap();
+                    let deg = in_degree
+                        .get_mut(to)
+                        .expect("in_degree should contain all deps");
                     *deg -= 1;
                     if *deg == 0 {
                         queue.push_back(*to);

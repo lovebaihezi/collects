@@ -26,12 +26,12 @@ mod tests {
             ContentCreationStatus::Uploading
         );
         assert_eq!(
-            ContentCreationStatus::Success(vec!["1".to_string()]),
-            ContentCreationStatus::Success(vec!["1".to_string()])
+            ContentCreationStatus::Success(vec!["1".to_owned()]),
+            ContentCreationStatus::Success(vec!["1".to_owned()])
         );
         assert_eq!(
-            ContentCreationStatus::Error("err".to_string()),
-            ContentCreationStatus::Error("err".to_string())
+            ContentCreationStatus::Error("err".to_owned()),
+            ContentCreationStatus::Error("err".to_owned())
         );
 
         assert_ne!(

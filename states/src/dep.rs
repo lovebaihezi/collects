@@ -1,3 +1,7 @@
+//! Dependency injection for state and compute during command execution.
+
+#![allow(clippy::allow_attributes)] // Needed for cfg_attr with allow(dead_code)
+
 use std::{
     any::{Any, TypeId},
     collections::BTreeMap,
@@ -28,8 +32,10 @@ impl Dep {
     pub fn get_state_ref<'a, 'b: 'a, T: State + 'static>(&'a self) -> &'b T {
         self.inner
             .get(&TypeId::of::<T>())
+            // SAFETY: The pointer was created from a valid State reference and remains valid
+            // for the lifetime of the Dep. Type safety is ensured via TypeId lookup.
             .and_then(|ptr| unsafe { ptr.as_ref().downcast_ref::<T>() })
-            .unwrap()
+            .expect("State type not found in Dep")
     }
 
     /// Get a mutable reference to a state by type.
@@ -55,31 +61,36 @@ impl Dep {
     ///
     /// # Panics
     /// Panics if the state type is not registered.
+    #[cfg_attr(not(test), allow(dead_code))]
     #[deprecated(
         since = "0.2.0",
         note = "Commands must not mutate live state through Dep. Use CommandSnapshot for reads and Updater for writes."
     )]
-    #[allow(clippy::mut_from_ref)]
-    #[allow(dead_code)] // Intentionally kept for backwards compatibility but restricted to crate-internal
     pub(crate) fn state_mut<T: State + 'static>(&self) -> &'static mut T {
         self.inner
             .get(&TypeId::of::<T>())
+            // SAFETY: Dep holds exclusive access during compute execution. The 'static lifetime
+            // is valid because states outlive the Dep. Type safety is ensured via TypeId lookup.
             .and_then(|ptr| unsafe { ptr.cast::<T>().as_ptr().as_mut() })
-            .unwrap()
+            .expect("State type not found in Dep")
     }
 
     pub fn get_compute_ref<'a, 'b: 'a, T: Compute + 'static>(&'a self) -> &'b T {
         self.inner
             .get(&TypeId::of::<T>())
+            // SAFETY: The pointer was created from a valid Compute reference and remains valid
+            // for the lifetime of the Dep. Type safety is ensured via TypeId lookup.
             .and_then(|ptr| unsafe { ptr.as_ref().downcast_ref::<T>() })
-            .unwrap()
+            .expect("Compute type not found in Dep")
     }
 
     pub fn boxed<T: State>(&self) -> Box<T> {
         self.inner
             .get(&TypeId::of::<T>())
+            // SAFETY: The pointer was originally created from a Box and ownership is being
+            // transferred back. Type safety is ensured via TypeId lookup.
             .map(|ptr| unsafe { Box::from_raw(ptr.cast::<T>().as_ptr()) })
-            .unwrap()
+            .expect("State type not found in Dep")
     }
 }
 
@@ -121,7 +132,8 @@ mod tests {
         // Use Box::leak to get a &'static mut reference that stays valid for the test.
         // This is safe in tests as the memory will be reclaimed when the process exits.
         let state: &'static mut TestDepState = Box::leak(Box::new(TestDepState { value: 42 }));
-        let state_ptr = NonNull::new(state as *mut dyn State).unwrap();
+        let state_ptr = NonNull::new(std::ptr::from_mut::<dyn State>(state))
+            .expect("Box::leak should return non-null pointer");
 
         let dep = Dep::new(
             [(TypeId::of::<TestDepState>(), state_ptr)].into_iter(),
@@ -144,7 +156,7 @@ mod tests {
     /// - Commands read only snapshot clones (not live references)
     /// - Multiple async jobs can run concurrently without data races
     #[test]
-    #[allow(deprecated)]
+    #[expect(deprecated)]
     fn test_dep_state_mut_is_crate_internal_only() {
         // This test verifies that `state_mut` works internally (for legacy support)
         // but documents that it should not be exposed to external crates.
@@ -155,7 +167,8 @@ mod tests {
         // Use Box::leak to get a &'static mut reference that stays valid for the test.
         // This is safe in tests as the memory will be reclaimed when the process exits.
         let state: &'static mut TestDepState = Box::leak(Box::new(TestDepState { value: 10 }));
-        let state_ptr = NonNull::new(state as *mut dyn State).unwrap();
+        let state_ptr = NonNull::new(std::ptr::from_mut::<dyn State>(state))
+            .expect("Box::leak should return non-null pointer");
 
         let dep = Dep::new(
             [(TypeId::of::<TestDepState>(), state_ptr)].into_iter(),

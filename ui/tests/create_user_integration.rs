@@ -149,7 +149,7 @@ async fn test_create_user_compute_initial_state() {
         let compute = state.ctx.cached::<CreateUserCompute>();
         let status = match compute {
             Some(c) => format!("{:?}", c.result),
-            None => "No compute".to_string(),
+            None => "No compute".to_owned(),
         };
         ui.label(format!("Compute status: {}", status));
     })
@@ -200,7 +200,7 @@ async fn test_trigger_create_user_sets_pending() {
     {
         let state = harness.state_mut();
         state.ctx.update::<CreateUserInput>(|input| {
-            input.username = Some("testuser".to_string());
+            input.username = Some("testuser".to_owned());
         });
         state.ctx.enqueue_command::<CreateUserCommand>();
         state.ctx.flush_commands();
@@ -267,7 +267,7 @@ async fn test_create_user_success_flow() {
     {
         let state = harness.state_mut();
         state.ctx.update::<CreateUserInput>(|input| {
-            input.username = Some("newuser".to_string());
+            input.username = Some("newuser".to_owned());
         });
         state.ctx.enqueue_command::<CreateUserCommand>();
         state.ctx.flush_commands();
@@ -315,7 +315,7 @@ async fn test_create_user_empty_username_skipped() {
     {
         let state = harness.state_mut();
         state.ctx.update::<CreateUserInput>(|input| {
-            input.username = Some("".to_string());
+            input.username = Some("".to_owned());
         });
         state.ctx.enqueue_command::<CreateUserCommand>();
         state.ctx.flush_commands();
@@ -415,7 +415,7 @@ async fn test_create_user_compute_helper_methods() {
     {
         let state = harness.state_mut();
         state.ctx.update::<CreateUserInput>(|input| {
-            input.username = Some("helpertest".to_string());
+            input.username = Some("helpertest".to_owned());
         });
         state.ctx.enqueue_command::<CreateUserCommand>();
         state.ctx.flush_commands();
@@ -468,7 +468,7 @@ async fn test_create_user_compute_reset() {
     {
         let state = harness.state_mut();
         state.ctx.update::<CreateUserInput>(|input| {
-            input.username = Some("resettest".to_string());
+            input.username = Some("resettest".to_owned());
         });
         state.ctx.enqueue_command::<CreateUserCommand>();
         state.ctx.flush_commands();

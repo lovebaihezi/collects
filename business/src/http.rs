@@ -123,7 +123,7 @@ impl RequestBuilder {
         let json_bytes = serde_json::to_vec(value)?;
         self.body = Some(json_bytes);
         self.headers
-            .insert("content-type".to_string(), "application/json".to_string());
+            .insert("content-type".to_owned(), "application/json".to_owned());
         Ok(self)
     }
 
@@ -154,8 +154,9 @@ impl RequestBuilder {
             Method::Delete => client.delete(&self.url),
         };
 
-        // Add headers
-        for (name, value) in &self.headers {
+        // Add headers (collect to Vec to ensure deterministic order)
+        let headers: Vec<_> = self.headers.iter().collect();
+        for (name, value) in headers {
             request = request.header(name, value);
         }
 
@@ -175,7 +176,7 @@ impl RequestBuilder {
         let mut headers = HashMap::new();
         for (name, value) in response.headers() {
             if let Ok(v) = value.to_str() {
-                headers.insert(name.as_str().to_lowercase(), v.to_string());
+                headers.insert(name.as_str().to_lowercase(), v.to_owned());
             }
         }
 
@@ -257,7 +258,7 @@ impl RequestBuilder {
         let mut response_headers = HashMap::new();
         for (name, value) in response.headers() {
             if let Ok(v) = value.to_str() {
-                response_headers.insert(name.as_str().to_lowercase(), v.to_string());
+                response_headers.insert(name.as_str().to_lowercase(), v.to_owned());
             }
         }
 
@@ -343,7 +344,7 @@ mod tests {
     #[test]
     fn test_response_header_case_insensitive() {
         let mut headers = HashMap::new();
-        headers.insert("content-type".to_string(), "application/json".to_string());
+        headers.insert("content-type".to_owned(), "application/json".to_owned());
 
         let response = Response {
             status: 200,
@@ -358,6 +359,7 @@ mod tests {
     }
 
     #[test]
+    #[expect(clippy::unwrap_used)]
     fn test_response_text() {
         let response = Response {
             status: 200,
@@ -368,6 +370,7 @@ mod tests {
     }
 
     #[test]
+    #[expect(clippy::unwrap_used)]
     fn test_response_json() {
         #[derive(Debug, serde::Deserialize, PartialEq)]
         struct TestData {
@@ -384,7 +387,7 @@ mod tests {
         assert_eq!(
             data,
             TestData {
-                message: "hello".to_string()
+                message: "hello".to_owned()
             }
         );
     }
@@ -397,15 +400,16 @@ mod tests {
 
         assert_eq!(
             builder.headers.get("Authorization"),
-            Some(&"Bearer token".to_string())
+            Some(&"Bearer token".to_owned())
         );
         assert_eq!(
             builder.headers.get("Accept"),
-            Some(&"application/json".to_string())
+            Some(&"application/json".to_owned())
         );
     }
 
     #[test]
+    #[expect(clippy::unwrap_used)]
     fn test_request_builder_json() {
         #[derive(serde::Serialize)]
         struct TestBody {
@@ -414,13 +418,13 @@ mod tests {
 
         let builder = Client::post("https://example.com")
             .json(&TestBody {
-                name: "test".to_string(),
+                name: "test".to_owned(),
             })
             .unwrap();
 
         assert_eq!(
             builder.headers.get("content-type"),
-            Some(&"application/json".to_string())
+            Some(&"application/json".to_owned())
         );
         assert!(builder.body.is_some());
     }

@@ -1198,6 +1198,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "collects-assets"
+version = "0.1.0"
+dependencies = [
+ "image",
+]
+
+[[package]]
 name = "collects-business"
 version = "0.1.0"
 dependencies = [
@@ -1254,6 +1261,7 @@ dependencies = [
  "axum-extra",
  "axum-test",
  "chrono",
+ "collects-assets",
  "collects-utils",
  "foyer",
  "http",
@@ -1310,6 +1318,7 @@ dependencies = [
  "arboard",
  "bon",
  "chrono",
+ "collects-assets",
  "collects-business",
  "collects-states",
  "eframe",

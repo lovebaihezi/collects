@@ -21,6 +21,7 @@ log = { workspace = true }
 bon = "3"
 qrcode = "0.14"
 ustr = { workspace = true }
+collects-assets = { path = "../assets" }
 collects-business = { path = "../business" }
 collects-states = { path = "../states" }
 # eframe with all rendering backends and platform support
@@ -52,7 +53,7 @@ urlencoding = "2.1"
 # web:
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen-futures = "0.4.50"
-web-sys = "0.3.70"
+web-sys = { version = "0.3.70", features = ["HtmlLinkElement"] }
 getrandom = { version = "0.2", features = ["js"] }
 image = { version = "0.25", default-features = false }
 
@@ -72,8 +73,8 @@ image = "0.25"
 embed-resource = "2.4"
 
 [features]
-env_test = ["collects-business/env_test"]
-env_test_internal = ["collects-business/env_test_internal"]
-env_internal = ["collects-business/env_internal"]
-env_nightly = ["collects-business/env_nightly"]
-env_pr = ["collects-business/env_pr"]
+env_test = ["collects-assets/env_test", "collects-business/env_test"]
+env_test_internal = ["collects-assets/env_test_internal", "collects-business/env_test_internal"]
+env_internal = ["collects-assets/env_internal", "collects-business/env_internal"]
+env_nightly = ["collects-assets/env_nightly", "collects-business/env_nightly"]
+env_pr = ["collects-assets/env_pr", "collects-business/env_pr"]

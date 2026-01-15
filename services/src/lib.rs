@@ -15,6 +15,8 @@ use opentelemetry::{global, propagation::Extractor};
 use tower_http::trace::TraceLayer;
 use tracing_opentelemetry::OpenTelemetrySpanExt as _;
 
+use axum::http::header;
+
 pub mod auth;
 pub mod collect_files;
 pub mod collects;
@@ -59,6 +61,7 @@ where
 
     let mut router = Router::new()
         .route("/is-health", get(health_check::<S, U>))
+        .route("/favicon.png", get(favicon_png))
         .nest("/v1", v1_routes)
         .nest("/v1", v1_public_routes)
         .nest("/internal", internal_routes)
@@ -137,6 +140,17 @@ where
     );
 
     response
+}
+
+async fn favicon_png() -> impl IntoResponse {
+    let bytes: &'static [u8] = collects_assets::icon();
+    (
+        [
+            (header::CONTENT_TYPE, "image/png"),
+            (header::CACHE_CONTROL, "public, max-age=3600"),
+        ],
+        bytes,
+    )
 }
 
 async fn catch_all() -> impl IntoResponse {

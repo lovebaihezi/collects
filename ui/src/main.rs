@@ -79,6 +79,9 @@ fn main() {
     // Redirect `log` message to `console.log` and friends:
     eframe::WebLogger::init(log::LevelFilter::Debug).ok();
 
+    // Update favicon to use the environment-appropriate icon from collects-assets
+    update_favicon();
+
     let web_options = eframe::WebOptions::default();
 
     wasm_bindgen_futures::spawn_local(async {
@@ -152,4 +155,63 @@ fn main() {
             }
         }
     });
+}
+
+/// Updates the favicon to use the environment-appropriate icon from collects-assets.
+/// This converts the embedded PNG bytes to a base64 data URL and sets it as the favicon.
+#[cfg(target_arch = "wasm32")]
+fn update_favicon() {
+    use eframe::wasm_bindgen::JsCast as _;
+
+    let icon_bytes = collects_assets::icon();
+
+    // Convert to base64 data URL
+    let base64 = base64_encode(icon_bytes);
+    let data_url = format!("data:image/png;base64,{base64}");
+
+    // Find and update the favicon link element
+    if let Some(window) = web_sys::window() {
+        if let Some(document) = window.document() {
+            // Try to find existing favicon link
+            if let Some(link) = document
+                .query_selector("link[rel='icon']")
+                .ok()
+                .flatten()
+                .and_then(|el| el.dyn_into::<web_sys::HtmlLinkElement>().ok())
+            {
+                link.set_href(&data_url);
+            }
+        }
+    }
+}
+
+/// Simple base64 encoder for favicon data URL generation.
+#[cfg(target_arch = "wasm32")]
+fn base64_encode(data: &[u8]) -> String {
+    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+    let mut result = String::with_capacity((data.len() + 2) / 3 * 4);
+
+    for chunk in data.chunks(3) {
+        let b0 = chunk[0] as usize;
+        let b1 = chunk.get(1).copied().unwrap_or(0) as usize;
+        let b2 = chunk.get(2).copied().unwrap_or(0) as usize;
+
+        result.push(ALPHABET[b0 >> 2] as char);
+        result.push(ALPHABET[((b0 & 0x03) << 4) | (b1 >> 4)] as char);
+
+        if chunk.len() > 1 {
+            result.push(ALPHABET[((b1 & 0x0f) << 2) | (b2 >> 6)] as char);
+        } else {
+            result.push('=');
+        }
+
+        if chunk.len() > 2 {
+            result.push(ALPHABET[b2 & 0x3f] as char);
+        } else {
+            result.push('=');
+        }
+    }
+
+    result
 }

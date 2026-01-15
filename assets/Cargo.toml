@@ -1,0 +1,19 @@
+[package]
+name = "collects-assets"
+version = "0.1.0"
+authors = ["BoWen Chai <chaibowen.i@gmail.com>"]
+edition = "2024"
+license = "MIT"
+description = "Shared assets and icon processing for Collects"
+
+[dependencies]
+
+[build-dependencies]
+image = "0.25"
+
+[features]
+env_test = []
+env_test_internal = []
+env_pr = []
+env_internal = []
+env_nightly = []

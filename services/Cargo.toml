@@ -40,6 +40,7 @@ mimalloc = { workspace = true }
 totp-rs = { version = "5.7.0", features = ["otpauth", "gen_secret"] }
 collects-utils = { path = "../utils" }
 uuid = { workspace = true }
+collects-assets = { path = "../assets" }
 utoipa = { version = "5.3", features = ["axum_extras", "chrono", "uuid"] }
 utoipa-axum = "0.2"
 utoipa-scalar = { version = "0.3", features = ["axum"] }

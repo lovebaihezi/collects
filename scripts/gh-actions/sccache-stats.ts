@@ -6,7 +6,6 @@
  */
 
 import { $ } from "bun";
-import * as fs from "node:fs";
 
 export interface SccacheStats {
   cacheHitRate: string;
@@ -85,7 +84,7 @@ export async function getSccacheStats(): Promise<SccacheStats> {
 /**
  * Output stats to GitHub Actions
  */
-function outputToGitHub(stats: SccacheStats): void {
+async function outputToGitHub(stats: SccacheStats): Promise<void> {
   const githubOutput = process.env.GITHUB_OUTPUT;
   if (githubOutput) {
     const outputs = [
@@ -95,7 +94,9 @@ function outputToGitHub(stats: SccacheStats): void {
       `cache-misses=${stats.cacheMisses}`,
       `cache-size=${stats.cacheSize}`,
     ].join("\n");
-    fs.appendFileSync(githubOutput, outputs + "\n");
+    const file = Bun.file(githubOutput);
+    const existingContent = (await file.exists()) ? await file.text() : "";
+    await Bun.write(githubOutput, existingContent + outputs + "\n");
   }
 }
 
@@ -128,7 +129,7 @@ async function stopSccache(): Promise<void> {
 export async function runSccacheStatsCLI(): Promise<void> {
   try {
     const stats = await getSccacheStats();
-    outputToGitHub(stats);
+    await outputToGitHub(stats);
     printSummary(stats);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -141,7 +142,7 @@ export async function runSccacheStatsCLI(): Promise<void> {
       cacheMisses: 0,
       cacheSize: "N/A",
     };
-    outputToGitHub(fallbackStats);
+    await outputToGitHub(fallbackStats);
   } finally {
     await stopSccache();
   }

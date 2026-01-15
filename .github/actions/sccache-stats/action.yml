@@ -25,23 +25,10 @@ runs:
       with:
         bun-version: latest
 
-    - name: Cache Bun
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.bun/install/cache
-          scripts/node_modules
-        key: ${{ runner.os }}-bun-scripts-${{ hashFiles('scripts/bun.lock') }}
-        restore-keys: |
-          ${{ runner.os }}-bun-scripts-
-
-    - name: Install Scripts Dependencies
-      shell: bash
-      working-directory: scripts
-      run: bun install --frozen-lockfile
+    - name: Setup Just
+      uses: extractions/setup-just@v2
 
     - name: Show sccache Stats
       id: stats
       shell: bash
-      working-directory: scripts
-      run: bun run main.ts sccache-stats
+      run: just scripts::sccache-stats

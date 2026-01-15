@@ -114,6 +114,16 @@ impl CFTokenCompute {
         self.result.as_str()
     }
 
+    /// Set the token directly.
+    ///
+    /// This is primarily useful for testing.
+    pub fn set_token(&mut self, token: Option<String>) {
+        self.result = match token {
+            Some(t) => CFTokenResult::Set(t),
+            None => CFTokenResult::Idle,
+        };
+    }
+
     /// Clear any stored token.
     pub fn clear(&mut self) {
         self.result = CFTokenResult::Idle;

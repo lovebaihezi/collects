@@ -38,13 +38,14 @@ uuid = { version = "1", features = ["serde", "v7"] }
 sha2 = "0.10"
 foyer = "0.21"
 
-flume = "0.11"
+flume = "0.12"
 mimalloc = { version = "0.1", default-features = false }
 wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"
 log = "0.4"
 
-ustr = "1"
+ustr = { version = "1", features = ["serde"] }
+inquire = { version = "0.9", features = ["date"] }
 
 [profile.dev]
 opt-level = 1

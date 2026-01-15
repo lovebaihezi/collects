@@ -151,6 +151,18 @@ impl SnapshotClone for AuthCompute {
 }
 
 impl AuthCompute {
+    /// Create an authenticated `AuthCompute` with the given token and username.
+    ///
+    /// This is primarily useful for testing.
+    pub fn new_authenticated(token: String, username: String) -> Self {
+        Self {
+            status: AuthStatus::Authenticated {
+                username,
+                token: Some(token),
+            },
+        }
+    }
+
     /// Check if the user is authenticated.
     pub fn is_authenticated(&self) -> bool {
         self.status.is_authenticated()

@@ -209,12 +209,15 @@ where
     let api = ApiDoc::openapi();
     let api_clone = api.clone();
 
+    // Custom HTML template with favicon matching the WASM worker UI
+    let custom_html = include_str!("../res/scalar.html");
+
     let routes = Router::new()
         .route(
             "/openapi.json",
             get(move || async move { axum::Json(api_clone) }),
         )
-        .merge(Scalar::with_url("/docs", api));
+        .merge(Scalar::with_url("/docs", api).custom_html(custom_html));
 
     // Apply Zero Trust middleware if configured
     let protected_routes = match (config.cf_access_team_domain(), config.cf_access_aud()) {

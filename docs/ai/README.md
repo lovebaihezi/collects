@@ -26,6 +26,18 @@ Typical tasks:
 
 ---
 
+### If you touch CLI timing, profiling, or tracing
+Read:
+- `docs/ai/tracing.md`
+
+Typical tasks:
+- adding `#[instrument]` to new CLI functions
+- debugging latency issues
+- using `--timing` and `--verbose` flags
+- understanding `time.busy` vs `time.idle` output
+
+---
+
 ### If you touch CI workflows, scripts, or GitHub Actions
 Read:
 - `docs/ai/scripts-and-ci.md`
@@ -90,6 +102,7 @@ When you start a task:
 - `docs/ai/scripts-and-ci.md` — scripts + GitHub Actions rules
 - `docs/ai/versioning.md` — version format + release metadata rules
 - `docs/ai/commits.md` — Conventional Commits + PR title rules
+- `docs/ai/tracing.md` — CLI timing, profiling, and tracing with `#[instrument]`
 
 ---
 

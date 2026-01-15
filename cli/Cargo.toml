@@ -3,6 +3,10 @@ name = "collects-cli"
 version = "0.1.0"
 edition = "2024"
 
+[[bin]]
+name = "collects"
+path = "src/main.rs"
+
 [dependencies]
 collects-business = { path = "../business" }
 collects-states = { path = "../states" }
@@ -10,14 +14,19 @@ collects-utils = { path = "../utils" }
 
 tokio = { version = "1", features = ["full"] }
 clap = { version = "4", features = ["derive", "env"] }
+clap_complete = "4"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-dirs = "5"
+dirs = "6"
 anyhow = "1"
-env_logger = "0.11"
 log = "0.4"
 rpassword = "7"
 mime_guess = "2.0.5"
+inquire = { workspace = true }
+ustr = { workspace = true }
+chrono = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
 
 [features]
 default = []

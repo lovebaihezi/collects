@@ -51,6 +51,16 @@ Key rules:
 - Only add new migrations; never edit or remove existing ones
 - Run `just scripts::migration-check` to verify integrity locally
 
+### 7) CLI tracing and timing
+If you add CLI commands or debug latency issues:
+- Read and follow: `docs/ai/tracing.md`
+
+Key rules:
+- Use `#[instrument(skip_all, name = "...")]` on async command handlers
+- Add `fields(...)` for key parameters useful for debugging
+- Use `--timing` flag for latency visibility, `--timing -v` for detailed HTTP tracing
+- `time.busy` = CPU time, `time.idle` = I/O wait time
+
 ## General engineering expectations
 
 - Don’t guess file locations or existing interfaces: search and read the relevant code first.

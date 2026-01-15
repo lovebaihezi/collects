@@ -149,6 +149,7 @@ pub fn internal_users_panel(state_ctx: &mut StateCtx, api_base_url: &str, ui: &m
 /// This avoids auto-refreshing based on OTP-cycle staleness (OTP codes are unstable) and instead
 /// loads the table once on entry. Commands should be flushed end-of-frame by the app loop.
 #[inline]
+#[cfg(not(any(feature = "env_internal", feature = "env_test_internal")))]
 fn request_initial_users_refresh_if_needed(state_ctx: &mut StateCtx, api_base_url: &str) {
     let Some(compute) = state_ctx.cached::<InternalUsersListUsersCompute>() else {
         // Compute not registered yet; nothing to do here.
@@ -169,6 +170,12 @@ fn request_initial_users_refresh_if_needed(state_ctx: &mut StateCtx, api_base_ur
         input.api_base_url = Some(Ustr::from(api_base_url));
     });
 
+    // Mark that we're starting a fetch so ensure_last_fetch_initialized_for_loaded_users
+    // knows to update last_fetch when the refresh completes.
+    state_ctx.update::<InternalUsersState>(|s| {
+        s.is_fetching = true;
+    });
+
     // Enqueue only; do NOT flush mid-frame from within widget code.
     state_ctx.enqueue_command::<RefreshInternalUsersCommand>();
 }
@@ -185,9 +192,15 @@ fn request_initial_users_refresh_if_needed(state_ctx: &mut StateCtx, api_base_ur
 /// `InternalUsersListUsersCompute`, so we initialize `last_fetch` here to keep the
 /// countdown correct in manual-time integration tests and in the app.
 ///
-/// This is intentionally conservative:
-/// - Only sets `last_fetch` if it's `None`
-/// - Only when list-users compute has `Loaded(_)`
+/// This function updates `last_fetch` in two scenarios:
+/// 1. First load: `last_fetch` is `None` and compute is `Loaded`
+/// 2. Refresh completion: `is_fetching` is `true` and compute is `Loaded`
+///
+/// The second scenario is critical to prevent infinite refresh loops:
+/// When a refresh completes with a user having `time_remaining = 0`, the stale check
+/// (`elapsed >= time_remaining`) would immediately be true if `last_fetch` wasn't updated.
+/// By updating `last_fetch` on every refresh completion, we ensure the stale check
+/// compares against the fresh data's fetch time.
 #[inline]
 fn ensure_last_fetch_initialized_for_loaded_users(state_ctx: &mut StateCtx) {
     let Some(compute) = state_ctx.cached::<InternalUsersListUsersCompute>() else {
@@ -198,15 +211,21 @@ fn ensure_last_fetch_initialized_for_loaded_users(state_ctx: &mut StateCtx) {
         return;
     };
 
-    let has_last_fetch = state_ctx.state::<InternalUsersState>().last_fetch.is_some();
+    let state = state_ctx.state::<InternalUsersState>();
+    let has_last_fetch = state.last_fetch.is_some();
+    let was_fetching = state.is_fetching;
 
-    if has_last_fetch {
+    // Update last_fetch if:
+    // 1. First load (no last_fetch yet), OR
+    // 2. Refresh just completed (is_fetching was true)
+    if has_last_fetch && !was_fetching {
         return;
     }
 
     let now = *state_ctx.state::<Time>().as_ref();
     state_ctx.update::<InternalUsersState>(|s| {
         s.last_fetch = Some(now);
+        s.is_fetching = false;
     });
 }
 
@@ -254,6 +273,12 @@ fn request_refresh_if_otp_stale(state_ctx: &mut StateCtx, api_base_url: &str) {
         input.api_base_url = Some(Ustr::from(api_base_url));
     });
 
+    // Mark that we're starting a fetch so ensure_last_fetch_initialized_for_loaded_users
+    // knows to update last_fetch when the refresh completes.
+    state_ctx.update::<InternalUsersState>(|s| {
+        s.is_fetching = true;
+    });
+
     // Enqueue only; flush at end-of-frame in the app loop.
     state_ctx.enqueue_command::<RefreshInternalUsersCommand>();
 }
@@ -269,6 +294,11 @@ fn render_controls_row(state_ctx: &mut StateCtx, api_base_url: &str, ui: &mut Ui
                 // The command will fall back to `BusinessConfig::api_url()` if input is unset.
                 state_ctx.update::<collects_business::InternalUsersListUsersInput>(|input| {
                     input.api_base_url = Some(Ustr::from(api_base_url));
+                });
+                // Mark that we're starting a fetch so ensure_last_fetch_initialized_for_loaded_users
+                // knows to update last_fetch when the refresh completes.
+                state_ctx.update::<InternalUsersState>(|s| {
+                    s.is_fetching = true;
                 });
                 // Enqueue only; flush at end-of-frame in the app loop.
                 state_ctx.enqueue_command::<RefreshInternalUsersCommand>();

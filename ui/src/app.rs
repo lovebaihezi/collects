@@ -524,6 +524,13 @@ impl<P: PasteHandler, D: DropHandler> CollectsApp<P, D> {
             // Enqueue only; flush will happen in the normal end-of-frame flow.
             #[cfg(any(feature = "env_internal", feature = "env_test_internal"))]
             if matches!(new_route, Route::Internal) {
+                // Mark that we're starting a fetch so ensure_last_fetch_initialized_for_loaded_users
+                // knows to update last_fetch when the refresh completes.
+                self.state
+                    .ctx
+                    .update::<collects_business::InternalUsersState>(|s| {
+                        s.is_fetching = true;
+                    });
                 self.state
                     .ctx
                     .enqueue_command::<RefreshInternalUsersCommand>();

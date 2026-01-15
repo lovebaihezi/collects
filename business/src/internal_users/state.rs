@@ -456,9 +456,12 @@ impl InternalUsersState {
             return false;
         }
 
-        // The OTP is stale if elapsed time exceeds the original_time_remaining.
+        // The OTP is stale if elapsed time strictly exceeds the original_time_remaining.
         // This means we've crossed at least one 30-second boundary.
-        elapsed_seconds >= original_time_remaining as i64
+        // Using strict `>` (not `>=`) prevents immediate re-fetch when time_remaining = 0:
+        // if the API returns time_remaining = 0 and we just fetched (elapsed = 0),
+        // `0 > 0` is false, so we won't immediately consider it stale.
+        elapsed_seconds > original_time_remaining as i64
     }
 
     /// Get the number of complete OTP cycles elapsed since last fetch.
@@ -695,7 +698,9 @@ mod tests {
         // If original time_remaining was 5, and 10 seconds elapsed,
         // we've crossed the boundary into a new cycle - stale
         assert!(state.is_otp_stale(5, now));
-        assert!(state.is_otp_stale(10, now)); // exactly at boundary
+        // Exactly at boundary (elapsed == time_remaining) is NOT stale yet.
+        // We use strict `>` to prevent immediate re-fetch when time_remaining = 0.
+        assert!(!state.is_otp_stale(10, now)); // exactly at boundary - not stale yet
     }
 
     #[test]
@@ -705,8 +710,15 @@ mod tests {
         let state = state_with_last_fetch(fetch_time);
 
         // If original time_remaining was 15, and exactly 15 seconds elapsed,
-        // we're exactly at the boundary - considered stale (time_remaining would be 0)
-        assert!(state.is_otp_stale(15, now));
+        // we're exactly at the boundary (time_remaining would be 0).
+        // With strict `>` semantics, exactly at boundary is NOT yet stale.
+        // This prevents immediate re-fetch when API returns time_remaining = 0.
+        assert!(!state.is_otp_stale(15, now));
+
+        // One second past the boundary IS stale.
+        let fetch_time_past = now - Duration::seconds(16);
+        let state_past = state_with_last_fetch(fetch_time_past);
+        assert!(state_past.is_otp_stale(15, now));
     }
 
     #[test]

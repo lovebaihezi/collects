@@ -73,7 +73,10 @@ pub fn show_edit_username_modal(
                     d.remove::<String>(draft_id);
                 });
                 // Close the action and refresh.
-                state_ctx.update::<InternalUsersState>(|s| s.close_action());
+                state_ctx.update::<InternalUsersState>(|s| {
+                    s.close_action();
+                    s.is_fetching = true;
+                });
                 state_ctx.enqueue_command::<RefreshInternalUsersCommand>();
                 state_ctx.enqueue_command::<ResetInternalUsersActionCommand>();
                 return;
@@ -221,7 +224,10 @@ pub fn show_edit_profile_modal(
                     d.remove::<String>(avatar_id);
                 });
                 // Close the action and refresh.
-                state_ctx.update::<InternalUsersState>(|s| s.close_action());
+                state_ctx.update::<InternalUsersState>(|s| {
+                    s.close_action();
+                    s.is_fetching = true;
+                });
                 state_ctx.enqueue_command::<RefreshInternalUsersCommand>();
                 state_ctx.enqueue_command::<ResetInternalUsersActionCommand>();
                 return;
@@ -352,7 +358,10 @@ pub fn show_delete_user_modal(
             // Handle success: close modal, trigger refresh, and reset compute.
             if is_success {
                 // Close the action and refresh.
-                state_ctx.update::<InternalUsersState>(|s| s.close_action());
+                state_ctx.update::<InternalUsersState>(|s| {
+                    s.close_action();
+                    s.is_fetching = true;
+                });
                 state_ctx.enqueue_command::<RefreshInternalUsersCommand>();
                 state_ctx.enqueue_command::<ResetInternalUsersActionCommand>();
                 return;
@@ -505,7 +514,10 @@ pub fn show_revoke_otp_modal(
                 ui.add_space(8.0);
                 if ui.button("Close").clicked() {
                     // Close the action, trigger refresh, and reset compute.
-                    state_ctx.update::<InternalUsersState>(|s| s.close_action());
+                    state_ctx.update::<InternalUsersState>(|s| {
+                        s.close_action();
+                        s.is_fetching = true;
+                    });
                     state_ctx.enqueue_command::<RefreshInternalUsersCommand>();
                     state_ctx.enqueue_command::<ResetInternalUsersActionCommand>();
                 }
@@ -645,7 +657,10 @@ pub fn show_create_user_modal(state_ctx: &mut StateCtx, ui: &mut Ui) {
                     ui.add_space(8.0);
                     if ui.button("Done").clicked() {
                         super::panel::reset_create_user_compute(state_ctx);
-                        state_ctx.update::<InternalUsersState>(|s| s.close_create_modal());
+                        state_ctx.update::<InternalUsersState>(|s| {
+                            s.close_create_modal();
+                            s.is_fetching = true;
+                        });
                         state_ctx.enqueue_command::<RefreshInternalUsersCommand>();
                     }
                 }

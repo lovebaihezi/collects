@@ -15,7 +15,7 @@ use collects_services::{
         SqlStorageError, TagCreate, TagRow, TagUpdate, UploadInsert, UploadRow,
     },
     routes,
-    users::storage::MockUserStorage,
+    users::storage::{MockUserStorage, StoredUser},
 };
 
 /// A fixed UUID for test scenarios to coordinate between MockSqlStorage and MockUserStorage.
@@ -72,14 +72,15 @@ impl Default for MockSqlStorage {
     }
 }
 
-/// Creates a MockUserStorage with a test user.
+/// Creates a MockUserStorage with a test user that has the fixed `TEST_USER_ID`.
 ///
-/// Note: This uses `MockUserStorage::with_users` which generates random user IDs.
-/// For tests that need a specific user ID (e.g., ownership checks), use
-/// `MockSqlStorage::with_user_id` to coordinate the mock responses.
+/// This ensures that the user ID returned by `get_user("testuser")` matches
+/// `TEST_USER_ID`, which is important for tests that check ownership (e.g.,
+/// share links, contents, groups).
 #[allow(dead_code)]
 pub fn create_test_user_storage() -> MockUserStorage {
-    MockUserStorage::with_users([("testuser", "SECRET123")])
+    let user = StoredUser::with_id(TEST_USER_ID, "testuser", "SECRET123");
+    MockUserStorage::new().with_user(user)
 }
 
 /// Generate a valid test JWT token for the "testuser" user.

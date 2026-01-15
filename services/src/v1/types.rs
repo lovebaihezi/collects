@@ -1,8 +1,31 @@
 //! Shared types for the v1 API endpoints.
 
 use crate::database::{self, ContentRow, ShareLinkRow, SharePermission, Visibility};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use utoipa::{IntoParams, ToSchema};
+
+// =============================================================================
+// Custom Deserializers
+// =============================================================================
+
+/// Deserialize a "double option" field that distinguishes between:
+/// - Field absent from JSON: `None` (no change)
+/// - Field present as `null`: `Some(None)` (clear the value)
+/// - Field present with value: `Some(Some(value))` (set the value)
+///
+/// This is needed because serde's default behavior with `#[serde(default)]`
+/// treats absent fields and `null` the same way.
+pub fn deserialize_double_option<'de, T, D>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
+where
+    T: Deserialize<'de>,
+    D: Deserializer<'de>,
+{
+    // Deserialize as Option<T>, which gives us:
+    // - null -> None
+    // - value -> Some(value)
+    // Then wrap in Some() to indicate the field was present
+    Ok(Some(Option::deserialize(deserializer)?))
+}
 
 // =============================================================================
 // Generic Error Response
@@ -541,7 +564,7 @@ pub struct V1ShareLinkCreateRequest {
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct V1ShareLinkUpdateRequest {
     /// New name (optional, pass null to clear).
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_double_option")]
     pub name: Option<Option<String>>,
     /// New permission level: "view" or "download".
     #[serde(default)]
@@ -550,10 +573,10 @@ pub struct V1ShareLinkUpdateRequest {
     #[serde(default)]
     pub password: Option<String>,
     /// New expiration (optional, pass null to clear).
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_double_option")]
     pub expires_at: Option<Option<String>>,
     /// New max access count (optional, pass null to clear).
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_double_option")]
     pub max_access_count: Option<Option<i32>>,
     /// Whether the link is active.
     #[serde(default)]

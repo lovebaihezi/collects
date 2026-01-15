@@ -298,9 +298,10 @@ test env="local":
 
     cargo test -p collects-services
 
-# Run tests without database (unit tests only, offline mode)
+# Run tests without database (offline mode)
+# This includes unit tests and integration tests that use mock storage
 test-unit:
-    SQLX_OFFLINE=true cargo test -p collects-services --lib
+    SQLX_OFFLINE=true cargo test -p collects-services
 
 # Deploys the service to Cloud Run
 # Environments: prod, internal, nightly, test, test-internal, pr

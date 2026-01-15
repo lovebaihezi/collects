@@ -345,6 +345,31 @@ impl MockUserStorage {
     pub fn clear(&self) {
         self.users.write().expect("lock poisoned").clear();
     }
+
+    /// Inserts a user with a specific ID into the storage (builder pattern).
+    ///
+    /// This is useful for integration tests that need to coordinate user IDs
+    /// between `MockUserStorage` and other mock storages (e.g., `MockSqlStorage`).
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use collects_services::users::storage::{MockUserStorage, StoredUser};
+    /// use uuid::Uuid;
+    ///
+    /// let test_user_id = Uuid::from_u128(0x00000000_0000_0000_0000_000000000001);
+    /// let user = StoredUser::with_id(test_user_id, "testuser", "SECRET123");
+    /// let storage = MockUserStorage::new().with_user(user);
+    ///
+    /// // Now get_user("testuser") will return a user with test_user_id
+    /// ```
+    pub fn with_user(self, user: StoredUser) -> Self {
+        self.users
+            .write()
+            .expect("lock poisoned")
+            .insert(user.username.clone(), user);
+        self
+    }
 }
 
 impl UserStorage for MockUserStorage {

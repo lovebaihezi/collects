@@ -48,6 +48,7 @@ web-sys = "0.3.70"
 getrandom = { version = "0.2", features = ["js"] }
 image = { version = "0.25", default-features = false }
 # Enable webgl feature on wgpu for WASM target
+# Version 27.0.1 matches eframe 0.33's wgpu dependency to avoid conflicts
 wgpu = { version = "27.0.1", features = ["webgl"] }
 
 [dev-dependencies]

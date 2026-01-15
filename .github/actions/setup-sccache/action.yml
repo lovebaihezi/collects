@@ -17,6 +17,10 @@ inputs:
     description: "Optional prefix for cache keys (useful for separating different targets/platforms)"
     required: false
     default: ""
+  sccache-version:
+    description: "sccache version to install (e.g., 'v0.10.0'). Leave empty to use the action's default."
+    required: false
+    default: ""
 
 outputs:
   cache-hit-rate:
@@ -38,7 +42,7 @@ runs:
     - name: Install sccache
       uses: mozilla-actions/sccache-action@v0.0.9
       with:
-        version: "v0.10.0"
+        version: ${{ inputs.sccache-version || '' }}
 
     - name: Configure sccache for R2
       shell: bash

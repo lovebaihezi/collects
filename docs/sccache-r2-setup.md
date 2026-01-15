@@ -124,11 +124,7 @@ Cache bytes written              30 MB
 
 ### Storage Costs
 
-R2 pricing (as of 2024):
-- Storage: $0.015/GB/month
-- Class A operations (writes): $4.50/million
-- Class B operations (reads): $0.36/million
-- Egress: Free
+See [Cloudflare R2 Pricing](https://developers.cloudflare.com/r2/pricing/) for current rates. R2 offers free egress, making it cost-effective for CI caching.
 
 Typical sccache storage for this project: 5-20 GB
 

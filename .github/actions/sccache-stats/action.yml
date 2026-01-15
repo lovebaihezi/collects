@@ -36,10 +36,10 @@ runs:
           CACHE_MISSES=$(echo "$STATS" | jq -r '.stats.cache_misses.counts.Rust // 0')
           CACHE_SIZE=$(echo "$STATS" | jq -r '.stats.cache_location.S3.size // "N/A"')
 
-          # Calculate hit rate
+          # Calculate hit rate using awk (bc is not always available)
           TOTAL=$((CACHE_HITS + CACHE_MISSES))
           if [ $TOTAL -gt 0 ]; then
-            HIT_RATE=$(echo "scale=1; $CACHE_HITS * 100 / $TOTAL" | bc)
+            HIT_RATE=$(awk "BEGIN {printf \"%.1f\", $CACHE_HITS * 100 / $TOTAL}")
           else
             HIT_RATE="0.0"
           fi

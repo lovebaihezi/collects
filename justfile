@@ -1,3 +1,4 @@
+mod cli
 mod ui
 mod services
 mod scripts

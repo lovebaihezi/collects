@@ -57,11 +57,86 @@ Therefore, you must run both:
    - Prefer `wiremock` for networked UI flows.
    - Cover both 2xx and error responses (4xx/5xx) and verify user-visible error handling.
 
+## Business layer testing with mock servers
+
+For testing business commands (CreateContent, ListContents, GetContent, etc.) without hitting real API endpoints, use the `test_utils` module in `collects-business`.
+
+### Setup
+
+The `test_utils` module provides:
+- `TestContext`: wraps a `MockServer` and `StateCtx` configured to use it
+- Helper methods to mock API responses (`mock_list_contents`, `mock_get_content`, etc.)
+- `set_authenticated(token)`: sets auth state for authenticated endpoints
+- `flush_and_wait()`: flushes commands and awaits all async tasks
+
+### Example test
+
+```rust
+use collects_business::test_utils::{TestContext, sample_content_item};
+use collects_business::{ListContentsCommand, ListContentsCompute, ListContentsInput, ListContentsStatus};
+
+#[tokio::test]
+async fn test_list_contents_success() {
+    let mut test_ctx = TestContext::new().await;
+
+    // Set up authentication (most endpoints require it)
+    test_ctx.set_authenticated("test_token");
+
+    // Mount mock response
+    let items = vec![sample_content_item("1"), sample_content_item("2")];
+    test_ctx.mock_list_contents(items, 2).await;
+
+    // Set input and enqueue command
+    test_ctx.ctx.update::<ListContentsInput>(|input| {
+        input.limit = Some(10);
+        input.offset = Some(0);
+    });
+    test_ctx.ctx.enqueue_command::<ListContentsCommand>();
+
+    // Flush and await all tasks
+    test_ctx.flush_and_wait().await;
+
+    // Verify result
+    let compute = test_ctx.ctx.compute::<ListContentsCompute>();
+    match &compute.status {
+        ListContentsStatus::Success(items) => {
+            assert_eq!(items.len(), 2);
+        }
+        other => panic!("Expected Success, got {:?}", other),
+    }
+
+    test_ctx.shutdown().await;
+}
+```
+
+### Key patterns
+
+1. **Always call `shutdown()`** at the end of tests to clean up async tasks
+2. **Use `flush_and_wait()`** to execute commands - it:
+   - Syncs pending compute updates
+   - Flushes the command queue (spawns async tasks)
+   - Awaits all tasks in the JoinSet
+   - Syncs again to apply results
+3. **Mock responses must match API formats** - check the actual command implementation for expected response shapes
+4. **Test both success and error cases** - including unauthenticated access
+
+### Available mock helpers
+
+- `mock_login(success, token, username)` - login endpoint
+- `mock_validate_token(valid, username)` - token validation
+- `mock_list_contents(items, total)` - list contents
+- `mock_get_content(id, content)` - get single content
+- `mock_get_content_not_found(id)` - 404 response
+- `mock_view_url(content_id, url, expires_at)` - presigned URL
+- `mock_create_content(content_id)` - inline content creation
+- `mock_full_upload(upload_id, content_id)` - file upload flow (init + put + complete)
+
 ## Requirements for new work
 
-- New widget: add a widget unit test (in the same file) and an integration test if it’s part of a larger flow.
-- New feature: add an end-to-end integration test under the relevant crate’s `tests/` directory.
+- New widget: add a widget unit test (in the same file) and an integration test if it's part of a larger flow.
+- New feature: add an end-to-end integration test under the relevant crate's `tests/` directory.
 - New API endpoint: add service tests for happy path + error cases, plus auth/permission cases if applicable.
+- New business command: add mock server tests in `business/src/test_utils.rs` covering success, error, and unauthenticated cases.
 
 ## Before opening a PR
 

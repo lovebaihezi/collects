@@ -14,6 +14,16 @@ permissions:
   contents: write
   issues: write
 
+env:
+  CARGO_TERM_COLOR: always
+  # sccache R2 configuration (shared across jobs)
+  SCCACHE_BUCKET: ${{ secrets.SCCACHE_R2_BUCKET }}
+  SCCACHE_ENDPOINT: https://${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.r2.cloudflarestorage.com
+  SCCACHE_REGION: auto
+  AWS_ACCESS_KEY_ID: ${{ secrets.SCCACHE_R2_ACCESS_KEY_ID }}
+  AWS_SECRET_ACCESS_KEY: ${{ secrets.SCCACHE_R2_SECRET_ACCESS_KEY }}
+  RUSTC_WRAPPER: sccache
+
 jobs:
   # Gate: Only proceed if CI workflow passed (or if triggered by schedule/tag)
   ci-check:
@@ -92,12 +102,15 @@ jobs:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             output_name: Collects-linux-x86_64
+            sccache_prefix: linux-x86_64
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             output_name: Collects-windows-x86_64.exe
+            sccache_prefix: windows-x86_64
           - os: macos-14
             target: aarch64-apple-darwin
             output_name: Collects-macos-aarch64
+            sccache_prefix: macos-aarch64
 
     steps:
       - uses: actions/checkout@v4
@@ -115,6 +128,11 @@ jobs:
         with:
           toolchain: nightly
           targets: ${{ matrix.target }}
+
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.9
+        env:
+          SCCACHE_S3_KEY_PREFIX: ${{ matrix.sccache_prefix }}
 
       - name: Cache Rust dependencies
         uses: swatinem/rust-cache@v2
@@ -149,6 +167,13 @@ jobs:
         run: just ui::package-native ${{ matrix.output_name }} ${{ env.FEATURES }}
         env:
           PR_NUMBER: ${{ needs.ci-check.outputs.pr_number }}
+
+      - name: Show sccache Stats
+        if: always()
+        shell: bash
+        run: |
+          echo "=== sccache Statistics ==="
+          sccache --show-stats
 
       - name: Upload Artifact
         if: needs.ci-check.outputs.original_event == 'pull_request' || (needs.ci-check.outputs.is_main_branch == 'true' && needs.ci-check.outputs.original_event == 'push')

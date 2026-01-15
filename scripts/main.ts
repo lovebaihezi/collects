@@ -43,6 +43,7 @@ import {
   setupZeroTrustSecrets,
 } from "./services/zero-trust-setup.ts";
 import { runCommandUpdaterCheckCLI } from "./gh-actions/command-updater-check.ts";
+import { runSccacheStatsCLI } from "./gh-actions/sccache-stats.ts";
 
 const cli = cac("services");
 
@@ -449,6 +450,15 @@ cli
   )
   .action(async () => {
     await runCommandUpdaterCheckCLI();
+  });
+
+cli
+  .command(
+    "sccache-stats",
+    "Display sccache statistics and cache performance metrics (for GitHub Actions)",
+  )
+  .action(async () => {
+    await runSccacheStatsCLI();
   });
 
 cli.command("", "Show help").action(() => {

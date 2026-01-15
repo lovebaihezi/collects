@@ -139,6 +139,12 @@ migration-check: install
 migration-lock: install
     bun run main.ts migration-lock
 
+# Display sccache statistics and cache performance metrics (for GitHub Actions)
+# Outputs stats to GitHub Actions and stops the sccache server
+# Usage: just scripts::sccache-stats
+sccache-stats: install
+    bun run main.ts sccache-stats
+
 # Run ast-grep rule tests
 # Tests rules defined in rules/ directory against test cases in rule-tests/
 # Usage: just scripts::sg-test

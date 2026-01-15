@@ -10,6 +10,14 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  # sccache R2 configuration (shared across jobs)
+  SCCACHE_BUCKET: ${{ secrets.SCCACHE_R2_BUCKET }}
+  SCCACHE_ENDPOINT: https://${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.r2.cloudflarestorage.com
+  SCCACHE_REGION: auto
+  AWS_ACCESS_KEY_ID: ${{ secrets.SCCACHE_R2_ACCESS_KEY_ID }}
+  AWS_SECRET_ACCESS_KEY: ${{ secrets.SCCACHE_R2_SECRET_ACCESS_KEY }}
+  RUSTC_WRAPPER: sccache
+  SCCACHE_S3_KEY_PREFIX: linux-musl
 
 jobs:
   # Gate: Only proceed if CI workflow passed (or if triggered by schedule)
@@ -237,6 +245,9 @@ jobs:
           toolchain: nightly
           targets: x86_64-unknown-linux-musl
 
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.9
+
       - name: Setup Just
         uses: extractions/setup-just@v2
 
@@ -275,6 +286,10 @@ jobs:
           SQLX_OFFLINE: "true"
         run: |
           just docker-push ${{ needs.determine-environment.outputs.tag }}
+
+      - name: Show sccache Stats
+        if: always()
+        uses: ./.github/actions/sccache-stats
 
   # ============================================
   # Deploy: PR Environment

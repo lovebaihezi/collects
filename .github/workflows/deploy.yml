@@ -10,6 +10,14 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  # sccache R2 configuration (shared across jobs)
+  SCCACHE_BUCKET: ${{ secrets.SCCACHE_R2_BUCKET }}
+  SCCACHE_ENDPOINT: https://${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.r2.cloudflarestorage.com
+  SCCACHE_REGION: auto
+  AWS_ACCESS_KEY_ID: ${{ secrets.SCCACHE_R2_ACCESS_KEY_ID }}
+  AWS_SECRET_ACCESS_KEY: ${{ secrets.SCCACHE_R2_SECRET_ACCESS_KEY }}
+  RUSTC_WRAPPER: sccache
+  SCCACHE_S3_KEY_PREFIX: wasm32
 
 jobs:
   # Gate: Only proceed if CI workflow passed (or if triggered by schedule)
@@ -99,6 +107,9 @@ jobs:
           toolchain: nightly
           targets: wasm32-unknown-unknown
 
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.9
+
       - name: Cache Rust dependencies
         uses: swatinem/rust-cache@v2
 
@@ -125,6 +136,10 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           PR_NUMBER: ${{ needs.ci-check.outputs.pr_number }}
+
+      - name: Show sccache Stats
+        if: always()
+        uses: ./.github/actions/sccache-stats
 
   # ============================================
   # Deploy: Test Environment
@@ -158,6 +173,9 @@ jobs:
           toolchain: nightly
           targets: wasm32-unknown-unknown
 
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.9
+
       - name: Cache Rust dependencies
         uses: swatinem/rust-cache@v2
 
@@ -183,6 +201,10 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Show sccache Stats
+        if: always()
+        uses: ./.github/actions/sccache-stats
 
   # ============================================
   # Deploy: Test-Internal Environment
@@ -216,6 +238,9 @@ jobs:
           toolchain: nightly
           targets: wasm32-unknown-unknown
 
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.9
+
       - name: Cache Rust dependencies
         uses: swatinem/rust-cache@v2
 
@@ -241,6 +266,10 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Show sccache Stats
+        if: always()
+        uses: ./.github/actions/sccache-stats
 
   # ============================================
   # Deploy: Production Environment
@@ -274,6 +303,9 @@ jobs:
           toolchain: nightly
           targets: wasm32-unknown-unknown
 
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.9
+
       - name: Cache Rust dependencies
         uses: swatinem/rust-cache@v2
 
@@ -299,6 +331,10 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Show sccache Stats
+        if: always()
+        uses: ./.github/actions/sccache-stats
 
   # ============================================
   # Deploy: Internal Environment
@@ -332,6 +368,9 @@ jobs:
           toolchain: nightly
           targets: wasm32-unknown-unknown
 
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.9
+
       - name: Cache Rust dependencies
         uses: swatinem/rust-cache@v2
 
@@ -357,6 +396,10 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Show sccache Stats
+        if: always()
+        uses: ./.github/actions/sccache-stats
 
   # ============================================
   # Deploy: Nightly Environment
@@ -389,6 +432,9 @@ jobs:
           toolchain: nightly
           targets: wasm32-unknown-unknown
 
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.9
+
       - name: Cache Rust dependencies
         uses: swatinem/rust-cache@v2
 
@@ -414,6 +460,10 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Show sccache Stats
+        if: always()
+        uses: ./.github/actions/sccache-stats
 
       - name: Create Issue on Scheduled Job Failure
         if: failure() && github.event_name == 'schedule'

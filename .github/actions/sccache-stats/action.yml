@@ -1,0 +1,34 @@
+name: "Show sccache Stats"
+description: "Display sccache statistics and report cache performance metrics"
+outputs:
+  cache-hit-rate:
+    description: "The cache hit rate percentage"
+    value: ${{ steps.stats.outputs.cache-hit-rate }}
+  compile-requests:
+    description: "Total compile requests"
+    value: ${{ steps.stats.outputs.compile-requests }}
+  cache-hits:
+    description: "Number of cache hits"
+    value: ${{ steps.stats.outputs.cache-hits }}
+  cache-misses:
+    description: "Number of cache misses"
+    value: ${{ steps.stats.outputs.cache-misses }}
+  cache-size:
+    description: "Current cache size"
+    value: ${{ steps.stats.outputs.cache-size }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Setup Bun
+      uses: oven-sh/setup-bun@v2
+      with:
+        bun-version: latest
+
+    - name: Setup Just
+      uses: extractions/setup-just@v2
+
+    - name: Show sccache Stats
+      id: stats
+      shell: bash
+      run: just scripts::sccache-stats

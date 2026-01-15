@@ -8,6 +8,13 @@ on:
 env:
   CARGO_TERM_COLOR: always
   BUN_INSTALL_CACHE_DIR: ~/.bun/install/cache
+  # sccache R2 configuration (shared across jobs)
+  SCCACHE_BUCKET: ${{ secrets.SCCACHE_R2_BUCKET }}
+  SCCACHE_ENDPOINT: https://${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.r2.cloudflarestorage.com
+  SCCACHE_REGION: auto
+  AWS_ACCESS_KEY_ID: ${{ secrets.SCCACHE_R2_ACCESS_KEY_ID }}
+  AWS_SECRET_ACCESS_KEY: ${{ secrets.SCCACHE_R2_SECRET_ACCESS_KEY }}
+  RUSTC_WRAPPER: sccache
 
 jobs:
   # ============================================
@@ -151,6 +158,9 @@ jobs:
       - name: Setup Just
         uses: extractions/setup-just@v2
 
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.9
+
       - name: Cache Rust dependencies
         uses: swatinem/rust-cache@v2
         with:
@@ -162,6 +172,10 @@ jobs:
 
       - name: Check Lint
         run: just check-lint
+
+      - name: Show sccache Stats
+        if: always()
+        uses: ./.github/actions/sccache-stats
 
       - name: Post CI Feedback on Failure
         if: failure() && github.event_name == 'pull_request'
@@ -362,6 +376,9 @@ jobs:
       - name: Setup Just
         uses: extractions/setup-just@v2
 
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.9
+
       - name: Cache Rust dependencies
         uses: swatinem/rust-cache@v2
         with:
@@ -369,6 +386,10 @@ jobs:
 
       - name: Run Services Tests
         run: just services::test-unit
+
+      - name: Show sccache Stats
+        if: always()
+        uses: ./.github/actions/sccache-stats
 
       - name: Post CI Feedback on Failure
         if: failure() && github.event_name == 'pull_request'
@@ -434,6 +455,9 @@ jobs:
       - name: Setup Just
         uses: extractions/setup-just@v2
 
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.9
+
       - name: Cache Rust dependencies
         uses: swatinem/rust-cache@v2
         with:
@@ -444,6 +468,10 @@ jobs:
       - name: Run UI Tests (${{ matrix.test-type }})
         working-directory: ui
         run: cargo test ${{ matrix.features }} ${{ matrix.cargo-args }}
+
+      - name: Show sccache Stats
+        if: always()
+        uses: ./.github/actions/sccache-stats
 
       - name: Post CI Feedback on Failure
         if: failure() && github.event_name == 'pull_request'
@@ -498,6 +526,9 @@ jobs:
       - name: Setup Just
         uses: extractions/setup-just@v2
 
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.9
+
       - name: Cache Rust dependencies
         uses: swatinem/rust-cache@v2
         with:
@@ -505,6 +536,10 @@ jobs:
 
       - name: Build UI
         run: just ui::release
+
+      - name: Show sccache Stats
+        if: always()
+        uses: ./.github/actions/sccache-stats
 
       - name: Post CI Feedback on Failure
         if: failure() && github.event_name == 'pull_request'
@@ -554,6 +589,9 @@ jobs:
       - name: Setup Just
         uses: extractions/setup-just@v2
 
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.9
+
       - name: Cache Rust dependencies
         uses: swatinem/rust-cache@v2
         with:
@@ -565,6 +603,10 @@ jobs:
         run: |
           echo "Building services with SQLX_OFFLINE=true to verify offline cache..."
           just services::build
+
+      - name: Show sccache Stats
+        if: always()
+        uses: ./.github/actions/sccache-stats
 
       - name: Post CI Feedback on Failure
         if: failure() && github.event_name == 'pull_request'
@@ -620,6 +662,11 @@ jobs:
       - name: Setup Just
         uses: extractions/setup-just@v2
 
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.9
+        env:
+          SCCACHE_S3_KEY_PREFIX: wasm32
+
       - name: Cache Rust dependencies
         uses: swatinem/rust-cache@v2
         with:
@@ -636,6 +683,10 @@ jobs:
 
       - name: Build WASM
         run: just ui::wk-build
+
+      - name: Show sccache Stats
+        if: always()
+        uses: ./.github/actions/sccache-stats
 
       - name: Post CI Feedback on Failure
         if: failure() && github.event_name == 'pull_request'

@@ -1,0 +1,71 @@
+name: "Setup sccache with R2"
+description: "Setup sccache with Cloudflare R2 as the remote cache backend for Rust compilation"
+inputs:
+  r2-bucket:
+    description: "The Cloudflare R2 bucket name for sccache storage"
+    required: true
+  r2-endpoint:
+    description: "The R2 endpoint URL (https://<account-id>.r2.cloudflarestorage.com)"
+    required: true
+  r2-access-key-id:
+    description: "R2 Access Key ID"
+    required: true
+  r2-secret-access-key:
+    description: "R2 Secret Access Key"
+    required: true
+  cache-prefix:
+    description: "Optional prefix for cache keys (useful for separating different targets/platforms)"
+    required: false
+    default: ""
+  sccache-version:
+    description: "sccache version to install (e.g., 'v0.10.0'). Leave empty to use the action's default."
+    required: false
+    default: ""
+
+outputs:
+  cache-hit-rate:
+    description: "The cache hit rate percentage"
+    value: ${{ steps.stats.outputs.cache-hit-rate }}
+  compile-requests:
+    description: "Total compile requests"
+    value: ${{ steps.stats.outputs.compile-requests }}
+  cache-hits:
+    description: "Number of cache hits"
+    value: ${{ steps.stats.outputs.cache-hits }}
+  cache-misses:
+    description: "Number of cache misses"
+    value: ${{ steps.stats.outputs.cache-misses }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install sccache
+      uses: mozilla-actions/sccache-action@v0.0.9
+      with:
+        version: ${{ inputs.sccache-version || '' }}
+
+    - name: Configure sccache for R2
+      shell: bash
+      env:
+        SCCACHE_BUCKET: ${{ inputs.r2-bucket }}
+        SCCACHE_ENDPOINT: ${{ inputs.r2-endpoint }}
+        SCCACHE_REGION: auto
+        AWS_ACCESS_KEY_ID: ${{ inputs.r2-access-key-id }}
+        AWS_SECRET_ACCESS_KEY: ${{ inputs.r2-secret-access-key }}
+        SCCACHE_S3_KEY_PREFIX: ${{ inputs.cache-prefix }}
+      run: |
+        # Export environment variables for subsequent steps
+        echo "SCCACHE_BUCKET=$SCCACHE_BUCKET" >> $GITHUB_ENV
+        echo "SCCACHE_ENDPOINT=$SCCACHE_ENDPOINT" >> $GITHUB_ENV
+        echo "SCCACHE_REGION=auto" >> $GITHUB_ENV
+        echo "AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID" >> $GITHUB_ENV
+        echo "AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY" >> $GITHUB_ENV
+        echo "RUSTC_WRAPPER=sccache" >> $GITHUB_ENV
+        if [ -n "$SCCACHE_S3_KEY_PREFIX" ]; then
+          echo "SCCACHE_S3_KEY_PREFIX=$SCCACHE_S3_KEY_PREFIX" >> $GITHUB_ENV
+        fi
+
+        # Verify sccache is configured correctly
+        echo "Verifying sccache configuration..."
+        sccache --version
+        echo "sccache configured with R2 backend at $SCCACHE_ENDPOINT"

@@ -9,6 +9,7 @@ path = "src/main.rs"
 
 [dependencies]
 collects-business = { path = "../business" }
+collects-clipboard = { path = "../clipboard" }
 collects-states = { path = "../states" }
 collects-utils = { path = "../utils" }
 
@@ -27,6 +28,7 @@ ustr = { workspace = true }
 chrono = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
+tabled = "0.20"
 
 [features]
 default = []

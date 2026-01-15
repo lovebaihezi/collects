@@ -1,0 +1,22 @@
+[package]
+name = "collects-clipboard"
+version = "0.1.0"
+edition = "2024"
+description = "Shared clipboard handling for collects UI and CLI"
+
+[dependencies]
+chrono = { workspace = true }
+log = { workspace = true }
+thiserror = { workspace = true }
+
+# Native clipboard support
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+arboard = { version = "3.6", features = ["wayland-data-control", "image-data"] }
+image = "0.25"
+urlencoding = "2.1"
+
+[features]
+default = []
+
+[lints]
+workspace = true

@@ -118,7 +118,9 @@ where
                     }
                 }
             } else {
-                return Err(TopologyError::CycleDetected(DepRoute { route: vec![] }));
+                let first = in_out.keys().next().unwrap();
+                let route = self.connected(first.clone()).cloned().collect();
+                return Err(TopologyError::CycleDetected(DepRoute { route }));
             }
         }
 

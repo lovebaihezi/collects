@@ -30,14 +30,6 @@ eframe = { workspace = true, features = [
     "wgpu",          # WebGPU/Vulkan/Metal/DX12 rendering backend (for native)
     "wayland",       # Wayland windowing support (Linux)
 ] }
-# Enable wgpu GPU backends for all platforms
-wgpu = { version = "*", features = [
-    "vulkan",        # Vulkan backend (Linux, Windows, Android)
-    "metal",         # Metal backend (macOS, iOS)
-    "dx12",          # DirectX 12 backend (Windows)
-    "webgpu",        # WebGPU backend (web)
-    "webgl",         # WebGL backend (web fallback)
-] }
 
 # native:
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
@@ -55,6 +47,8 @@ wasm-bindgen-futures = "0.4.50"
 web-sys = "0.3.70"
 getrandom = { version = "0.2", features = ["js"] }
 image = { version = "0.25", default-features = false }
+# Enable webgl feature on wgpu for WASM target
+wgpu = { version = "27.0.1", features = ["webgl"] }
 
 [dev-dependencies]
 kittest = "0.3"

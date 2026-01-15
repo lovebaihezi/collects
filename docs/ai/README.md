@@ -83,10 +83,22 @@ Typical tasks:
 
 ---
 
+### If you work with Contents, Groups, or user-facing features
+Read:
+- `docs/ai/domain-model.md`
+
+Typical tasks:
+- understanding "Collect" = "Group" terminology
+- working with the CLI list/view commands
+- understanding Contents vs Groups relationship
+- mapping user language to API endpoints
+
+---
+
 ## Suggested workflow for agents
 
 When you start a task:
-1. Identify which area you’re changing (state model / CI / tests / versioning / commits).
+1. Identify which area you're changing (state model / CI / tests / versioning / commits / domain).
 2. Load the corresponding doc(s) above into context.
 3. Make the smallest correct change.
 4. Run the relevant checks (see `testing.md` and `scripts-and-ci.md`).
@@ -103,6 +115,7 @@ When you start a task:
 - `docs/ai/versioning.md` — version format + release metadata rules
 - `docs/ai/commits.md` — Conventional Commits + PR title rules
 - `docs/ai/tracing.md` — CLI timing, profiling, and tracing with `#[instrument]`
+- `docs/ai/domain-model.md` — "Collect" = "Group" terminology, Contents vs Groups
 
 ---
 

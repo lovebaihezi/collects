@@ -11,14 +11,18 @@ use clap_complete::{Generator, Shell};
 use collects_business::{
     Attachment, AuthCompute, AuthStatus, BusinessConfig, CFTokenCompute, ContentCreationStatus,
     ContentItem, CreateContentCommand, CreateContentCompute, CreateContentInput, GetContentCommand,
-    GetContentCompute, GetContentInput, GetContentStatus, GetViewUrlCommand, GetViewUrlCompute,
-    GetViewUrlInput, GetViewUrlStatus, ListContentsCommand, ListContentsCompute, ListContentsInput,
-    ListContentsStatus, LoginCommand, LoginInput, PendingTokenValidation, ValidateTokenCommand,
+    GetContentCompute, GetContentInput, GetContentStatus, GetGroupContentsCommand,
+    GetGroupContentsCompute, GetGroupContentsInput, GetGroupContentsStatus, GroupItem,
+    ListGroupsCommand, ListGroupsCompute, ListGroupsInput, ListGroupsStatus, LoginCommand,
+    LoginInput, PendingTokenValidation, ValidateTokenCommand,
 };
+use collects_clipboard::{ClipboardProvider as _, SystemClipboard};
 use collects_states::StateCtx;
 use dirs::home_dir;
-use inquire::{Confirm, Password, Select, Text};
+use inquire::{Confirm, Select, Text};
 use serde::{Deserialize, Serialize};
+use tabled::settings::Style;
+use tabled::{Table, Tabled};
 use tracing::{error, info, instrument};
 use ustr::Ustr;
 
@@ -54,7 +58,14 @@ struct Cli {
 enum Commands {
     /// Login to Collects
     Login,
-    /// Create new content interactively
+    // TODO: Add `New` command to create a new collect (group)
+    // collects new -t "My Collect" → creates an empty collect
+    // collects new -t "My Collect" -f file.png → creates collect with files
+    //
+    // TODO: Add `Add` command to add content to an existing collect
+    // collects add <collect_id> -f file.png → adds file to collect
+    // collects add <collect_id> --stdin → adds text content from stdin
+    /// Create new content (note: creates orphan content, not a collect)
     Create {
         /// Attach files
         #[arg(long, short = 'f')]
@@ -67,8 +78,16 @@ enum Commands {
         /// Interactive mode (prompt for all fields)
         #[arg(long, short = 'I')]
         interactive: bool,
+
+        /// Skip clipboard image reading
+        #[arg(long)]
+        no_clipboard: bool,
     },
-    /// List your contents
+    /// Show what can be added to collects (schema information)
+    Schema,
+    // TODO: Rename to `Contents` or remove once `New` command exists
+    // Users should use `collects new` to create collects, not `collects create`
+    /// List your collects (groups)
     List {
         /// Maximum number of items to return (1-100)
         #[arg(long, short = 'l', default_value = "20")]
@@ -82,18 +101,14 @@ enum Commands {
         #[arg(long, short = 's')]
         status: Option<String>,
 
-        /// Interactive mode (select content to view)
+        /// Interactive mode (select collect to view)
         #[arg(long, short = 'I')]
         interactive: bool,
     },
-    /// View content by ID
+    /// View a collect (group) and its files
     View {
-        /// Content ID (UUID)
+        /// Collect ID (UUID)
         id: Option<String>,
-
-        /// Get download URL instead of inline view
-        #[arg(long, short = 'd')]
-        download: bool,
     },
     /// Generate shell completions
     Completions {
@@ -156,25 +171,25 @@ fn build_state_ctx(config: BusinessConfig) -> StateCtx {
     ctx.add_state(CreateContentInput::default());
     ctx.record_compute(CreateContentCompute::default());
 
-    // List contents states and computes
-    ctx.add_state(ListContentsInput::default());
-    ctx.record_compute(ListContentsCompute::default());
+    // List groups (collects) states and computes
+    ctx.add_state(ListGroupsInput::default());
+    ctx.record_compute(ListGroupsCompute::default());
 
     // Get content states and computes
     ctx.add_state(GetContentInput::default());
     ctx.record_compute(GetContentCompute::default());
 
-    // Get view URL states and computes
-    ctx.add_state(GetViewUrlInput::default());
-    ctx.record_compute(GetViewUrlCompute::default());
+    // Get group contents states and computes
+    ctx.add_state(GetGroupContentsInput::default());
+    ctx.record_compute(GetGroupContentsCompute::default());
 
     // Commands
     ctx.record_command(LoginCommand);
     ctx.record_command(ValidateTokenCommand);
     ctx.record_command(CreateContentCommand);
-    ctx.record_command(ListContentsCommand);
+    ctx.record_command(ListGroupsCommand);
+    ctx.record_command(GetGroupContentsCommand);
     ctx.record_command(GetContentCommand);
-    ctx.record_command(GetViewUrlCommand);
 
     ctx
 }
@@ -219,6 +234,75 @@ async fn restore_session(ctx: &mut StateCtx) -> Result<bool> {
     }
 }
 
+/// Ensures the user is authenticated, prompting for login if needed.
+///
+/// This function:
+/// 1. Tries to restore session from saved token
+/// 2. If token is expired/invalid, prompts the user to login interactively
+/// 3. Returns Ok(()) if authentication succeeds, or exits on failure
+#[instrument(skip_all, name = "ensure_authenticated")]
+async fn ensure_authenticated(ctx: &mut StateCtx) -> Result<()> {
+    // First try to restore existing session
+    if restore_session(ctx).await? {
+        return Ok(());
+    }
+
+    // Session restoration failed - prompt for login
+    eprintln!("⚠ Session expired or not logged in. Please login to continue.\n");
+
+    // Check if we're in a terminal that can accept input
+    if !std::io::stdin().is_terminal() {
+        eprintln!("✗ Cannot prompt for login: stdin is not a terminal.");
+        eprintln!("  Please run 'collects login' first.");
+        std::process::exit(1);
+    }
+
+    // Prompt for login
+    let username = Text::new("Username:")
+        .with_help_message("Enter your Collects username")
+        .prompt()
+        .context("Failed to read username")?;
+
+    let otp = Text::new("OTP Code:")
+        .with_help_message("Enter the 6-digit code from your authenticator app")
+        .prompt()
+        .context("Failed to read OTP")?;
+
+    info!(username = ?username, otp = ?otp, "Attempting login");
+
+    ctx.update::<LoginInput>(|s| {
+        s.username = username.clone();
+        s.otp = otp.clone();
+    });
+
+    ctx.enqueue_command::<LoginCommand>();
+    flush_and_await(ctx).await;
+
+    let auth = ctx.compute::<AuthCompute>();
+    match &auth.status {
+        AuthStatus::Authenticated { username: u, token } => {
+            info!("Successfully logged in as {u}");
+            println!("✓ Logged in as {u}\n");
+            if let Some(t) = token {
+                save_token(u, t)?;
+            }
+            Ok(())
+        }
+        AuthStatus::Failed(msg) => {
+            error!("Login failed: {msg}");
+            eprintln!("✗ Login failed: {msg}");
+            ctx.shutdown().await;
+            std::process::exit(1);
+        }
+        AuthStatus::NotAuthenticated | AuthStatus::Authenticating => {
+            error!("Login did not complete");
+            eprintln!("✗ Login did not complete");
+            ctx.shutdown().await;
+            std::process::exit(1);
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -234,12 +318,17 @@ async fn main() -> Result<()> {
             file,
             title,
             interactive,
+            no_clipboard,
         }) => {
             if interactive {
                 run_create_interactive(ctx).await
             } else {
-                run_create(ctx, file, title).await
+                run_create(ctx, file, title, !no_clipboard).await
             }
+        }
+        Some(Commands::Schema) => {
+            print_schema();
+            Ok(())
         }
         Some(Commands::List {
             limit,
@@ -247,7 +336,7 @@ async fn main() -> Result<()> {
             status,
             interactive,
         }) => run_list(ctx, limit, offset, status, interactive).await,
-        Some(Commands::View { id, download }) => run_view(ctx, id, download).await,
+        Some(Commands::View { id }) => run_view(ctx, id).await,
         Some(Commands::Completions { shell }) => {
             generate_completions(shell);
             Ok(())
@@ -267,13 +356,16 @@ async fn main() -> Result<()> {
                 }
             }
 
-            if files.is_empty() && body.is_none() {
+            // Always try to read clipboard image
+            let clipboard_image = read_clipboard_image_if_available();
+
+            if files.is_empty() && body.is_none() && clipboard_image.is_none() {
                 use clap::CommandFactory as _;
                 Cli::command().print_help()?;
                 return Ok(());
             }
 
-            run_create_impl(ctx, files, cli.title, body).await
+            run_create_impl(ctx, files, cli.title, body, clipboard_image).await
         }
     }
 }
@@ -295,16 +387,16 @@ async fn run_login(mut ctx: StateCtx) -> Result<()> {
         .prompt()
         .context("Failed to read username")?;
 
-    let otp = Password::new("OTP Code:")
-        .with_display_mode(inquire::PasswordDisplayMode::Masked)
+    let otp = Text::new("OTP Code:")
         .with_help_message("Enter the 6-digit code from your authenticator app")
-        .without_confirmation()
         .prompt()
         .context("Failed to read OTP")?;
 
+    info!(username = ?username, otp = ?otp, "Attempting login");
+
     ctx.update::<LoginInput>(|s| {
         s.username = username.clone();
-        s.otp = otp;
+        s.otp = otp.clone();
     });
 
     ctx.enqueue_command::<LoginCommand>();
@@ -341,11 +433,8 @@ async fn run_login(mut ctx: StateCtx) -> Result<()> {
 #[instrument(skip_all, name = "create_interactive")]
 #[allow(clippy::too_many_lines)]
 async fn run_create_interactive(mut ctx: StateCtx) -> Result<()> {
-    // Restore session first
-    if !restore_session(&mut ctx).await? {
-        eprintln!("✗ Not logged in. Please run 'collects login' first.");
-        std::process::exit(1);
-    }
+    // Ensure authenticated (prompts for login if needed)
+    ensure_authenticated(&mut ctx).await?;
 
     println!("Create New Content\n");
 
@@ -522,7 +611,12 @@ async fn run_create_interactive(mut ctx: StateCtx) -> Result<()> {
 }
 
 #[instrument(skip_all, name = "create", fields(file_count = files.len()))]
-async fn run_create(ctx: StateCtx, files: Vec<PathBuf>, title: Option<String>) -> Result<()> {
+async fn run_create(
+    ctx: StateCtx,
+    files: Vec<PathBuf>,
+    title: Option<String>,
+    read_clipboard: bool,
+) -> Result<()> {
     // Check for stdin
     let mut body = None;
     if !std::io::stdin().is_terminal() {
@@ -534,21 +628,99 @@ async fn run_create(ctx: StateCtx, files: Vec<PathBuf>, title: Option<String>) -
         }
     }
 
-    run_create_impl(ctx, files, title, body).await
+    // Read clipboard image if enabled
+    let clipboard_image = if read_clipboard {
+        read_clipboard_image_if_available()
+    } else {
+        None
+    };
+
+    run_create_impl(ctx, files, title, body, clipboard_image).await
 }
 
-#[instrument(skip_all, name = "create_impl", fields(file_count = files.len(), has_body = body.is_some()))]
+/// Attempts to read an image from the clipboard, returning None on failure.
+fn read_clipboard_image_if_available() -> Option<Attachment> {
+    let clipboard = SystemClipboard;
+    match clipboard.get_image() {
+        Ok(Some(image)) => {
+            info!(
+                "Clipboard image found: {}x{} ({})",
+                image.width, image.height, image.filename
+            );
+            Some(Attachment {
+                filename: image.filename,
+                mime_type: image.mime_type,
+                data: image.bytes,
+            })
+        }
+        Ok(None) => {
+            log::debug!("No image in clipboard");
+            None
+        }
+        Err(e) => {
+            log::debug!("Failed to read clipboard: {e}");
+            None
+        }
+    }
+}
+
+/// Prints schema information about what can be added to collects.
+fn print_schema() {
+    println!("Collects Content Schema");
+    println!("========================\n");
+
+    println!("When creating content, you can provide:\n");
+
+    println!("  TITLE (optional)");
+    println!("    A short title for the content.");
+    println!("    Flag: --title, -t <TEXT>\n");
+
+    println!("  DESCRIPTION (optional)");
+    println!("    A longer description (interactive mode only).\n");
+
+    println!("  BODY (optional)");
+    println!("    Text content, provided via:");
+    println!("    - stdin: echo 'content' | collects create");
+    println!("    - Interactive mode: opens $EDITOR or prompts for input\n");
+
+    println!("  ATTACHMENTS (optional)");
+    println!("    Files to upload with the content:");
+    println!("    - File flag: --file, -f <PATH> (can be repeated)");
+    println!("    - Clipboard: Images in clipboard are automatically attached");
+    println!("    - Skip clipboard: --no-clipboard\n");
+
+    println!("Supported attachment types:");
+    println!("  - Images: PNG, JPEG, GIF, BMP, WebP, TIFF, ICO");
+    println!("  - Documents: PDF, TXT, MD, and other text files");
+    println!("  - Any other file type (stored as application/octet-stream)\n");
+
+    println!("Examples:");
+    println!("  # Create text note from stdin");
+    println!("  echo 'My note content' | collects create -t 'My Note'\n");
+
+    println!("  # Upload a file");
+    println!("  collects create -f image.png -t 'Screenshot'\n");
+
+    println!("  # Paste from clipboard (image)");
+    println!("  collects create -t 'Clipboard image'\n");
+
+    println!("  # Interactive mode");
+    println!("  collects create -I\n");
+
+    println!("  # Multiple files");
+    println!("  collects create -f file1.txt -f file2.png -t 'Multiple files'");
+}
+
+#[instrument(skip_all, name = "create_impl", fields(file_count = files.len(), has_body = body.is_some(), has_clipboard = clipboard_image.is_some()))]
 async fn run_create_impl(
     mut ctx: StateCtx,
     files: Vec<PathBuf>,
     title: Option<String>,
     body: Option<String>,
+    clipboard_image: Option<Attachment>,
 ) -> Result<()> {
-    // Restore session
-    if !restore_session(&mut ctx).await? {
-        eprintln!("✗ Not logged in. Please run 'collects login' first.");
-        std::process::exit(1);
-    }
+    // Ensure authenticated (prompts for login if needed)
+    ensure_authenticated(&mut ctx).await?;
 
     // Prepare attachments
     let mut attachments = Vec::new();
@@ -570,6 +742,15 @@ async fn run_create_impl(
             mime_type,
             data,
         });
+    }
+
+    // Add clipboard image if available
+    if let Some(clip_attachment) = clipboard_image {
+        println!(
+            "📋 Adding clipboard image: {} ({})",
+            clip_attachment.filename, clip_attachment.mime_type
+        );
+        attachments.push(clip_attachment);
     }
 
     ctx.update::<CreateContentInput>(|s| {
@@ -606,7 +787,8 @@ async fn run_create_impl(
     Ok(())
 }
 
-#[instrument(skip_all, name = "list", fields(limit, offset, status))]
+#[allow(clippy::too_many_lines)]
+#[instrument(skip_all, name = "list", fields(limit, offset, status = status.as_deref().unwrap_or("all")))]
 async fn run_list(
     mut ctx: StateCtx,
     limit: i32,
@@ -614,90 +796,23 @@ async fn run_list(
     status: Option<String>,
     interactive: bool,
 ) -> Result<()> {
-    // Restore session
-    if !restore_session(&mut ctx).await? {
-        eprintln!("✗ Not logged in. Please run 'collects login' first.");
-        std::process::exit(1);
-    }
+    // Ensure authenticated (prompts for login if needed)
+    ensure_authenticated(&mut ctx).await?;
 
-    ctx.update::<ListContentsInput>(|s| {
+    ctx.update::<ListGroupsInput>(|s| {
         s.limit = Some(limit);
         s.offset = Some(offset);
         s.status = status.map(|st| Ustr::from(&st));
     });
 
-    ctx.enqueue_command::<ListContentsCommand>();
+    ctx.enqueue_command::<ListGroupsCommand>();
     flush_and_await(&mut ctx).await;
 
-    let compute = ctx.compute::<ListContentsCompute>();
-    match &compute.status {
-        ListContentsStatus::Success(items) => {
-            if items.is_empty() {
-                println!("No contents found.");
-                ctx.shutdown().await;
-                return Ok(());
-            }
-
-            if interactive {
-                // Interactive mode: let user select content to view
-                let options: Vec<String> = items
-                    .iter()
-                    .map(|item| {
-                        let kind_icon = if item.is_file() { "📄" } else { "📝" };
-                        let size = format_size(item.file_size);
-                        format!(
-                            "{} {} ({}) - {} [{}]",
-                            kind_icon, item.title, item.content_type, size, item.id
-                        )
-                    })
-                    .collect();
-
-                let selection = Select::new("Select content to view:", options)
-                    .with_help_message("Use arrow keys to navigate, Enter to select")
-                    .prompt_skippable()
-                    .context("Failed to select content")?;
-
-                if let Some(selected) = selection {
-                    // Extract ID from the selected string
-                    if let Some(id_start) = selected.rfind('[') {
-                        let id = &selected[id_start + 1..selected.len() - 1];
-                        ctx.shutdown().await;
-                        // Re-create context for view
-                        let new_ctx = build_state_ctx(BusinessConfig::default());
-                        return run_view(new_ctx, Some(id.to_owned()), false).await;
-                    }
-                }
-            } else {
-                // Non-interactive: just print the list
-                println!(
-                    "\n{:<36}  {:<30}  {:<15}  {:<10}  Status",
-                    "ID", "Title", "Type", "Size"
-                );
-                println!("{}", "-".repeat(100));
-
-                for item in items {
-                    let title = if item.title.len() > 28 {
-                        format!("{}...", &item.title.as_str()[..25])
-                    } else {
-                        item.title.to_string()
-                    };
-                    let size = format_size(item.file_size);
-                    let content_type = if item.content_type.len() > 13 {
-                        format!("{}...", &item.content_type.as_str()[..10])
-                    } else {
-                        item.content_type.to_string()
-                    };
-
-                    println!(
-                        "{:<36}  {:<30}  {:<15}  {:<10}  {}",
-                        item.id, title, content_type, size, item.status
-                    );
-                }
-                println!("\nTotal: {} item(s)", items.len());
-            }
-        }
-        ListContentsStatus::Error(e) => {
-            eprintln!("✗ Error listing contents: {e}");
+    let compute = ctx.compute::<ListGroupsCompute>();
+    let groups = match &compute.status {
+        ListGroupsStatus::Success(groups) => groups.clone(),
+        ListGroupsStatus::Error(e) => {
+            eprintln!("✗ Error listing collects: {e}");
             ctx.shutdown().await;
             std::process::exit(1);
         }
@@ -706,88 +821,179 @@ async fn run_list(
             ctx.shutdown().await;
             std::process::exit(1);
         }
+    };
+
+    if groups.is_empty() {
+        println!("No collects found.");
+        ctx.shutdown().await;
+        return Ok(());
+    }
+
+    // Fetch file counts for each group (Option 2: N+1 calls)
+    let mut group_file_counts: Vec<(GroupItem, usize)> = Vec::new();
+    for group in &groups {
+        ctx.update::<GetGroupContentsInput>(|s| {
+            s.group_id = Some(group.id);
+        });
+        ctx.enqueue_command::<GetGroupContentsCommand>();
+        flush_and_await(&mut ctx).await;
+
+        let contents_compute = ctx.compute::<GetGroupContentsCompute>();
+        let file_count = match &contents_compute.status {
+            GetGroupContentsStatus::Success(items) => items.len(),
+            _ => 0,
+        };
+        group_file_counts.push((group.clone(), file_count));
+    }
+
+    if interactive {
+        // Interactive mode: let user select collect to view
+        let options: Vec<String> = group_file_counts
+            .iter()
+            .map(|(group, file_count)| {
+                format!("📁 {} ({} files) [{}]", group.name, file_count, group.id)
+            })
+            .collect();
+
+        let selection = Select::new("Select collect to view:", options)
+            .with_help_message("Use arrow keys to navigate, Enter to select")
+            .prompt_skippable()
+            .context("Failed to select collect")?;
+
+        if let Some(selected) = selection {
+            // Extract ID from the selected string
+            if let Some(id_start) = selected.rfind('[') {
+                let id = &selected[id_start + 1..selected.len() - 1];
+                ctx.shutdown().await;
+                // Re-create context for view
+                let new_ctx = build_state_ctx(BusinessConfig::default());
+                return run_view(new_ctx, Some(id.to_owned())).await;
+            }
+        }
+    } else {
+        // Non-interactive: just print the list using tabled
+        #[derive(Tabled)]
+        struct ListRow {
+            #[tabled(rename = "ID")]
+            id: String,
+            #[tabled(rename = "Name")]
+            name: String,
+            #[tabled(rename = "Description")]
+            description: String,
+            #[tabled(rename = "Files")]
+            file_count: usize,
+            #[tabled(rename = "Status")]
+            status: String,
+        }
+
+        fn truncate_str(s: &str, max_len: usize) -> String {
+            if s.chars().count() > max_len {
+                let truncated: String = s.chars().take(max_len - 3).collect();
+                format!("{truncated}...")
+            } else {
+                s.to_owned()
+            }
+        }
+
+        let rows: Vec<ListRow> = group_file_counts
+            .iter()
+            .map(|(group, file_count)| ListRow {
+                id: group.id.to_string(),
+                name: truncate_str(group.name.as_str(), 24),
+                description: group
+                    .description
+                    .as_ref()
+                    .map(|d| truncate_str(d.as_str(), 24))
+                    .unwrap_or_default(),
+                file_count: *file_count,
+                status: group.status.to_string(),
+            })
+            .collect();
+
+        let mut table = Table::new(&rows);
+        table.with(Style::rounded());
+        println!("\n{table}");
+        println!("\nTotal: {} collect(s)", groups.len());
     }
 
     ctx.shutdown().await;
     Ok(())
 }
 
-#[instrument(skip_all, name = "view", fields(content_id = id.as_deref().unwrap_or("interactive")))]
-async fn run_view(mut ctx: StateCtx, id: Option<String>, download: bool) -> Result<()> {
-    // Restore session
-    if !restore_session(&mut ctx).await? {
-        eprintln!("✗ Not logged in. Please run 'collects login' first.");
-        std::process::exit(1);
-    }
+#[instrument(skip_all, name = "view", fields(collect_id = id.as_deref().unwrap_or("interactive")))]
+async fn run_view(mut ctx: StateCtx, id: Option<String>) -> Result<()> {
+    // Ensure authenticated (prompts for login if needed)
+    ensure_authenticated(&mut ctx).await?;
 
     // Get ID interactively if not provided
-    let content_id = match id {
+    let group_id = match id {
         Some(id) => id,
-        None => Text::new("Content ID:")
-            .with_help_message("Enter the UUID of the content to view")
+        None => Text::new("Collect ID:")
+            .with_help_message("Enter the UUID of the collect to view")
             .prompt()
-            .context("Failed to read content ID")?,
+            .context("Failed to read collect ID")?,
     };
 
-    // First, get the content details
-    ctx.update::<GetContentInput>(|s| {
-        s.id = Ustr::from(&content_id);
+    // Get contents in the group
+    ctx.update::<GetGroupContentsInput>(|s| {
+        s.group_id = Some(Ustr::from(&group_id));
     });
 
-    ctx.enqueue_command::<GetContentCommand>();
+    ctx.enqueue_command::<GetGroupContentsCommand>();
     flush_and_await(&mut ctx).await;
 
-    let get_compute = ctx.compute::<GetContentCompute>();
-    match &get_compute.status {
-        GetContentStatus::Success(item) => {
-            print_content_details(item);
-
-            // For files, get the view URL
-            if item.is_file() {
-                let disposition = if download {
-                    Ustr::from("attachment")
-                } else {
-                    Ustr::from("inline")
-                };
-
-                ctx.update::<GetViewUrlInput>(|s| {
-                    s.content_id = Ustr::from(&content_id);
-                    s.disposition = disposition;
-                });
-
-                ctx.enqueue_command::<GetViewUrlCommand>();
-                flush_and_await(&mut ctx).await;
-
-                let url_compute = ctx.compute::<GetViewUrlCompute>();
-                match &url_compute.status {
-                    GetViewUrlStatus::Success(data) => {
-                        println!("\n📎 View URL (expires at {}):", data.expires_at);
-                        println!("   {}", data.url);
-                    }
-                    GetViewUrlStatus::NotFound => {
-                        eprintln!("\n✗ Could not generate view URL: Content not found");
-                    }
-                    GetViewUrlStatus::Error(e) => {
-                        eprintln!("\n✗ Could not generate view URL: {e}");
-                    }
-                    _ => {}
-                }
-            }
-        }
-        GetContentStatus::NotFound => {
-            eprintln!("✗ Content not found: {content_id}");
+    let contents_compute = ctx.compute::<GetGroupContentsCompute>();
+    let items = match &contents_compute.status {
+        GetGroupContentsStatus::Success(items) => items.clone(),
+        GetGroupContentsStatus::NotFound => {
+            eprintln!("✗ Collect not found: {group_id}");
             ctx.shutdown().await;
             std::process::exit(1);
         }
-        GetContentStatus::Error(e) => {
-            eprintln!("✗ Error getting content: {e}");
+        GetGroupContentsStatus::Error(e) => {
+            eprintln!("✗ Error getting collect: {e}");
             ctx.shutdown().await;
             std::process::exit(1);
         }
         _ => {
-            eprintln!("✗ Get content operation did not complete");
+            eprintln!("✗ Get collect operation did not complete");
             ctx.shutdown().await;
             std::process::exit(1);
+        }
+    };
+
+    println!("\n📁 Collect: {}", group_id);
+    println!("{}", "=".repeat(50));
+
+    if items.is_empty() {
+        println!("No files in this collect.");
+        ctx.shutdown().await;
+        return Ok(());
+    }
+
+    println!("Files: {} item(s)\n", items.len());
+
+    // Fetch details for each content item
+    for group_content in &items {
+        ctx.update::<GetContentInput>(|s| {
+            s.id = group_content.content_id;
+        });
+
+        ctx.enqueue_command::<GetContentCommand>();
+        flush_and_await(&mut ctx).await;
+
+        let content_compute = ctx.compute::<GetContentCompute>();
+        match &content_compute.status {
+            GetContentStatus::Success(item) => {
+                print_content_summary(item);
+            }
+            GetContentStatus::NotFound => {
+                println!("  ⚠️  {} (content not found)", group_content.content_id);
+            }
+            GetContentStatus::Error(e) => {
+                println!("  ⚠️  {} (error: {})", group_content.content_id, e);
+            }
+            _ => {}
         }
     }
 
@@ -795,28 +1001,17 @@ async fn run_view(mut ctx: StateCtx, id: Option<String>, download: bool) -> Resu
     Ok(())
 }
 
-fn print_content_details(item: &ContentItem) {
+fn print_content_summary(item: &ContentItem) {
     let kind_icon = if item.is_file() { "📄" } else { "📝" };
+    let size = format_size(item.file_size);
 
-    println!("\n{kind_icon} Content Details");
-    println!("{}", "=".repeat(50));
-    println!("ID:          {}", item.id);
-    println!("Title:       {}", item.title);
+    println!(
+        "  {} {} ({}) - {}",
+        kind_icon, item.title, item.content_type, size
+    );
+    println!("     ID: {}", item.id);
     if let Some(desc) = &item.description {
-        println!("Description: {desc}");
-    }
-    println!("Type:        {}", item.content_type);
-    println!("Kind:        {}", item.kind);
-    println!("Size:        {}", format_size(item.file_size));
-    println!("Status:      {}", item.status);
-    println!("Visibility:  {}", item.visibility);
-    println!("Created:     {}", item.created_at);
-    println!("Updated:     {}", item.updated_at);
-
-    if let Some(body) = &item.body {
-        println!("\n📝 Content Body:");
-        println!("{}", "-".repeat(50));
-        println!("{body}");
+        println!("     Description: {desc}");
     }
 }
 

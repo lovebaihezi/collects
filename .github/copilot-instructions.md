@@ -11,6 +11,17 @@ This file is intentionally minimal. Do not expand it into a monolith.
 Index:
 - `docs/ai/README.md` — start here (which doc to load)
 
+## Critical terminology: "Collect" = "Group"
+
+**A "Collect" is what users call a Group in the database/API.**
+
+- When users say "collect", they mean a **Group** (a collection of files/texts)
+- They do NOT mean individual "contents" (single files/texts)
+- User: "show my collects" → API: `GET /v1/groups`
+- User: "files in a collect" → API: `GET /v1/groups/{id}/contents`
+
+See: `docs/ai/domain-model.md` for full terminology mapping.
+
 ## Non-negotiable rules (always apply)
 
 ### 1) Conventional Commits + PR titles
@@ -61,8 +72,17 @@ Key rules:
 - Use `--timing` flag for latency visibility, `--timing -v` for detailed HTTP tracing
 - `time.busy` = CPU time, `time.idle` = I/O wait time
 
+### 8) Domain model / terminology
+If you work with Contents, Groups, or user-facing features:
+- Read and follow: `docs/ai/domain-model.md`
+
+Key rules:
+- "Collect" (user term) = "Group" (API/database term)
+- Users want Groups (collections), not individual Contents
+- CLI `list` should show Groups, not Contents
+
 ## General engineering expectations
 
-- Don’t guess file locations or existing interfaces: search and read the relevant code first.
+- Don't guess file locations or existing interfaces: search and read the relevant code first.
 - Do not hardcode secrets or API keys.
 - Prefer small, reviewable changes with tests when behavior changes.

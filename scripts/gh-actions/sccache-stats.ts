@@ -45,7 +45,7 @@ export async function getSccacheStats(): Promise<SccacheStats> {
   try {
     const humanStats = await $`sccache --show-stats`.text();
     console.log(humanStats);
-  } catch (error) {
+  } catch {
     console.log("Could not get human-readable stats");
   }
 

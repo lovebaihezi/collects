@@ -1,0 +1,70 @@
+name: "Show sccache Stats"
+description: "Display sccache statistics and report cache performance metrics"
+outputs:
+  cache-hit-rate:
+    description: "The cache hit rate percentage"
+    value: ${{ steps.stats.outputs.cache-hit-rate }}
+  compile-requests:
+    description: "Total compile requests"
+    value: ${{ steps.stats.outputs.compile-requests }}
+  cache-hits:
+    description: "Number of cache hits"
+    value: ${{ steps.stats.outputs.cache-hits }}
+  cache-misses:
+    description: "Number of cache misses"
+    value: ${{ steps.stats.outputs.cache-misses }}
+  cache-size:
+    description: "Current cache size"
+    value: ${{ steps.stats.outputs.cache-size }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Show sccache Stats
+      id: stats
+      shell: bash
+      run: |
+        echo "=== sccache Statistics ==="
+        sccache --show-stats
+
+        # Parse stats for GitHub output
+        STATS=$(sccache --show-stats --stats-format=json 2>/dev/null || echo '{}')
+
+        if [ "$STATS" != "{}" ]; then
+          COMPILE_REQUESTS=$(echo "$STATS" | jq -r '.stats.compile_requests // 0')
+          CACHE_HITS=$(echo "$STATS" | jq -r '.stats.cache_hits.counts.Rust // 0')
+          CACHE_MISSES=$(echo "$STATS" | jq -r '.stats.cache_misses.counts.Rust // 0')
+          CACHE_SIZE=$(echo "$STATS" | jq -r '.stats.cache_location.S3.size // "N/A"')
+
+          # Calculate hit rate
+          TOTAL=$((CACHE_HITS + CACHE_MISSES))
+          if [ $TOTAL -gt 0 ]; then
+            HIT_RATE=$(echo "scale=1; $CACHE_HITS * 100 / $TOTAL" | bc)
+          else
+            HIT_RATE="0.0"
+          fi
+
+          echo "cache-hit-rate=$HIT_RATE" >> $GITHUB_OUTPUT
+          echo "compile-requests=$COMPILE_REQUESTS" >> $GITHUB_OUTPUT
+          echo "cache-hits=$CACHE_HITS" >> $GITHUB_OUTPUT
+          echo "cache-misses=$CACHE_MISSES" >> $GITHUB_OUTPUT
+          echo "cache-size=$CACHE_SIZE" >> $GITHUB_OUTPUT
+
+          echo ""
+          echo "=== Cache Performance Summary ==="
+          echo "📊 Cache Hit Rate: ${HIT_RATE}%"
+          echo "🎯 Cache Hits: $CACHE_HITS"
+          echo "❌ Cache Misses: $CACHE_MISSES"
+          echo "📦 Cache Size: $CACHE_SIZE"
+        else
+          echo "cache-hit-rate=N/A" >> $GITHUB_OUTPUT
+          echo "compile-requests=0" >> $GITHUB_OUTPUT
+          echo "cache-hits=0" >> $GITHUB_OUTPUT
+          echo "cache-misses=0" >> $GITHUB_OUTPUT
+          echo "cache-size=N/A" >> $GITHUB_OUTPUT
+          echo "Could not parse JSON stats, showing human-readable output above"
+        fi
+
+    - name: Stop sccache
+      shell: bash
+      run: sccache --stop-server || true

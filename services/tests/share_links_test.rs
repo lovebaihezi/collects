@@ -22,7 +22,7 @@ use collects_services::{
     routes,
     users::storage::MockUserStorage,
 };
-use common::{MockSqlStorage, TEST_USER_ID, generate_test_token};
+use common::{MockSqlStorage, TEST_USER_ID, create_test_user_storage, generate_test_token};
 use serde_json::{Value, json};
 use std::sync::{Arc, RwLock};
 use tower::ServiceExt;
@@ -389,20 +389,21 @@ impl SqlStorage for ShareLinksMockSqlStorage {
             .iter_mut()
             .find(|s| s.id == id && s.owner_id == owner_id)
         {
+            // Option<Option<T>>: None=no change, Some(None)=clear, Some(Some(v))=set
             if let Some(name) = input.name {
-                link.name = name;
+                link.name = name; // This correctly handles Some(None) to clear
             }
             if let Some(permission) = input.permission {
                 link.permission = permission.as_db_str().to_owned();
             }
             if let Some(password_hash) = input.password_hash {
-                link.password_hash = password_hash;
+                link.password_hash = password_hash; // This correctly handles Some(None) to remove
             }
             if let Some(expires_at) = input.expires_at {
-                link.expires_at = expires_at;
+                link.expires_at = expires_at; // This correctly handles Some(None) to clear
             }
             if let Some(max_access_count) = input.max_access_count {
-                link.max_access_count = max_access_count;
+                link.max_access_count = max_access_count; // This correctly handles Some(None) to clear
             }
             if let Some(is_active) = input.is_active {
                 link.is_active = is_active;
@@ -615,7 +616,7 @@ async fn test_share_links_list_without_auth_returns_401() {
 #[tokio::test]
 async fn test_share_links_list_empty() {
     let sql_storage = ShareLinksMockSqlStorage::new();
-    let user_storage = MockUserStorage::with_users([("testuser", "SECRET123")]);
+    let user_storage = create_test_user_storage();
     let config = Config::new_for_test();
     let app = routes(sql_storage, user_storage, config).await;
 
@@ -645,7 +646,7 @@ async fn test_share_links_list_with_links() {
         ShareLinksMockSqlStorage::create_test_share_link(TEST_USER_ID, "test-token-123", "view");
 
     let sql_storage = ShareLinksMockSqlStorage::new().with_share_link(share_link);
-    let user_storage = MockUserStorage::with_users([("testuser", "SECRET123")]);
+    let user_storage = create_test_user_storage();
     let config = Config::new_for_test();
     let app = routes(sql_storage, user_storage, config).await;
 
@@ -675,7 +676,7 @@ async fn test_share_links_list_with_links() {
 #[tokio::test]
 async fn test_share_links_create_success() {
     let sql_storage = ShareLinksMockSqlStorage::new();
-    let user_storage = MockUserStorage::with_users([("testuser", "SECRET123")]);
+    let user_storage = create_test_user_storage();
     let config = Config::new_for_test();
     let app = routes(sql_storage, user_storage, config).await;
 
@@ -712,7 +713,7 @@ async fn test_share_links_create_success() {
 #[tokio::test]
 async fn test_share_links_create_with_password() {
     let sql_storage = ShareLinksMockSqlStorage::new();
-    let user_storage = MockUserStorage::with_users([("testuser", "SECRET123")]);
+    let user_storage = create_test_user_storage();
     let config = Config::new_for_test();
     let app = routes(sql_storage, user_storage, config).await;
 
@@ -747,7 +748,7 @@ async fn test_share_links_create_with_password() {
 #[tokio::test]
 async fn test_share_links_create_with_expiration() {
     let sql_storage = ShareLinksMockSqlStorage::new();
-    let user_storage = MockUserStorage::with_users([("testuser", "SECRET123")]);
+    let user_storage = create_test_user_storage();
     let config = Config::new_for_test();
     let app = routes(sql_storage, user_storage, config).await;
 
@@ -784,7 +785,7 @@ async fn test_share_links_create_with_expiration() {
 #[tokio::test]
 async fn test_share_links_create_invalid_permission() {
     let sql_storage = ShareLinksMockSqlStorage::new();
-    let user_storage = MockUserStorage::with_users([("testuser", "SECRET123")]);
+    let user_storage = create_test_user_storage();
     let config = Config::new_for_test();
     let app = routes(sql_storage, user_storage, config).await;
 
@@ -814,7 +815,7 @@ async fn test_share_links_create_invalid_permission() {
 #[tokio::test]
 async fn test_share_links_create_invalid_expires_at() {
     let sql_storage = ShareLinksMockSqlStorage::new();
-    let user_storage = MockUserStorage::with_users([("testuser", "SECRET123")]);
+    let user_storage = create_test_user_storage();
     let config = Config::new_for_test();
     let app = routes(sql_storage, user_storage, config).await;
 
@@ -849,7 +850,7 @@ async fn test_share_links_get_success() {
     let share_link_id = share_link.id;
 
     let sql_storage = ShareLinksMockSqlStorage::new().with_share_link(share_link);
-    let user_storage = MockUserStorage::with_users([("testuser", "SECRET123")]);
+    let user_storage = create_test_user_storage();
     let config = Config::new_for_test();
     let app = routes(sql_storage, user_storage, config).await;
 
@@ -876,7 +877,7 @@ async fn test_share_links_get_success() {
 #[tokio::test]
 async fn test_share_links_get_not_found() {
     let sql_storage = ShareLinksMockSqlStorage::new();
-    let user_storage = MockUserStorage::with_users([("testuser", "SECRET123")]);
+    let user_storage = create_test_user_storage();
     let config = Config::new_for_test();
     let app = routes(sql_storage, user_storage, config).await;
 
@@ -900,7 +901,7 @@ async fn test_share_links_get_not_found() {
 #[tokio::test]
 async fn test_share_links_get_invalid_id() {
     let sql_storage = ShareLinksMockSqlStorage::new();
-    let user_storage = MockUserStorage::with_users([("testuser", "SECRET123")]);
+    let user_storage = create_test_user_storage();
     let config = Config::new_for_test();
     let app = routes(sql_storage, user_storage, config).await;
 
@@ -928,7 +929,7 @@ async fn test_share_links_update_success() {
     let share_link_id = share_link.id;
 
     let sql_storage = ShareLinksMockSqlStorage::new().with_share_link(share_link);
-    let user_storage = MockUserStorage::with_users([("testuser", "SECRET123")]);
+    let user_storage = create_test_user_storage();
     let config = Config::new_for_test();
     let app = routes(sql_storage, user_storage, config).await;
 
@@ -965,7 +966,7 @@ async fn test_share_links_update_success() {
 #[tokio::test]
 async fn test_share_links_update_not_found() {
     let sql_storage = ShareLinksMockSqlStorage::new();
-    let user_storage = MockUserStorage::with_users([("testuser", "SECRET123")]);
+    let user_storage = create_test_user_storage();
     let config = Config::new_for_test();
     let app = routes(sql_storage, user_storage, config).await;
 
@@ -994,7 +995,7 @@ async fn test_share_links_delete_success() {
     let share_link_id = share_link.id;
 
     let sql_storage = ShareLinksMockSqlStorage::new().with_share_link(share_link);
-    let user_storage = MockUserStorage::with_users([("testuser", "SECRET123")]);
+    let user_storage = create_test_user_storage();
     let config = Config::new_for_test();
     let app = routes(sql_storage, user_storage, config).await;
 
@@ -1018,7 +1019,7 @@ async fn test_share_links_delete_success() {
 #[tokio::test]
 async fn test_share_links_delete_not_found() {
     let sql_storage = ShareLinksMockSqlStorage::new();
-    let user_storage = MockUserStorage::with_users([("testuser", "SECRET123")]);
+    let user_storage = create_test_user_storage();
     let config = Config::new_for_test();
     let app = routes(sql_storage, user_storage, config).await;
 
@@ -1049,7 +1050,7 @@ async fn test_content_share_link_create_success() {
     let content_id = content.id;
 
     let sql_storage = ShareLinksMockSqlStorage::new().with_content(content);
-    let user_storage = MockUserStorage::with_users([("testuser", "SECRET123")]);
+    let user_storage = create_test_user_storage();
     let config = Config::new_for_test();
     let app = routes(sql_storage, user_storage, config).await;
 
@@ -1084,7 +1085,7 @@ async fn test_content_share_link_create_success() {
 #[tokio::test]
 async fn test_content_share_link_create_content_not_found() {
     let sql_storage = ShareLinksMockSqlStorage::new();
-    let user_storage = MockUserStorage::with_users([("testuser", "SECRET123")]);
+    let user_storage = create_test_user_storage();
     let config = Config::new_for_test();
     let app = routes(sql_storage, user_storage, config).await;
 
@@ -1114,7 +1115,7 @@ async fn test_content_share_link_create_not_owner() {
     let content_id = content.id;
 
     let sql_storage = ShareLinksMockSqlStorage::new().with_content(content);
-    let user_storage = MockUserStorage::with_users([("testuser", "SECRET123")]);
+    let user_storage = create_test_user_storage();
     let config = Config::new_for_test();
     let app = routes(sql_storage, user_storage, config).await;
 
@@ -1146,7 +1147,7 @@ async fn test_group_share_link_create_success() {
     let group_id = group.id;
 
     let sql_storage = ShareLinksMockSqlStorage::new().with_group(group);
-    let user_storage = MockUserStorage::with_users([("testuser", "SECRET123")]);
+    let user_storage = create_test_user_storage();
     let config = Config::new_for_test();
     let app = routes(sql_storage, user_storage, config).await;
 
@@ -1180,7 +1181,7 @@ async fn test_group_share_link_create_success() {
 #[tokio::test]
 async fn test_group_share_link_create_group_not_found() {
     let sql_storage = ShareLinksMockSqlStorage::new();
-    let user_storage = MockUserStorage::with_users([("testuser", "SECRET123")]);
+    let user_storage = create_test_user_storage();
     let config = Config::new_for_test();
     let app = routes(sql_storage, user_storage, config).await;
 
@@ -1838,7 +1839,7 @@ async fn test_public_share_view_url_view_permission_forces_inline() {
 #[tokio::test]
 async fn test_share_links_create_default_permission() {
     let sql_storage = ShareLinksMockSqlStorage::new();
-    let user_storage = MockUserStorage::with_users([("testuser", "SECRET123")]);
+    let user_storage = create_test_user_storage();
     let config = Config::new_for_test();
     let app = routes(sql_storage, user_storage, config).await;
 
@@ -1871,7 +1872,7 @@ async fn test_share_links_update_clear_name() {
     let share_link_id = share_link.id;
 
     let sql_storage = ShareLinksMockSqlStorage::new().with_share_link(share_link);
-    let user_storage = MockUserStorage::with_users([("testuser", "SECRET123")]);
+    let user_storage = create_test_user_storage();
     let config = Config::new_for_test();
     let app = routes(sql_storage, user_storage, config).await;
 
@@ -1905,7 +1906,7 @@ async fn test_share_links_update_remove_password() {
     let share_link_id = share_link.id;
 
     let sql_storage = ShareLinksMockSqlStorage::new().with_share_link(share_link);
-    let user_storage = MockUserStorage::with_users([("testuser", "SECRET123")]);
+    let user_storage = create_test_user_storage();
     let config = Config::new_for_test();
     let app = routes(sql_storage, user_storage, config).await;
 
@@ -1934,7 +1935,7 @@ async fn test_share_links_update_remove_password() {
 #[tokio::test]
 async fn test_content_share_link_invalid_content_id() {
     let sql_storage = ShareLinksMockSqlStorage::new();
-    let user_storage = MockUserStorage::with_users([("testuser", "SECRET123")]);
+    let user_storage = create_test_user_storage();
     let config = Config::new_for_test();
     let app = routes(sql_storage, user_storage, config).await;
 
@@ -1959,7 +1960,7 @@ async fn test_content_share_link_invalid_content_id() {
 #[tokio::test]
 async fn test_group_share_link_invalid_group_id() {
     let sql_storage = ShareLinksMockSqlStorage::new();
-    let user_storage = MockUserStorage::with_users([("testuser", "SECRET123")]);
+    let user_storage = create_test_user_storage();
     let config = Config::new_for_test();
     let app = routes(sql_storage, user_storage, config).await;
 

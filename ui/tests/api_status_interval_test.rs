@@ -84,7 +84,13 @@ async fn dispatch_fetch_command(harness: &mut Harness<'_, State>) {
         .enqueue_command::<FetchApiStatusCommand>();
     harness.state_mut().ctx.flush_commands();
     // Wait for async HTTP response
-    yield_wait_for_network(50).await;
+    //
+    // Note: when running `just ui::test`, CI runs `cargo test --all-features` after the normal
+    // test suite. Enabling more features can increase scheduling contention and make the once-stable
+    // 50ms insufficient, leading to flaky “0 requests received” failures in wiremock assertions.
+    //
+    // Use a slightly longer wait to make the integration tests robust in the all-features run.
+    yield_wait_for_network(200).await;
     harness.state_mut().ctx.sync_computes();
 }
 
@@ -103,7 +109,9 @@ async fn run_compute_cycle(harness: &mut Harness<'_, State>) {
     // Execute the commands
     harness.state_mut().ctx.flush_commands();
     // Wait for async HTTP response
-    yield_wait_for_network(50).await;
+    //
+    // See `dispatch_fetch_command` for why 200ms is used here (all-features runs can be noisier).
+    yield_wait_for_network(200).await;
     // Apply results
     harness.state_mut().ctx.sync_computes();
 }

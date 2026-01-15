@@ -37,11 +37,38 @@ pub fn internal_users_panel(state_ctx: &mut StateCtx, api_base_url: &str, ui: &m
     // Fetch once when the panel is first opened:
     // - if we have never loaded the list yet (`cached == None` or result == Idle)
     // - and if we are not already loading
+    //
+    // Route-controlled refresh (internal builds):
+    // In internal builds, initial users refresh is controlled by the route-entry logic
+    // (i.e. when navigating to `Route::Internal`). The panel itself is rendered every frame,
+    // so panel-driven "initial refresh" can double-enqueue during startup (two frames both
+    // observing `Idle` before `Loading` is published), which can spawn overlapping refresh tasks
+    // and trip the latest-only async publish guard (stale publish panic in debug assertions).
+    //
+    // Therefore:
+    // - Internal builds: do NOT auto-enqueue from the panel; rely on route entry.
+    // - Non-internal builds: keep panel-driven initial refresh for robustness in direct rendering.
+    #[cfg(not(any(feature = "env_internal", feature = "env_test_internal")))]
     request_initial_users_refresh_if_needed(state_ctx, api_base_url);
 
+    // Keep list-users countdowns live by ensuring `InternalUsersState.last_fetch` is set
+    // when we have a loaded users snapshot. Without this, list-users `time_remaining`
+    // is rendered as a static snapshot and will not count down under manual Time control.
+    ensure_last_fetch_initialized_for_loaded_users(state_ctx);
+
     // Auto-refresh when any OTP has cycled (time_remaining reached 0 and wrapped).
-    // This ensures the displayed OTP codes stay fresh across 30-second boundaries.
-    request_refresh_if_otp_stale(state_ctx, api_base_url);
+    //
+    // STARTUP GUARD:
+    // During initial load, it's possible to observe `Loaded(_)` from the compute before we've
+    // recorded `InternalUsersState.last_fetch`. The stale-check logic relies on `last_fetch`;
+    // if it's unset or just being initialized, we can incorrectly conclude the data is stale
+    // and enqueue a second overlapping refresh, which can trip latest-only publish gating.
+    //
+    // We therefore suppress stale-based auto-refresh until after the initial list load has
+    // been recorded (`last_fetch.is_some()`).
+    if state_ctx.state::<InternalUsersState>().last_fetch.is_some() {
+        request_refresh_if_otp_stale(state_ctx, api_base_url);
+    }
 
     let response = ui.vertical(|ui| {
         // Controls row: Refresh and Create buttons
@@ -146,6 +173,43 @@ fn request_initial_users_refresh_if_needed(state_ctx: &mut StateCtx, api_base_ur
     state_ctx.enqueue_command::<RefreshInternalUsersCommand>();
 }
 
+/// Ensure `InternalUsersState.last_fetch` is initialized once we have loaded users.
+///
+/// The list-users table countdown is rendered using:
+/// `InternalUsersState::calculate_time_remaining(user.time_remaining, now)`
+/// which requires `last_fetch` to be set to compute a live countdown relative to the
+/// current `Time` state.
+///
+/// In production this is normally set when the UI updates `InternalUsersState` after
+/// receiving a users list. However, the current code path sources users directly from
+/// `InternalUsersListUsersCompute`, so we initialize `last_fetch` here to keep the
+/// countdown correct in manual-time integration tests and in the app.
+///
+/// This is intentionally conservative:
+/// - Only sets `last_fetch` if it's `None`
+/// - Only when list-users compute has `Loaded(_)`
+#[inline]
+fn ensure_last_fetch_initialized_for_loaded_users(state_ctx: &mut StateCtx) {
+    let Some(compute) = state_ctx.cached::<InternalUsersListUsersCompute>() else {
+        return;
+    };
+
+    let InternalUsersListUsersResult::Loaded(_) = &compute.result else {
+        return;
+    };
+
+    let has_last_fetch = state_ctx.state::<InternalUsersState>().last_fetch.is_some();
+
+    if has_last_fetch {
+        return;
+    }
+
+    let now = *state_ctx.state::<Time>().as_ref();
+    state_ctx.update::<InternalUsersState>(|s| {
+        s.last_fetch = Some(now);
+    });
+}
+
 /// Auto-refresh when any OTP (revealed or hidden) has become stale (crossed a 30-second cycle boundary).
 ///
 /// This ensures users see fresh OTP codes after the countdown reaches 0, even if the OTP
@@ -169,8 +233,8 @@ fn request_refresh_if_otp_stale(state_ctx: &mut StateCtx, api_base_url: &str) {
     }
 
     // Get the loaded users
-    let users: Vec<InternalUserItem> = match &compute.result {
-        InternalUsersListUsersResult::Loaded(users) => users.clone(),
+    let users: &Vec<InternalUserItem> = match &compute.result {
+        InternalUsersListUsersResult::Loaded(users) => users,
         _ => return,
     };
 
@@ -254,12 +318,12 @@ fn render_users_table(state_ctx: &mut StateCtx, ui: &mut Ui) -> (Option<Ustr>, O
     let now = *state_ctx.state::<Time>().as_ref();
 
     // Source users from the list-users compute (refresh slice).
-    let users: Vec<InternalUserItem> = match state_ctx.cached::<InternalUsersListUsersCompute>() {
+    let users: &Vec<InternalUserItem> = match state_ctx.cached::<InternalUsersListUsersCompute>() {
         Some(c) => match &c.result {
-            InternalUsersListUsersResult::Loaded(users) => users.clone(),
-            _ => Vec::new(),
+            InternalUsersListUsersResult::Loaded(users) => users,
+            _ => &Vec::new(),
         },
-        None => Vec::new(),
+        None => &Vec::new(),
     };
 
     // Users table using native egui_extras TableBuilder

@@ -145,6 +145,9 @@ jobs:
         with:
           toolchain: nightly
 
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.9
+
       - name: Setup Just
         uses: extractions/setup-just@v2
 

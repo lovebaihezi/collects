@@ -17,3 +17,11 @@ pub use login::run_login;
 pub use new::run_new;
 pub use schema::print_schema;
 pub use view::run_view;
+
+// Re-export `_with_reader` variants for integration tests
+#[cfg(test)]
+#[allow(unused_imports)]
+pub use add::run_add_with_reader;
+#[cfg(test)]
+#[allow(unused_imports)]
+pub use new::run_new_with_reader;

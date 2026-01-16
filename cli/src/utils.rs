@@ -3,7 +3,7 @@ use collects_business::{
     Attachment, ContentCreationStatus, CreateContentCommand, CreateContentCompute,
     CreateContentInput,
 };
-use collects_clipboard::{ClipboardProvider as _, SystemClipboard};
+use collects_input::{ClipboardProvider as _, SystemClipboard};
 use collects_states::StateCtx;
 use tracing::{info, instrument};
 

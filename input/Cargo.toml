@@ -1,8 +1,8 @@
 [package]
-name = "collects-clipboard"
+name = "collects-input"
 version = "0.1.0"
 edition = "2024"
-description = "Shared clipboard handling for collects UI and CLI"
+description = "Input sources for collects: clipboard, stdin, and other content ingestion"
 
 [dependencies]
 chrono = { workspace = true }

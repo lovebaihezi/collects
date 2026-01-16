@@ -1,11 +1,11 @@
-//! Shared clipboard handling for collects UI and CLI.
+//! Clipboard image access for collects UI and CLI.
 //!
-//! This crate provides a common interface for reading images from the system clipboard,
+//! This module provides a common interface for reading images from the system clipboard,
 //! usable by both the native UI (egui/eframe) and CLI applications.
 //!
 //! # Architecture
 //!
-//! The crate uses a trait-based design for testability:
+//! The module uses a trait-based design for testability:
 //! - [`ClipboardProvider`]: Generic interface for clipboard access
 //! - [`SystemClipboard`]: Production implementation using arboard crate (native only)
 //!
@@ -26,7 +26,7 @@
 //! # Example
 //!
 //! ```rust,no_run
-//! use collects_clipboard::{ClipboardProvider, SystemClipboard};
+//! use collects_input::clipboard::{ClipboardProvider, SystemClipboard};
 //!
 //! let clipboard = SystemClipboard;
 //! match clipboard.get_image() {
@@ -226,7 +226,7 @@ fn try_load_image_from_file_uri(text: &str, encode_png: bool) -> Option<Clipboar
         let line = line.trim();
         if let Some(path) = extract_file_path_from_uri(line) {
             log::trace!(
-                target: "collects_clipboard",
+                target: "collects_input::clipboard",
                 "file_uri_detected path={path:?}",
             );
 
@@ -263,7 +263,7 @@ fn extract_file_path_from_uri(uri: &str) -> Option<std::path::PathBuf> {
         Some(path)
     } else {
         log::trace!(
-            target: "collects_clipboard",
+            target: "collects_input::clipboard",
             "file_uri_not_found path={path:?}",
         );
         None
@@ -325,7 +325,7 @@ fn load_image_from_path(path: &std::path::Path, encode_png: bool) -> Option<Clip
         }
         Err(e) => {
             log::trace!(
-                target: "collects_clipboard",
+                target: "collects_input::clipboard",
                 "failed_to_load_image path={path:?} error={e}",
             );
             None

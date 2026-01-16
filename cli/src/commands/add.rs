@@ -7,7 +7,7 @@ use collects_business::{
     AddGroupContentsCommand, AddGroupContentsCompute, AddGroupContentsInput,
     AddGroupContentsStatus, Attachment,
 };
-use collects_clipboard::clear_clipboard_image;
+use collects_input::{RealStdinReader, StdinReader, clear_clipboard_image};
 use collects_states::StateCtx;
 use tracing::instrument;
 use ustr::Ustr;
@@ -17,12 +17,24 @@ use crate::context::flush_and_await;
 use crate::output::Output;
 use crate::utils::{create_contents_for_inputs, read_clipboard_image_if_available};
 
+/// Run the add content command with the default stdin reader.
 #[instrument(skip_all, name = "add_collect", fields(collect_id = id.as_str(), file_count = files.len(), stdin))]
-pub async fn run_add(
+pub async fn run_add(ctx: StateCtx, id: String, files: Vec<PathBuf>, stdin: bool) -> Result<()> {
+    let reader = RealStdinReader::new();
+    run_add_with_reader(ctx, id, files, stdin, reader).await
+}
+
+/// Run the add content command with a custom stdin reader.
+///
+/// This function accepts a generic `StdinReader` implementation, making it
+/// testable with mock readers.
+#[instrument(skip_all, name = "add_collect_impl", fields(collect_id = id.as_str(), file_count = files.len(), stdin))]
+pub async fn run_add_with_reader<R: StdinReader>(
     mut ctx: StateCtx,
     id: String,
     files: Vec<PathBuf>,
     stdin: bool,
+    mut reader: R,
 ) -> Result<()> {
     let out = Output::new();
 
@@ -31,13 +43,12 @@ pub async fn run_add(
 
     let mut body = None;
     if stdin {
+        #[cfg(windows)]
+        out.info("Reading stdin... Press Ctrl+Z then Enter to finish.");
+        #[cfg(not(windows))]
         out.info("Reading stdin... Press Ctrl+D to finish.");
-        use std::io::Read as _;
-        let mut buffer = Vec::new();
-        std::io::stdin().read_to_end(&mut buffer)?;
-        if !buffer.is_empty() {
-            body = Some(String::from_utf8(buffer)?);
-        }
+
+        body = reader.read_body()?;
     }
 
     let clipboard_image = read_clipboard_image_if_available();

@@ -40,11 +40,14 @@ use wiremock::{
 };
 
 use crate::{
-    AuthCompute, BusinessConfig, CFTokenCompute, CreateContentCommand, CreateContentCompute,
-    CreateContentInput, GetContentCommand, GetContentCompute, GetContentInput, GetViewUrlCommand,
-    GetViewUrlCompute, GetViewUrlInput, ListContentsCommand, ListContentsCompute,
-    ListContentsInput, LoginCommand, LoginInput, PendingTokenValidation, ValidateTokenCommand,
-    list_content::ContentItem,
+    AddGroupContentsCommand, AddGroupContentsCompute, AddGroupContentsInput, AuthCompute,
+    BusinessConfig, CFTokenCompute, CreateContentCommand, CreateContentCompute, CreateContentInput,
+    CreateGroupCommand, CreateGroupCompute, CreateGroupInput, GetContentCommand, GetContentCompute,
+    GetContentInput, GetGroupContentsCommand, GetGroupContentsCompute, GetGroupContentsInput,
+    GetViewUrlCommand, GetViewUrlCompute, GetViewUrlInput, GroupContentItem, GroupItem,
+    ListContentsCommand, ListContentsCompute, ListContentsInput, ListGroupsCommand,
+    ListGroupsCompute, ListGroupsInput, LoginCommand, LoginInput, PendingTokenValidation,
+    ValidateTokenCommand, list_content::ContentItem,
 };
 use collects_states::StateCtx;
 
@@ -327,6 +330,105 @@ impl TestContext {
         self.mock_upload_put(upload_id).await;
         self.mock_upload_complete(content_id).await;
     }
+
+    // =========================================================================
+    // Group (Collect) mock helpers
+    // =========================================================================
+
+    /// Mock the list groups endpoint.
+    pub async fn mock_list_groups(&self, items: Vec<GroupItem>, total: usize) {
+        let response = ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "items": items,
+            "total": total
+        }));
+
+        Mock::given(method("GET"))
+            .and(path("/api/v1/groups"))
+            .and(header("Authorization", "Bearer test_token"))
+            .respond_with(response)
+            .mount(&self.mock_server)
+            .await;
+    }
+
+    /// Mock the create group endpoint.
+    pub async fn mock_create_group(&self, group: GroupItem) {
+        let response = ResponseTemplate::new(200).set_body_json(&group);
+
+        Mock::given(method("POST"))
+            .and(path("/api/v1/groups"))
+            .and(header("Authorization", "Bearer test_token"))
+            .respond_with(response)
+            .mount(&self.mock_server)
+            .await;
+    }
+
+    /// Mock the create group endpoint with an error.
+    pub async fn mock_create_group_error(&self, status: u16, error: &str) {
+        let response = ResponseTemplate::new(status).set_body_json(serde_json::json!({
+            "error": error
+        }));
+
+        Mock::given(method("POST"))
+            .and(path("/api/v1/groups"))
+            .respond_with(response)
+            .mount(&self.mock_server)
+            .await;
+    }
+
+    /// Mock the get group contents endpoint.
+    pub async fn mock_get_group_contents(&self, group_id: &str, items: Vec<GroupContentItem>) {
+        let response = ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "items": items,
+            "total": items.len()
+        }));
+
+        Mock::given(method("GET"))
+            .and(path(format!("/api/v1/groups/{}/contents", group_id)))
+            .and(header("Authorization", "Bearer test_token"))
+            .respond_with(response)
+            .mount(&self.mock_server)
+            .await;
+    }
+
+    /// Mock the get group contents endpoint with 404.
+    pub async fn mock_get_group_contents_not_found(&self, group_id: &str) {
+        let response = ResponseTemplate::new(404).set_body_json(serde_json::json!({
+            "error": "Group not found"
+        }));
+
+        Mock::given(method("GET"))
+            .and(path(format!("/api/v1/groups/{}/contents", group_id)))
+            .respond_with(response)
+            .mount(&self.mock_server)
+            .await;
+    }
+
+    /// Mock the add content to group endpoint.
+    pub async fn mock_add_group_content(&self, group_id: &str) {
+        let response = ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "success": true
+        }));
+
+        Mock::given(method("POST"))
+            .and(path(format!("/api/v1/groups/{}/contents", group_id)))
+            .and(header("Authorization", "Bearer test_token"))
+            .respond_with(response)
+            .mount(&self.mock_server)
+            .await;
+    }
+
+    /// Mock the add content to group endpoint with error.
+    pub async fn mock_add_group_content_error(&self, group_id: &str, status: u16, error: &str) {
+        let response = ResponseTemplate::new(status).set_body_json(serde_json::json!({
+            "error": error
+        }));
+
+        Mock::given(method("POST"))
+            .and(path(format!("/api/v1/groups/{}/contents", group_id)))
+            .respond_with(response)
+            .mount(&self.mock_server)
+            .await;
+    }
 }
 
 /// Build a StateCtx configured for testing with all necessary states and commands.
@@ -358,6 +460,16 @@ fn build_test_state_ctx(config: BusinessConfig) -> StateCtx {
     ctx.add_state(GetViewUrlInput::default());
     ctx.record_compute(GetViewUrlCompute::default());
 
+    // Group (collect) states and computes
+    ctx.add_state(ListGroupsInput::default());
+    ctx.record_compute(ListGroupsCompute::default());
+    ctx.add_state(CreateGroupInput::default());
+    ctx.record_compute(CreateGroupCompute::default());
+    ctx.add_state(AddGroupContentsInput::default());
+    ctx.record_compute(AddGroupContentsCompute::default());
+    ctx.add_state(GetGroupContentsInput::default());
+    ctx.record_compute(GetGroupContentsCompute::default());
+
     // Commands
     ctx.record_command(LoginCommand);
     ctx.record_command(ValidateTokenCommand);
@@ -365,6 +477,10 @@ fn build_test_state_ctx(config: BusinessConfig) -> StateCtx {
     ctx.record_command(ListContentsCommand);
     ctx.record_command(GetContentCommand);
     ctx.record_command(GetViewUrlCommand);
+    ctx.record_command(ListGroupsCommand);
+    ctx.record_command(CreateGroupCommand);
+    ctx.record_command(AddGroupContentsCommand);
+    ctx.record_command(GetGroupContentsCommand);
 
     ctx
 }
@@ -413,16 +529,46 @@ pub fn sample_text_content(id: &str, body: &str) -> ContentItem {
     }
 }
 
+/// Helper to create a sample GroupItem for testing.
+pub fn sample_group_item(id: &str, name: &str) -> GroupItem {
+    GroupItem {
+        id: Ustr::from(id),
+        name: Ustr::from(name),
+        description: None,
+        visibility: Ustr::from("private"),
+        status: Ustr::from("active"),
+        trashed_at: None,
+        archived_at: None,
+        created_at: Ustr::from("2024-01-01T00:00:00Z"),
+        updated_at: Ustr::from("2024-01-01T00:00:00Z"),
+    }
+}
+
+/// Helper to create a sample GroupContentItem for testing.
+pub fn sample_group_content_item(id: &str, group_id: &str, content_id: &str) -> GroupContentItem {
+    GroupContentItem {
+        id: Ustr::from(id),
+        group_id: Ustr::from(group_id),
+        content_id: Ustr::from(content_id),
+        sort_order: 0,
+        added_at: Ustr::from("2024-01-01T00:00:00Z"),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::content::ContentCreationStatus;
     use crate::list_content::{GetContentStatus, GetViewUrlStatus, ListContentsStatus};
+    use crate::list_groups::{
+        AddGroupContentsStatus, CreateGroupStatus, GetGroupContentsStatus, ListGroupsStatus,
+    };
 
     #[tokio::test]
     async fn test_context_creation() {
         let test_ctx = TestContext::new().await;
         // Verify the mock server is running
+
         assert!(!test_ctx.mock_server.uri().is_empty());
     }
 
@@ -637,6 +783,282 @@ mod tests {
                 assert_eq!(ids[0], "content-456");
             }
             other => panic!("Expected Success, got {:?}", other),
+        }
+
+        test_ctx.shutdown().await;
+    }
+
+    // =========================================================================
+    // Group (Collect) tests
+    // =========================================================================
+
+    #[tokio::test]
+    async fn test_list_groups_success() {
+        let mut test_ctx = TestContext::new().await;
+        test_ctx.set_authenticated("test_token");
+
+        let groups = vec![
+            sample_group_item("group-1", "My First Collect"),
+            sample_group_item("group-2", "My Second Collect"),
+        ];
+        test_ctx.mock_list_groups(groups, 2).await;
+
+        test_ctx.ctx.update::<ListGroupsInput>(|input| {
+            input.limit = Some(10);
+            input.offset = Some(0);
+        });
+        test_ctx.ctx.enqueue_command::<ListGroupsCommand>();
+        test_ctx.flush_and_wait().await;
+
+        let compute = test_ctx.ctx.compute::<ListGroupsCompute>();
+        match &compute.status {
+            ListGroupsStatus::Success(items) => {
+                assert_eq!(items.len(), 2);
+                assert_eq!(items[0].name.as_str(), "My First Collect");
+                assert_eq!(items[1].name.as_str(), "My Second Collect");
+            }
+            other => panic!("Expected Success, got {:?}", other),
+        }
+
+        test_ctx.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn test_create_group_success() {
+        let mut test_ctx = TestContext::new().await;
+        test_ctx.set_authenticated("test_token");
+
+        let group = sample_group_item("new-group-id", "Test Collect");
+        test_ctx.mock_create_group(group).await;
+
+        test_ctx.ctx.update::<CreateGroupInput>(|input| {
+            input.name = Some("Test Collect".to_owned());
+            input.description = None;
+            input.visibility = Some("private".to_owned());
+        });
+        test_ctx.ctx.enqueue_command::<CreateGroupCommand>();
+        test_ctx.flush_and_wait().await;
+
+        let compute = test_ctx.ctx.compute::<CreateGroupCompute>();
+        match &compute.status {
+            CreateGroupStatus::Success(group) => {
+                assert_eq!(group.id.as_str(), "new-group-id");
+                assert_eq!(group.name.as_str(), "Test Collect");
+            }
+            other => panic!("Expected Success, got {:?}", other),
+        }
+
+        test_ctx.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn test_create_group_unauthenticated() {
+        let mut test_ctx = TestContext::new().await;
+        // Don't set auth
+
+        test_ctx.ctx.update::<CreateGroupInput>(|input| {
+            input.name = Some("Test Collect".to_owned());
+        });
+        test_ctx.ctx.enqueue_command::<CreateGroupCommand>();
+        test_ctx.flush_and_wait().await;
+
+        let compute = test_ctx.ctx.compute::<CreateGroupCompute>();
+        match &compute.status {
+            CreateGroupStatus::Error(msg) => {
+                assert!(
+                    msg.to_lowercase().contains("authenticated")
+                        || msg.to_lowercase().contains("auth")
+                );
+            }
+            other => panic!("Expected Error, got {:?}", other),
+        }
+
+        test_ctx.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn test_add_group_contents_success() {
+        let mut test_ctx = TestContext::new().await;
+        test_ctx.set_authenticated("test_token");
+
+        test_ctx.mock_add_group_content("group-123").await;
+
+        test_ctx.ctx.update::<AddGroupContentsInput>(|input| {
+            input.group_id = Some(Ustr::from("group-123"));
+            input.content_ids = vec![Ustr::from("content-1"), Ustr::from("content-2")];
+        });
+        test_ctx.ctx.enqueue_command::<AddGroupContentsCommand>();
+        test_ctx.flush_and_wait().await;
+
+        let compute = test_ctx.ctx.compute::<AddGroupContentsCompute>();
+        match &compute.status {
+            AddGroupContentsStatus::Success { added } => {
+                assert_eq!(*added, 2);
+            }
+            other => panic!("Expected Success, got {:?}", other),
+        }
+
+        test_ctx.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn test_get_group_contents_success() {
+        let mut test_ctx = TestContext::new().await;
+        test_ctx.set_authenticated("test_token");
+
+        let items = vec![
+            sample_group_content_item("gc-1", "group-123", "content-1"),
+            sample_group_content_item("gc-2", "group-123", "content-2"),
+        ];
+        test_ctx.mock_get_group_contents("group-123", items).await;
+
+        test_ctx.ctx.update::<GetGroupContentsInput>(|input| {
+            input.group_id = Some(Ustr::from("group-123"));
+        });
+        test_ctx.ctx.enqueue_command::<GetGroupContentsCommand>();
+        test_ctx.flush_and_wait().await;
+
+        let compute = test_ctx.ctx.compute::<GetGroupContentsCompute>();
+        match &compute.status {
+            GetGroupContentsStatus::Success(items) => {
+                assert_eq!(items.len(), 2);
+                assert_eq!(items[0].content_id.as_str(), "content-1");
+                assert_eq!(items[1].content_id.as_str(), "content-2");
+            }
+            other => panic!("Expected Success, got {:?}", other),
+        }
+
+        test_ctx.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn test_get_group_contents_not_found() {
+        let mut test_ctx = TestContext::new().await;
+        test_ctx.set_authenticated("test_token");
+
+        test_ctx
+            .mock_get_group_contents_not_found("nonexistent-group")
+            .await;
+
+        test_ctx.ctx.update::<GetGroupContentsInput>(|input| {
+            input.group_id = Some(Ustr::from("nonexistent-group"));
+        });
+        test_ctx.ctx.enqueue_command::<GetGroupContentsCommand>();
+        test_ctx.flush_and_wait().await;
+
+        let compute = test_ctx.ctx.compute::<GetGroupContentsCompute>();
+        assert!(matches!(compute.status, GetGroupContentsStatus::NotFound));
+
+        test_ctx.shutdown().await;
+    }
+
+    /// Test the full "new collect" workflow:
+    /// 1. Create a group
+    /// 2. Create inline content
+    /// 3. Add content to the group
+    #[tokio::test]
+    async fn test_new_collect_workflow() {
+        let mut test_ctx = TestContext::new().await;
+        test_ctx.set_authenticated("test_token");
+
+        // Mock create group
+        let group = sample_group_item("new-group-id", "My New Collect");
+        test_ctx.mock_create_group(group).await;
+
+        // Mock create inline content
+        test_ctx.mock_create_content("new-content-id").await;
+
+        // Mock add content to group
+        test_ctx.mock_add_group_content("new-group-id").await;
+
+        // Step 1: Create the group
+        test_ctx.ctx.update::<CreateGroupInput>(|input| {
+            input.name = Some("My New Collect".to_owned());
+        });
+        test_ctx.ctx.enqueue_command::<CreateGroupCommand>();
+        test_ctx.flush_and_wait().await;
+
+        let group = match &test_ctx.ctx.compute::<CreateGroupCompute>().status {
+            CreateGroupStatus::Success(g) => g.clone(),
+            other => panic!("Expected CreateGroupStatus::Success, got {:?}", other),
+        };
+        assert_eq!(group.id.as_str(), "new-group-id");
+
+        // Step 2: Create content
+        test_ctx.ctx.update::<CreateContentInput>(|input| {
+            input.body = Some("This is my note content".to_owned());
+        });
+        test_ctx.ctx.enqueue_command::<CreateContentCommand>();
+        test_ctx.flush_and_wait().await;
+
+        let content_ids = match &test_ctx.ctx.compute::<CreateContentCompute>().status {
+            ContentCreationStatus::Success(ids) => ids.clone(),
+            other => panic!("Expected ContentCreationStatus::Success, got {:?}", other),
+        };
+        assert_eq!(content_ids.len(), 1);
+
+        // Step 3: Add content to group
+        test_ctx.ctx.update::<AddGroupContentsInput>(|input| {
+            input.group_id = Some(group.id);
+            input.content_ids = content_ids.iter().map(|id| Ustr::from(id)).collect();
+        });
+        test_ctx.ctx.enqueue_command::<AddGroupContentsCommand>();
+        test_ctx.flush_and_wait().await;
+
+        match &test_ctx.ctx.compute::<AddGroupContentsCompute>().status {
+            AddGroupContentsStatus::Success { added } => {
+                assert_eq!(*added, 1);
+            }
+            other => panic!("Expected AddGroupContentsStatus::Success, got {:?}", other),
+        }
+
+        test_ctx.shutdown().await;
+    }
+
+    /// Test the "add to collect" workflow:
+    /// 1. Create content (file upload)
+    /// 2. Add content to existing group
+    #[tokio::test]
+    async fn test_add_to_collect_workflow() {
+        let mut test_ctx = TestContext::new().await;
+        test_ctx.set_authenticated("test_token");
+
+        // Mock file upload
+        test_ctx.mock_full_upload("upload-123", "content-456").await;
+
+        // Mock add content to group
+        test_ctx.mock_add_group_content("existing-group-id").await;
+
+        // Step 1: Upload file
+        test_ctx.ctx.update::<CreateContentInput>(|input| {
+            input.attachments = vec![crate::Attachment {
+                filename: "document.pdf".to_owned(),
+                mime_type: "application/pdf".to_owned(),
+                data: b"PDF content here".to_vec(),
+            }];
+        });
+        test_ctx.ctx.enqueue_command::<CreateContentCommand>();
+        test_ctx.flush_and_wait().await;
+
+        let content_ids = match &test_ctx.ctx.compute::<CreateContentCompute>().status {
+            ContentCreationStatus::Success(ids) => ids.clone(),
+            other => panic!("Expected ContentCreationStatus::Success, got {:?}", other),
+        };
+        assert_eq!(content_ids.len(), 1);
+
+        // Step 2: Add content to existing group
+        test_ctx.ctx.update::<AddGroupContentsInput>(|input| {
+            input.group_id = Some(Ustr::from("existing-group-id"));
+            input.content_ids = content_ids.iter().map(|id| Ustr::from(id)).collect();
+        });
+        test_ctx.ctx.enqueue_command::<AddGroupContentsCommand>();
+        test_ctx.flush_and_wait().await;
+
+        match &test_ctx.ctx.compute::<AddGroupContentsCompute>().status {
+            AddGroupContentsStatus::Success { added } => {
+                assert_eq!(*added, 1);
+            }
+            other => panic!("Expected AddGroupContentsStatus::Success, got {:?}", other),
         }
 
         test_ctx.shutdown().await;

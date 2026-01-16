@@ -30,6 +30,11 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 tabled = "0.20"
 
+[dev-dependencies]
+wiremock = { workspace = true }
+tokio = { workspace = true, features = ["full", "test-util"] }
+tempfile = { workspace = true }
+
 [features]
 default = []
 env_test = ["collects-business/env_test"]

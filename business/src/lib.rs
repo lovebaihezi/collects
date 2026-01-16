@@ -53,7 +53,9 @@ pub use list_content::{
     ListContentsCompute, ListContentsInput, ListContentsResponse, ListContentsStatus, ViewUrlData,
 };
 pub use list_groups::{
-    GetGroupContentsCommand, GetGroupContentsCompute, GetGroupContentsInput,
+    AddGroupContentsCommand, AddGroupContentsCompute, AddGroupContentsInput,
+    AddGroupContentsStatus, CreateGroupCommand, CreateGroupCompute, CreateGroupInput,
+    CreateGroupStatus, GetGroupContentsCommand, GetGroupContentsCompute, GetGroupContentsInput,
     GetGroupContentsStatus, GroupContentItem, GroupItem, ListGroupsCommand, ListGroupsCompute,
     ListGroupsInput, ListGroupsResponse, ListGroupsStatus,
 };

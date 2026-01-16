@@ -9,17 +9,19 @@ use anyhow::{Context as _, Result};
 use clap::{CommandFactory as _, Parser, Subcommand};
 use clap_complete::{Generator, Shell};
 use collects_business::{
-    Attachment, AuthCompute, AuthStatus, BusinessConfig, CFTokenCompute, ContentCreationStatus,
-    ContentItem, CreateContentCommand, CreateContentCompute, CreateContentInput, GetContentCommand,
-    GetContentCompute, GetContentInput, GetContentStatus, GetGroupContentsCommand,
-    GetGroupContentsCompute, GetGroupContentsInput, GetGroupContentsStatus, GroupItem,
-    ListGroupsCommand, ListGroupsCompute, ListGroupsInput, ListGroupsStatus, LoginCommand,
-    LoginInput, PendingTokenValidation, ValidateTokenCommand,
+    AddGroupContentsCommand, AddGroupContentsCompute, AddGroupContentsInput,
+    AddGroupContentsStatus, Attachment, AuthCompute, AuthStatus, BusinessConfig, CFTokenCompute,
+    ContentCreationStatus, ContentItem, CreateContentCommand, CreateContentCompute,
+    CreateContentInput, CreateGroupCommand, CreateGroupCompute, CreateGroupInput,
+    CreateGroupStatus, GetContentCommand, GetContentCompute, GetContentInput, GetContentStatus,
+    GetGroupContentsCommand, GetGroupContentsCompute, GetGroupContentsInput,
+    GetGroupContentsStatus, GroupItem, ListGroupsCommand, ListGroupsCompute, ListGroupsInput,
+    ListGroupsStatus, LoginCommand, LoginInput, PendingTokenValidation, ValidateTokenCommand,
 };
-use collects_clipboard::{ClipboardProvider as _, SystemClipboard};
+use collects_clipboard::{ClipboardProvider as _, SystemClipboard, clear_clipboard_image};
 use collects_states::StateCtx;
 use dirs::home_dir;
-use inquire::{Confirm, Select, Text};
+use inquire::{Select, Text};
 use serde::{Deserialize, Serialize};
 use tabled::settings::Style;
 use tabled::{Table, Tabled};
@@ -32,18 +34,6 @@ use ustr::Ustr;
 struct Cli {
     #[command(subcommand)]
     command: Option<Commands>,
-
-    /// Read content from stdin (implied if no subcommand and input is piped)
-    #[arg(long, short = 'i')]
-    stdin: bool,
-
-    /// Attach files
-    #[arg(long, short = 'f')]
-    file: Vec<PathBuf>,
-
-    /// Title for the content
-    #[arg(long, short = 't')]
-    title: Option<String>,
 
     /// Show timing/latency information
     #[arg(long, global = true)]
@@ -58,35 +48,36 @@ struct Cli {
 enum Commands {
     /// Login to Collects
     Login,
-    // TODO: Add `New` command to create a new collect (group)
-    // collects new -t "My Collect" → creates an empty collect
-    // collects new -t "My Collect" -f file.png → creates collect with files
-    //
-    // TODO: Add `Add` command to add content to an existing collect
-    // collects add <collect_id> -f file.png → adds file to collect
-    // collects add <collect_id> --stdin → adds text content from stdin
-    /// Create new content (note: creates orphan content, not a collect)
-    Create {
+    /// Create a new collect (group) with content
+    New {
+        /// Title for the collect
+        #[arg(long, short = 't')]
+        title: String,
+
         /// Attach files
         #[arg(long, short = 'f')]
         file: Vec<PathBuf>,
 
-        /// Title for the content
-        #[arg(long, short = 't')]
-        title: Option<String>,
-
-        /// Interactive mode (prompt for all fields)
-        #[arg(long, short = 'I')]
-        interactive: bool,
-
-        /// Skip clipboard image reading
+        /// Read text content from stdin
         #[arg(long)]
-        no_clipboard: bool,
+        stdin: bool,
     },
+    /// Add content to an existing collect (group)
+    Add {
+        /// Collect ID (UUID)
+        id: String,
+
+        /// Attach files
+        #[arg(long, short = 'f')]
+        file: Vec<PathBuf>,
+
+        /// Read text content from stdin
+        #[arg(long)]
+        stdin: bool,
+    },
+
     /// Show what can be added to collects (schema information)
     Schema,
-    // TODO: Rename to `Contents` or remove once `New` command exists
-    // Users should use `collects new` to create collects, not `collects create`
     /// List your collects (groups)
     List {
         /// Maximum number of items to return (1-100)
@@ -171,6 +162,14 @@ fn build_state_ctx(config: BusinessConfig) -> StateCtx {
     ctx.add_state(CreateContentInput::default());
     ctx.record_compute(CreateContentCompute::default());
 
+    // Group creation states and computes
+    ctx.add_state(CreateGroupInput::default());
+    ctx.record_compute(CreateGroupCompute::default());
+
+    // Add-to-group states and computes
+    ctx.add_state(AddGroupContentsInput::default());
+    ctx.record_compute(AddGroupContentsCompute::default());
+
     // List groups (collects) states and computes
     ctx.add_state(ListGroupsInput::default());
     ctx.record_compute(ListGroupsCompute::default());
@@ -187,6 +186,8 @@ fn build_state_ctx(config: BusinessConfig) -> StateCtx {
     ctx.record_command(LoginCommand);
     ctx.record_command(ValidateTokenCommand);
     ctx.record_command(CreateContentCommand);
+    ctx.record_command(CreateGroupCommand);
+    ctx.record_command(AddGroupContentsCommand);
     ctx.record_command(ListGroupsCommand);
     ctx.record_command(GetGroupContentsCommand);
     ctx.record_command(GetContentCommand);
@@ -314,18 +315,9 @@ async fn main() -> Result<()> {
 
     match cli.command {
         Some(Commands::Login) => run_login(ctx).await,
-        Some(Commands::Create {
-            file,
-            title,
-            interactive,
-            no_clipboard,
-        }) => {
-            if interactive {
-                run_create_interactive(ctx).await
-            } else {
-                run_create(ctx, file, title, !no_clipboard).await
-            }
-        }
+        Some(Commands::New { title, file, stdin }) => run_new(ctx, title, file, stdin).await,
+        Some(Commands::Add { id, file, stdin }) => run_add(ctx, id, file, stdin).await,
+
         Some(Commands::Schema) => {
             print_schema();
             Ok(())
@@ -342,30 +334,9 @@ async fn main() -> Result<()> {
             Ok(())
         }
         None => {
-            // Default: Create content
-            let files = cli.file;
-            let mut body = None;
-
-            // Check if stdin has data
-            if !std::io::stdin().is_terminal() {
-                use std::io::Read as _;
-                let mut buffer = Vec::new();
-                std::io::stdin().read_to_end(&mut buffer)?;
-                if !buffer.is_empty() {
-                    body = Some(String::from_utf8(buffer)?);
-                }
-            }
-
-            // Always try to read clipboard image
-            let clipboard_image = read_clipboard_image_if_available();
-
-            if files.is_empty() && body.is_none() && clipboard_image.is_none() {
-                use clap::CommandFactory as _;
-                Cli::command().print_help()?;
-                return Ok(());
-            }
-
-            run_create_impl(ctx, files, cli.title, body, clipboard_image).await
+            use clap::CommandFactory as _;
+            Cli::command().print_help()?;
+            Ok(())
         }
     }
 }
@@ -430,214 +401,6 @@ async fn run_login(mut ctx: StateCtx) -> Result<()> {
     Ok(())
 }
 
-#[instrument(skip_all, name = "create_interactive")]
-#[allow(clippy::too_many_lines)]
-async fn run_create_interactive(mut ctx: StateCtx) -> Result<()> {
-    // Ensure authenticated (prompts for login if needed)
-    ensure_authenticated(&mut ctx).await?;
-
-    println!("Create New Content\n");
-
-    // Title (optional)
-    let title = Text::new("Title:")
-        .with_help_message("Press Enter to skip")
-        .prompt_skippable()
-        .context("Failed to read title")?
-        .filter(|s: &String| !s.trim().is_empty());
-
-    // Description (optional)
-    let description = Text::new("Description:")
-        .with_help_message("Press Enter to skip")
-        .prompt_skippable()
-        .context("Failed to read description")?
-        .filter(|s: &String| !s.trim().is_empty());
-
-    // Content type selection
-    let content_type = Select::new("Content type:", vec!["Text/Note", "File Upload", "Both"])
-        .with_help_message("Select the type of content to create")
-        .prompt()
-        .context("Failed to select content type")?;
-
-    let mut body = None;
-    let mut attachments = Vec::new();
-
-    // Handle text content
-    if content_type == "Text/Note" || content_type == "Both" {
-        let edit_method = Select::new(
-            "How would you like to enter the text?",
-            vec!["Open $EDITOR", "Type directly"],
-        )
-        .prompt()
-        .context("Failed to select edit method")?;
-
-        if edit_method == "Open $EDITOR" {
-            // Use $EDITOR environment variable
-            let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vi".to_owned());
-            let temp_file = std::env::temp_dir().join("collects_content.txt");
-            std::fs::write(&temp_file, "")?;
-
-            let status = std::process::Command::new(&editor)
-                .arg(&temp_file)
-                .status()
-                .context("Failed to open editor")?;
-
-            if status.success() {
-                let text = std::fs::read_to_string(&temp_file)?;
-                std::fs::remove_file(&temp_file).ok();
-                if !text.trim().is_empty() {
-                    body = Some(text);
-                }
-            } else {
-                std::fs::remove_file(&temp_file).ok();
-                eprintln!("Editor exited with error");
-            }
-        } else {
-            // Single line text input
-            let text = Text::new("Content body:")
-                .with_help_message("Enter text content (single line)")
-                .prompt()
-                .context("Failed to read content body")?;
-
-            if !text.trim().is_empty() {
-                body = Some(text);
-            }
-        }
-    }
-
-    // Handle file uploads
-    if content_type == "File Upload" || content_type == "Both" {
-        let file_path = Text::new("File path(s):")
-            .with_help_message("Enter file path(s) separated by spaces")
-            .prompt()
-            .context("Failed to read file path")?;
-
-        for path_str in file_path.split_whitespace() {
-            let path = PathBuf::from(path_str);
-            if path.exists() {
-                let filename = path
-                    .file_name()
-                    .map(|s| s.to_string_lossy().to_string())
-                    .unwrap_or_else(|| "unnamed".to_owned());
-
-                let mime_type = mime_guess::from_path(&path)
-                    .first_or_octet_stream()
-                    .to_string();
-
-                match std::fs::read(&path) {
-                    Ok(data) => {
-                        attachments.push(Attachment {
-                            filename,
-                            mime_type,
-                            data,
-                        });
-                    }
-                    Err(e) => {
-                        eprintln!("Warning: Could not read file {path_str}: {e}");
-                    }
-                }
-            } else {
-                eprintln!("Warning: File not found: {path_str}");
-            }
-        }
-    }
-
-    // Confirmation
-    if body.is_none() && attachments.is_empty() {
-        eprintln!("\n✗ No content to create (no text or files provided)");
-        std::process::exit(1);
-    }
-
-    println!("\n--- Summary ---");
-    if let Some(t) = &title {
-        println!("Title: {t}");
-    }
-    if let Some(d) = &description {
-        println!("Description: {d}");
-    }
-    if let Some(ref b) = body {
-        println!("Body: {} characters", b.len());
-    }
-    if !attachments.is_empty() {
-        println!("Attachments: {} file(s)", attachments.len());
-        for a in &attachments {
-            println!("  - {} ({})", a.filename, a.mime_type);
-        }
-    }
-
-    let confirmed = Confirm::new("Create this content?")
-        .with_default(true)
-        .prompt()
-        .context("Failed to confirm")?;
-
-    if !confirmed {
-        println!("Cancelled.");
-        ctx.shutdown().await;
-        return Ok(());
-    }
-
-    // Create the content
-    ctx.update::<CreateContentInput>(|s| {
-        s.title = title;
-        s.description = description;
-        s.body = body;
-        s.attachments = attachments;
-    });
-
-    ctx.enqueue_command::<CreateContentCommand>();
-    flush_and_await(&mut ctx).await;
-
-    let compute = ctx.compute::<CreateContentCompute>();
-    match &compute.status {
-        ContentCreationStatus::Success(ids) => {
-            println!("\n✓ Content created successfully!");
-            for id in ids {
-                println!("  ID: {id}");
-            }
-        }
-        ContentCreationStatus::Error(e) => {
-            eprintln!("\n✗ Error creating content: {e}");
-            ctx.shutdown().await;
-            std::process::exit(1);
-        }
-        _ => {
-            eprintln!("\n✗ Content creation did not complete");
-            ctx.shutdown().await;
-            std::process::exit(1);
-        }
-    }
-
-    ctx.shutdown().await;
-    Ok(())
-}
-
-#[instrument(skip_all, name = "create", fields(file_count = files.len()))]
-async fn run_create(
-    ctx: StateCtx,
-    files: Vec<PathBuf>,
-    title: Option<String>,
-    read_clipboard: bool,
-) -> Result<()> {
-    // Check for stdin
-    let mut body = None;
-    if !std::io::stdin().is_terminal() {
-        use std::io::Read as _;
-        let mut buffer = Vec::new();
-        std::io::stdin().read_to_end(&mut buffer)?;
-        if !buffer.is_empty() {
-            body = Some(String::from_utf8(buffer)?);
-        }
-    }
-
-    // Read clipboard image if enabled
-    let clipboard_image = if read_clipboard {
-        read_clipboard_image_if_available()
-    } else {
-        None
-    };
-
-    run_create_impl(ctx, files, title, body, clipboard_image).await
-}
-
 /// Attempts to read an image from the clipboard, returning None on failure.
 fn read_clipboard_image_if_available() -> Option<Attachment> {
     let clipboard = SystemClipboard;
@@ -669,60 +432,87 @@ fn print_schema() {
     println!("Collects Content Schema");
     println!("========================\n");
 
-    println!("When creating content, you can provide:\n");
+    println!("When creating or adding content to a collect, you can provide:\n");
 
-    println!("  TITLE (optional)");
-    println!("    A short title for the content.");
-    println!("    Flag: --title, -t <TEXT>\n");
-
-    println!("  DESCRIPTION (optional)");
-    println!("    A longer description (interactive mode only).\n");
+    println!("  TITLE/DESCRIPTION");
+    println!("    Not settable via CLI; titles come from filenames or defaults.\n");
 
     println!("  BODY (optional)");
     println!("    Text content, provided via:");
-    println!("    - stdin: echo 'content' | collects create");
-    println!("    - Interactive mode: opens $EDITOR or prompts for input\n");
+    println!("    - stdin: echo 'content' | collects new -t 'My Collect' --stdin");
+    println!("    - stdin (add): echo 'content' | collects add <collect_id> --stdin\n");
 
     println!("  ATTACHMENTS (optional)");
     println!("    Files to upload with the content:");
     println!("    - File flag: --file, -f <PATH> (can be repeated)");
-    println!("    - Clipboard: Images in clipboard are automatically attached");
-    println!("    - Skip clipboard: --no-clipboard\n");
-
-    println!("Supported attachment types:");
-    println!("  - Images: PNG, JPEG, GIF, BMP, WebP, TIFF, ICO");
-    println!("  - Documents: PDF, TXT, MD, and other text files");
-    println!("  - Any other file type (stored as application/octet-stream)\n");
+    println!("    - Clipboard: Images in clipboard are automatically attached\n");
 
     println!("Examples:");
-    println!("  # Create text note from stdin");
-    println!("  echo 'My note content' | collects create -t 'My Note'\n");
+    println!("  # Create a collect with text from stdin");
+    println!("  echo 'My note content' | collects new -t 'My Collect' --stdin\n");
 
-    println!("  # Upload a file");
-    println!("  collects create -f image.png -t 'Screenshot'\n");
+    println!("  # Add a file to an existing collect");
+    println!("  collects add <collect_id> -f image.png\n");
 
-    println!("  # Paste from clipboard (image)");
-    println!("  collects create -t 'Clipboard image'\n");
-
-    println!("  # Interactive mode");
-    println!("  collects create -I\n");
+    println!("  # Paste from clipboard (image) into a new collect");
+    println!("  collects new -t 'Clipboard image'\n");
 
     println!("  # Multiple files");
-    println!("  collects create -f file1.txt -f file2.png -t 'Multiple files'");
+    println!("  collects new -t 'Multiple files' -f file1.txt -f file2.png");
 }
 
-#[instrument(skip_all, name = "create_impl", fields(file_count = files.len(), has_body = body.is_some(), has_clipboard = clipboard_image.is_some()))]
-async fn run_create_impl(
-    mut ctx: StateCtx,
-    files: Vec<PathBuf>,
+#[instrument(skip_all, name = "create_contents", fields(has_body = body.is_some(), attachment_count = attachments.len()))]
+async fn create_contents_for_inputs(
+    ctx: &mut StateCtx,
     title: Option<String>,
     body: Option<String>,
-    clipboard_image: Option<Attachment>,
-) -> Result<()> {
+    attachments: Vec<Attachment>,
+) -> Result<Vec<String>> {
+    ctx.update::<CreateContentInput>(|s| {
+        s.title = title;
+        s.description = None;
+        s.body = body;
+        s.attachments = attachments;
+    });
+
+    ctx.enqueue_command::<CreateContentCommand>();
+    flush_and_await(ctx).await;
+
+    let compute = ctx.compute::<CreateContentCompute>();
+    match &compute.status {
+        ContentCreationStatus::Success(ids) => Ok(ids.clone()),
+        ContentCreationStatus::Error(e) => {
+            Err(anyhow::anyhow!(format!("Error creating content: {e}")))
+        }
+        _ => Err(anyhow::anyhow!("Content creation did not complete")),
+    }
+}
+
+#[instrument(skip_all, name = "new_collect", fields(title = %title, file_count = files.len(), stdin))]
+async fn run_new(mut ctx: StateCtx, title: String, files: Vec<PathBuf>, stdin: bool) -> Result<()> {
     // Ensure authenticated (prompts for login if needed)
     ensure_authenticated(&mut ctx).await?;
 
-    // Prepare attachments
+    let mut body = None;
+    if stdin {
+        eprintln!("Reading stdin... Press Ctrl+D to finish.");
+        use std::io::Read as _;
+        let mut buffer = Vec::new();
+        std::io::stdin().read_to_end(&mut buffer)?;
+        if !buffer.is_empty() {
+            body = Some(String::from_utf8(buffer)?);
+        }
+    }
+
+    let clipboard_image = read_clipboard_image_if_available();
+    let had_clipboard = clipboard_image.is_some();
+
+    if files.is_empty() && body.is_none() && clipboard_image.is_none() {
+        eprintln!("✗ No content to add (no files, stdin, or clipboard image)");
+        ctx.shutdown().await;
+        std::process::exit(1);
+    }
+
     let mut attachments = Vec::new();
     for path in files {
         let filename = path
@@ -744,7 +534,6 @@ async fn run_create_impl(
         });
     }
 
-    // Add clipboard image if available
     if let Some(clip_attachment) = clipboard_image {
         println!(
             "📋 Adding clipboard image: {} ({})",
@@ -753,34 +542,159 @@ async fn run_create_impl(
         attachments.push(clip_attachment);
     }
 
-    ctx.update::<CreateContentInput>(|s| {
-        s.title = title;
+    ctx.update::<CreateGroupInput>(|s| {
+        s.name = Some(title.clone());
         s.description = None;
-        s.body = body;
-        s.attachments = attachments;
+        s.visibility = None;
     });
 
-    ctx.enqueue_command::<CreateContentCommand>();
+    ctx.enqueue_command::<CreateGroupCommand>();
     flush_and_await(&mut ctx).await;
 
-    let compute = ctx.compute::<CreateContentCompute>();
-    match &compute.status {
-        ContentCreationStatus::Success(ids) => {
-            println!("✓ Content created successfully!");
-            for id in ids {
-                println!("  ID: {id}");
-            }
-        }
-        ContentCreationStatus::Error(e) => {
-            eprintln!("✗ Error creating content: {e}");
+    let group = match &ctx.compute::<CreateGroupCompute>().status {
+        CreateGroupStatus::Success(group) => group.clone(),
+        CreateGroupStatus::Error(e) => {
+            eprintln!("✗ Error creating collect: {e}");
             ctx.shutdown().await;
             std::process::exit(1);
         }
         _ => {
-            eprintln!("✗ Content creation did not complete");
+            eprintln!("✗ Collect creation did not complete");
             ctx.shutdown().await;
             std::process::exit(1);
         }
+    };
+
+    let content_ids = match create_contents_for_inputs(&mut ctx, None, body, attachments).await {
+        Ok(ids) => ids,
+        Err(e) => {
+            eprintln!("✗ {e}");
+            ctx.shutdown().await;
+            std::process::exit(1);
+        }
+    };
+
+    ctx.update::<AddGroupContentsInput>(|s| {
+        s.group_id = Some(group.id);
+        s.content_ids = content_ids.iter().map(|id| Ustr::from(id)).collect();
+    });
+
+    ctx.enqueue_command::<AddGroupContentsCommand>();
+    flush_and_await(&mut ctx).await;
+
+    match &ctx.compute::<AddGroupContentsCompute>().status {
+        AddGroupContentsStatus::Success { added } => {
+            println!("✓ Collect created: {} ({added} item(s))", group.id);
+        }
+        AddGroupContentsStatus::Error(e) => {
+            eprintln!("✗ Error adding content to collect: {e}");
+            ctx.shutdown().await;
+            std::process::exit(1);
+        }
+        _ => {
+            eprintln!("✗ Add-to-collect operation did not complete");
+            ctx.shutdown().await;
+            std::process::exit(1);
+        }
+    }
+
+    if had_clipboard && let Err(e) = clear_clipboard_image() {
+        log::debug!("Failed to clear clipboard: {e}");
+    }
+
+    ctx.shutdown().await;
+    Ok(())
+}
+
+#[instrument(skip_all, name = "add_collect", fields(collect_id = id.as_str(), file_count = files.len(), stdin))]
+async fn run_add(mut ctx: StateCtx, id: String, files: Vec<PathBuf>, stdin: bool) -> Result<()> {
+    // Ensure authenticated (prompts for login if needed)
+    ensure_authenticated(&mut ctx).await?;
+
+    let mut body = None;
+    if stdin {
+        eprintln!("Reading stdin... Press Ctrl+D to finish.");
+        use std::io::Read as _;
+        let mut buffer = Vec::new();
+        std::io::stdin().read_to_end(&mut buffer)?;
+        if !buffer.is_empty() {
+            body = Some(String::from_utf8(buffer)?);
+        }
+    }
+
+    let clipboard_image = read_clipboard_image_if_available();
+    let had_clipboard = clipboard_image.is_some();
+
+    if files.is_empty() && body.is_none() && clipboard_image.is_none() {
+        eprintln!("✗ No content to add (no files, stdin, or clipboard image)");
+        ctx.shutdown().await;
+        std::process::exit(1);
+    }
+
+    let mut attachments = Vec::new();
+    for path in files {
+        let filename = path
+            .file_name()
+            .context("Invalid filename")?
+            .to_string_lossy()
+            .to_string();
+
+        let mime_type = mime_guess::from_path(&path)
+            .first_or_octet_stream()
+            .to_string();
+
+        let data = std::fs::read(&path).context(format!("Failed to read file: {path:?}"))?;
+
+        attachments.push(Attachment {
+            filename,
+            mime_type,
+            data,
+        });
+    }
+
+    if let Some(clip_attachment) = clipboard_image {
+        println!(
+            "📋 Adding clipboard image: {} ({})",
+            clip_attachment.filename, clip_attachment.mime_type
+        );
+        attachments.push(clip_attachment);
+    }
+
+    let content_ids = match create_contents_for_inputs(&mut ctx, None, body, attachments).await {
+        Ok(ids) => ids,
+        Err(e) => {
+            eprintln!("✗ {e}");
+            ctx.shutdown().await;
+            std::process::exit(1);
+        }
+    };
+
+    ctx.update::<AddGroupContentsInput>(|s| {
+        s.group_id = Some(Ustr::from(&id));
+        s.content_ids = content_ids.iter().map(|cid| Ustr::from(cid)).collect();
+    });
+
+    ctx.enqueue_command::<AddGroupContentsCommand>();
+    flush_and_await(&mut ctx).await;
+
+    match &ctx.compute::<AddGroupContentsCompute>().status {
+        AddGroupContentsStatus::Success { added } => {
+            println!("✓ Added {added} item(s) to collect {id}");
+        }
+        AddGroupContentsStatus::Error(e) => {
+            eprintln!("✗ Error adding content to collect: {e}");
+            ctx.shutdown().await;
+            std::process::exit(1);
+        }
+        _ => {
+            eprintln!("✗ Add-to-collect operation did not complete");
+            ctx.shutdown().await;
+            std::process::exit(1);
+        }
+    }
+
+    if had_clipboard && let Err(e) = clear_clipboard_image() {
+        log::debug!("Failed to clear clipboard: {e}");
     }
 
     ctx.shutdown().await;
@@ -1013,6 +927,26 @@ fn print_content_summary(item: &ContentItem) {
     if let Some(desc) = &item.description {
         println!("     Description: {desc}");
     }
+    if item.is_text()
+        && let Some(body) = &item.body
+    {
+        let preview = truncate_preview(body, 120);
+        if !preview.is_empty() {
+            println!("     Preview: {preview}");
+        }
+    }
+}
+
+fn truncate_preview(text: &str, max_len: usize) -> String {
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+    if trimmed.chars().count() <= max_len {
+        return trimmed.to_owned();
+    }
+    let truncated: String = trimmed.chars().take(max_len - 1).collect();
+    format!("{truncated}…")
 }
 
 fn format_size(bytes: i64) -> String {

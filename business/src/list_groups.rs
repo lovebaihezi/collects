@@ -448,3 +448,415 @@ impl Command for GetGroupContentsCommand {
         })
     }
 }
+
+// ============================================================================
+// Create Group (Collect)
+// ============================================================================
+
+/// Input for creating a new group (collect).
+#[derive(Default, Debug, Clone)]
+pub struct CreateGroupInput {
+    /// Group name.
+    pub name: Option<String>,
+    /// Optional description.
+    pub description: Option<String>,
+    /// Group visibility (private, public).
+    pub visibility: Option<String>,
+}
+
+impl SnapshotClone for CreateGroupInput {
+    fn clone_boxed(&self) -> Option<Box<dyn Any + Send>> {
+        Some(Box::new(self.clone()))
+    }
+}
+
+impl State for CreateGroupInput {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+
+    fn assign_box(&mut self, new_self: Box<dyn Any + Send>) {
+        state_assign_impl(self, new_self);
+    }
+}
+
+/// Status of create group operation.
+#[derive(Debug, Clone, Default)]
+pub enum CreateGroupStatus {
+    #[default]
+    Idle,
+    Creating,
+    Success(GroupItem),
+    Error(String),
+}
+
+/// Compute to track create group status.
+#[derive(Default, Debug, Clone)]
+pub struct CreateGroupCompute {
+    pub status: CreateGroupStatus,
+}
+
+impl SnapshotClone for CreateGroupCompute {
+    fn clone_boxed(&self) -> Option<Box<dyn Any + Send>> {
+        Some(Box::new(self.clone()))
+    }
+}
+
+impl Compute for CreateGroupCompute {
+    fn deps(&self) -> ComputeDeps {
+        const STATE_IDS: [std::any::TypeId; 0] = [];
+        const COMPUTE_IDS: [std::any::TypeId; 0] = [];
+        (&STATE_IDS, &COMPUTE_IDS)
+    }
+
+    fn compute(&self, _deps: Dep, _updater: Updater) {
+        // No-op, updated by command
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn assign_box(&mut self, new_self: Box<dyn Any + Send>) {
+        assign_impl(self, new_self);
+    }
+}
+
+impl State for CreateGroupCompute {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+
+    fn assign_box(&mut self, new_self: Box<dyn Any + Send>) {
+        state_assign_impl(self, new_self);
+    }
+}
+
+#[derive(Serialize)]
+struct CreateGroupRequest {
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    pub visibility: String,
+}
+
+/// Command to create a new group (collect).
+#[derive(Default, Debug)]
+pub struct CreateGroupCommand;
+
+impl Command for CreateGroupCommand {
+    fn run(
+        &self,
+        snap: CommandSnapshot,
+        updater: LatestOnlyUpdater,
+        _cancel: tokio_util::sync::CancellationToken,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> {
+        let input: CreateGroupInput = snap.state::<CreateGroupInput>().clone();
+        let config: BusinessConfig = snap.state::<BusinessConfig>().clone();
+        let auth: AuthCompute = snap.compute::<AuthCompute>().clone();
+        let cf_token: CFTokenCompute = snap.compute::<CFTokenCompute>().clone();
+
+        Box::pin(async move {
+            if !auth.is_authenticated() {
+                updater.set(CreateGroupCompute {
+                    status: CreateGroupStatus::Error("Not authenticated".to_owned()),
+                });
+                return;
+            }
+
+            let name = match input.name {
+                Some(name) => name.trim().to_owned(),
+                None => {
+                    updater.set(CreateGroupCompute {
+                        status: CreateGroupStatus::Error("No group name provided".to_owned()),
+                    });
+                    return;
+                }
+            };
+
+            if name.is_empty() {
+                updater.set(CreateGroupCompute {
+                    status: CreateGroupStatus::Error("Group name cannot be empty".to_owned()),
+                });
+                return;
+            }
+
+            updater.set(CreateGroupCompute {
+                status: CreateGroupStatus::Creating,
+            });
+
+            let token = auth.token().unwrap_or_default();
+            let visibility = input.visibility.unwrap_or_else(|| "private".to_owned());
+
+            let url = format!("{}/v1/groups", config.api_url());
+            let request = match Client::post(&url)
+                .header("Authorization", format!("Bearer {token}"))
+                .json(&CreateGroupRequest {
+                    name,
+                    description: input.description,
+                    visibility,
+                }) {
+                Ok(r) => r,
+                Err(e) => {
+                    updater.set(CreateGroupCompute {
+                        status: CreateGroupStatus::Error(format!("Failed to build request: {}", e)),
+                    });
+                    return;
+                }
+            };
+
+            let request = if let Some(cf) = cf_token.token() {
+                request.header("cf-access-token", cf)
+            } else {
+                request
+            };
+
+            match request.send().await {
+                Ok(response) => {
+                    if response.is_success() {
+                        match response.json::<GroupItem>() {
+                            Ok(group) => {
+                                updater.set(CreateGroupCompute {
+                                    status: CreateGroupStatus::Success(group),
+                                });
+                            }
+                            Err(e) => {
+                                updater.set(CreateGroupCompute {
+                                    status: CreateGroupStatus::Error(format!(
+                                        "Failed to parse response: {}",
+                                        e
+                                    )),
+                                });
+                            }
+                        }
+                    } else {
+                        let error = response
+                            .text()
+                            .unwrap_or_else(|_| "Unknown error".to_owned());
+                        updater.set(CreateGroupCompute {
+                            status: CreateGroupStatus::Error(error),
+                        });
+                    }
+                }
+                Err(e) => {
+                    updater.set(CreateGroupCompute {
+                        status: CreateGroupStatus::Error(e.to_string()),
+                    });
+                }
+            }
+        })
+    }
+}
+
+// ============================================================================
+// Add Contents to Group
+// ============================================================================
+
+/// Input for adding contents to a group.
+#[derive(Default, Debug, Clone)]
+pub struct AddGroupContentsInput {
+    /// Group ID to add contents to.
+    pub group_id: Option<Ustr>,
+    /// Content IDs to add.
+    pub content_ids: Vec<Ustr>,
+}
+
+impl SnapshotClone for AddGroupContentsInput {
+    fn clone_boxed(&self) -> Option<Box<dyn Any + Send>> {
+        Some(Box::new(self.clone()))
+    }
+}
+
+impl State for AddGroupContentsInput {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+
+    fn assign_box(&mut self, new_self: Box<dyn Any + Send>) {
+        state_assign_impl(self, new_self);
+    }
+}
+
+/// Status of add group contents operation.
+#[derive(Debug, Clone, Default)]
+pub enum AddGroupContentsStatus {
+    #[default]
+    Idle,
+    Adding,
+    Success {
+        added: usize,
+    },
+    Error(String),
+}
+
+/// Compute to track add group contents status.
+#[derive(Default, Debug, Clone)]
+pub struct AddGroupContentsCompute {
+    pub status: AddGroupContentsStatus,
+}
+
+impl SnapshotClone for AddGroupContentsCompute {
+    fn clone_boxed(&self) -> Option<Box<dyn Any + Send>> {
+        Some(Box::new(self.clone()))
+    }
+}
+
+impl Compute for AddGroupContentsCompute {
+    fn deps(&self) -> ComputeDeps {
+        const STATE_IDS: [std::any::TypeId; 0] = [];
+        const COMPUTE_IDS: [std::any::TypeId; 0] = [];
+        (&STATE_IDS, &COMPUTE_IDS)
+    }
+
+    fn compute(&self, _deps: Dep, _updater: Updater) {
+        // No-op, updated by command
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn assign_box(&mut self, new_self: Box<dyn Any + Send>) {
+        assign_impl(self, new_self);
+    }
+}
+
+impl State for AddGroupContentsCompute {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+
+    fn assign_box(&mut self, new_self: Box<dyn Any + Send>) {
+        state_assign_impl(self, new_self);
+    }
+}
+
+#[derive(Serialize)]
+struct AddGroupContentRequest {
+    pub content_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sort_order: Option<i32>,
+}
+
+/// Command to add contents to a group.
+#[derive(Default, Debug)]
+pub struct AddGroupContentsCommand;
+
+impl Command for AddGroupContentsCommand {
+    fn run(
+        &self,
+        snap: CommandSnapshot,
+        updater: LatestOnlyUpdater,
+        _cancel: tokio_util::sync::CancellationToken,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> {
+        let input: AddGroupContentsInput = snap.state::<AddGroupContentsInput>().clone();
+        let config: BusinessConfig = snap.state::<BusinessConfig>().clone();
+        let auth: AuthCompute = snap.compute::<AuthCompute>().clone();
+        let cf_token: CFTokenCompute = snap.compute::<CFTokenCompute>().clone();
+
+        Box::pin(async move {
+            let group_id = match &input.group_id {
+                Some(id) => id.as_str().to_owned(),
+                None => {
+                    updater.set(AddGroupContentsCompute {
+                        status: AddGroupContentsStatus::Error("No group ID provided".to_owned()),
+                    });
+                    return;
+                }
+            };
+
+            if input.content_ids.is_empty() {
+                updater.set(AddGroupContentsCompute {
+                    status: AddGroupContentsStatus::Error("No content IDs provided".to_owned()),
+                });
+                return;
+            }
+
+            if !auth.is_authenticated() {
+                updater.set(AddGroupContentsCompute {
+                    status: AddGroupContentsStatus::Error("Not authenticated".to_owned()),
+                });
+                return;
+            }
+
+            updater.set(AddGroupContentsCompute {
+                status: AddGroupContentsStatus::Adding,
+            });
+
+            let token = auth.token().unwrap_or_default();
+            let mut added = 0usize;
+
+            for content_id in input.content_ids {
+                let url = format!("{}/v1/groups/{}/contents", config.api_url(), group_id);
+                let request = match Client::post(&url)
+                    .header("Authorization", format!("Bearer {token}"))
+                    .json(&AddGroupContentRequest {
+                        content_id: content_id.to_string(),
+                        sort_order: None,
+                    }) {
+                    Ok(r) => r,
+                    Err(e) => {
+                        updater.set(AddGroupContentsCompute {
+                            status: AddGroupContentsStatus::Error(format!(
+                                "Failed to build request: {}",
+                                e
+                            )),
+                        });
+                        return;
+                    }
+                };
+
+                let request = if let Some(cf) = cf_token.token() {
+                    request.header("cf-access-token", cf)
+                } else {
+                    request
+                };
+
+                match request.send().await {
+                    Ok(response) => {
+                        if response.is_success() {
+                            added += 1;
+                        } else {
+                            let error = response
+                                .text()
+                                .unwrap_or_else(|_| "Unknown error".to_owned());
+                            updater.set(AddGroupContentsCompute {
+                                status: AddGroupContentsStatus::Error(format!(
+                                    "Failed to add content {}: {}",
+                                    content_id, error
+                                )),
+                            });
+                            return;
+                        }
+                    }
+                    Err(e) => {
+                        updater.set(AddGroupContentsCompute {
+                            status: AddGroupContentsStatus::Error(e.to_string()),
+                        });
+                        return;
+                    }
+                }
+            }
+
+            updater.set(AddGroupContentsCompute {
+                status: AddGroupContentsStatus::Success { added },
+            });
+        })
+    }
+}

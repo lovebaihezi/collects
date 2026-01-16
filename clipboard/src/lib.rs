@@ -183,6 +183,17 @@ impl ClipboardProvider for SystemClipboard {
     }
 }
 
+/// Clears clipboard contents by overwriting with empty text (best-effort).
+#[cfg(not(target_arch = "wasm32"))]
+pub fn clear_clipboard_image() -> Result<(), ClipboardError> {
+    use arboard::Clipboard;
+
+    let mut clipboard = Clipboard::new().map_err(|e| ClipboardError::AccessError(e.to_string()))?;
+    clipboard
+        .set_text("")
+        .map_err(|e| ClipboardError::AccessError(e.to_string()))
+}
+
 /// Encodes RGBA pixel data to PNG format.
 #[cfg(not(target_arch = "wasm32"))]
 fn encode_rgba_to_png(
@@ -320,6 +331,12 @@ fn load_image_from_path(path: &std::path::Path, encode_png: bool) -> Option<Clip
             None
         }
     }
+}
+
+/// Clears clipboard contents on WASM (no-op, clipboard not yet supported).
+#[cfg(target_arch = "wasm32")]
+pub fn clear_clipboard_image() -> Result<(), ClipboardError> {
+    Ok(())
 }
 
 /// Stub implementation for WASM (clipboard not yet supported).

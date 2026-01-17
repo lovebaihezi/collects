@@ -126,23 +126,6 @@ impl ZeroTrustConfig {
     }
 }
 
-/// Google Cloud Storage configuration (optional alternative to R2).
-#[derive(Debug, Clone)]
-pub struct GcsConfig {
-    bucket: String,
-    credentials: Option<String>,
-}
-
-impl GcsConfig {
-    pub fn bucket(&self) -> &str {
-        &self.bucket
-    }
-
-    pub fn credentials(&self) -> Option<&str> {
-        self.credentials.as_deref()
-    }
-}
-
 /// Raw configuration deserialized directly from environment variables.
 /// All optional fields are checked post-deserialization based on environment.
 #[derive(Deserialize)]
@@ -162,10 +145,6 @@ struct RawConfig {
     // Zero Trust fields (grouped logically, validated together)
     cf_access_team_domain: Option<String>,
     cf_access_aud: Option<String>,
-
-    // GCS fields
-    gcs_bucket: Option<String>,
-    gcs_credentials: Option<String>,
 }
 
 impl RawConfig {
@@ -209,14 +188,6 @@ impl RawConfig {
             ),
         }
     }
-
-    /// Try to construct `GcsConfig` if bucket is present.
-    fn try_gcs_config(&self) -> Option<GcsConfig> {
-        self.gcs_bucket.as_ref().map(|bucket| GcsConfig {
-            bucket: bucket.clone(),
-            credentials: self.gcs_credentials.clone(),
-        })
-    }
 }
 
 /// The final, validated configuration struct.
@@ -229,7 +200,6 @@ pub struct Config {
     jwt_secret: String,
     r2: Option<R2Config>,
     zero_trust: Option<ZeroTrustConfig>,
-    gcs: Option<GcsConfig>,
 }
 
 impl Config {
@@ -246,7 +216,6 @@ impl Config {
             jwt_secret: "test-jwt-secret-key-for-local-development".to_string(),
             r2: None,
             zero_trust: None,
-            gcs: None,
         }
     }
 
@@ -341,19 +310,6 @@ impl Config {
         self.zero_trust.as_ref().map(|z| z.audience())
     }
 
-    // GCS configuration
-    pub fn gcs(&self) -> Option<&GcsConfig> {
-        self.gcs.as_ref()
-    }
-
-    pub fn gcs_bucket(&self) -> Option<&str> {
-        self.gcs.as_ref().map(|g| g.bucket())
-    }
-
-    pub fn gcs_credentials(&self) -> Option<&str> {
-        self.gcs.as_ref().and_then(|g| g.credentials())
-    }
-
     /// Initializes configuration by reading from environment variables
     /// and applying environment-aware defaults.
     pub fn init() -> anyhow::Result<Self> {
@@ -416,9 +372,6 @@ impl Config {
             );
         }
 
-        // Build GCS config (optional)
-        let gcs = raw.try_gcs_config();
-
         Ok(Self {
             env,
             database_url: raw.database_url,
@@ -427,7 +380,6 @@ impl Config {
             jwt_secret,
             r2,
             zero_trust,
-            gcs,
         })
     }
 }
@@ -686,35 +638,6 @@ mod tests {
 
         let config = Config::from_raw(raw).expect("local config should build");
         assert_eq!(config.port(), 8080);
-    }
-
-    #[test]
-    fn gcs_config_parsed_when_present() {
-        let raw = make_raw(vec![
-            ("ENV", "local"),
-            ("DATABASE_URL", "postgres://example"),
-            ("GCS_BUCKET", "my-gcs-bucket"),
-            ("GCS_CREDENTIALS", "credentials-json"),
-        ]);
-
-        let config = Config::from_raw(raw).expect("config should build with GCS");
-        let gcs = config.gcs().expect("GCS config should be present");
-        assert_eq!(gcs.bucket(), "my-gcs-bucket");
-        assert_eq!(gcs.credentials(), Some("credentials-json"));
-    }
-
-    #[test]
-    fn gcs_config_bucket_only() {
-        let raw = make_raw(vec![
-            ("ENV", "local"),
-            ("DATABASE_URL", "postgres://example"),
-            ("GCS_BUCKET", "my-gcs-bucket"),
-        ]);
-
-        let config = Config::from_raw(raw).expect("config should build with GCS bucket only");
-        let gcs = config.gcs().expect("GCS config should be present");
-        assert_eq!(gcs.bucket(), "my-gcs-bucket");
-        assert_eq!(gcs.credentials(), None);
     }
 
     #[test]

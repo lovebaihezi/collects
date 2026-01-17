@@ -50,6 +50,11 @@ Automate the end-to-end git + GitHub CLI flow: branch creation, staging, Convent
    - If checks fail, inspect failures, apply fixes, commit/push, and re-check until green.
    - After checks pass, ask whether to merge if auto-merge is not enabled.
 
+9. Sync with main before merge.
+   - If the user requests it, fetch and rebase onto `origin/main` before merging.
+   - Force-push with lease after rebase: `git push --force-with-lease`.
+   - Re-check PR status after the rebase.
+
 ## Resources
 
 ### scripts/

@@ -1,7 +1,9 @@
 use collects_services::{
-    config::Config,
+    config::{Config, Env},
     database::{self, PgStorage},
-    routes, telemetry,
+    routes,
+    storage::{CFDisk, CFDiskConfig, OpenDALDisk},
+    telemetry,
     users::PgUserStorage,
 };
 use std::net::{IpAddr, SocketAddr};
@@ -40,6 +42,8 @@ async fn main() -> anyhow::Result<()> {
         "Configuration loaded"
     );
 
+    validate_storage_backends(&config).await?;
+
     // Create socket address
     let addr = SocketAddr::from((config.server_addr().parse::<IpAddr>()?, config.port()));
 
@@ -58,6 +62,33 @@ async fn main() -> anyhow::Result<()> {
 
     info!("Starting server on {}", addr);
     axum::serve(listener, route).await?;
+
+    Ok(())
+}
+
+async fn validate_storage_backends(config: &Config) -> anyhow::Result<()> {
+    let has_r2 = config.r2().is_some();
+
+    if let Some(r2) = config.r2() {
+        let disk = CFDisk::new(CFDiskConfig {
+            account_id: r2.account_id().to_owned(),
+            access_key_id: r2.access_key_id().to_owned(),
+            secret_access_key: r2.secret_access_key().to_owned(),
+            bucket: r2.bucket().to_owned(),
+        });
+
+        if !disk.could_connected().await {
+            anyhow::bail!("R2 storage is configured but the connectivity check failed");
+        }
+    }
+
+    if matches!(
+        config.environment(),
+        Env::Prod | Env::Internal | Env::Pr | Env::Nightly
+    ) && !has_r2
+    {
+        anyhow::bail!("No storage backend configured. Set R2 (CF_*) credentials.");
+    }
 
     Ok(())
 }

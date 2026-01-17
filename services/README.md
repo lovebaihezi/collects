@@ -23,8 +23,8 @@ Run on Google Cloud Run, using Rust cause low memory footprint and fast cold sta
 - `CF_ACCESS_KEY_ID` - Cloudflare R2 access key
 - `CF_SECRET_ACCESS_KEY` - Cloudflare R2 secret key
 - `CF_BUCKET` - Cloudflare R2 bucket name
-- `GCS_BUCKET` - Google Cloud Storage bucket name
-- `GCS_CREDENTIALS` - Google Cloud Storage credentials JSON
+
+TODO: Add Google Drive storage support via OpenDAL.
 
 ### Cloudflare Zero Trust Authentication (Optional)
 - `CF_ACCESS_TEAM_DOMAIN` - Your Cloudflare Access team domain (e.g., `myteam.cloudflareaccess.com`)

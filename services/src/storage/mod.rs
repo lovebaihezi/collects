@@ -1,17 +1,15 @@
 //! Remote storage service using OpenDAL.
 //!
-//! Provides trait-based abstractions for file storage backends (Cloudflare R2, GCS).
+//! Provides trait-based abstractions for file storage backends (Cloudflare R2).
 //! See `docs/storage.md` for detailed documentation.
 
 mod cloudflare;
-mod gcs;
 mod mock;
 mod presign;
 mod traits;
 mod types;
 
 pub use cloudflare::{CFDisk, CFDiskConfig, CFFileStorage};
-pub use gcs::{GDDisk, GDDiskConfig};
 pub use mock::MockFileStorage;
 pub use presign::{
     ContentDisposition, DEFAULT_PRESIGN_EXPIRY, FileMetadata as PresignFileMetadata,
@@ -31,10 +29,8 @@ mod tests {
     #[tokio::test]
     async fn test_generic_storage_interface() {
         let cf_disk = CFDisk::new_for_test();
-        let gd_disk = GDDisk::new_for_test();
 
         assert!(check_storage_connection(cf_disk).await);
-        assert!(check_storage_connection(gd_disk).await);
     }
 
     async fn generic_upload<S: FileStorage>(

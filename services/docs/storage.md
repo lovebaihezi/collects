@@ -10,8 +10,7 @@ storage/
 ├── types.rs        - FileMetadata, FileUploadRequest, FileStorageError
 ├── traits.rs       - FileStorage, OpenDALDisk traits
 ├── mock.rs         - MockFileStorage (testing)
-├── cloudflare.rs   - CFDisk, CFFileStorage (R2)
-└── gcs.rs          - GDDisk (Google Cloud Storage)
+└── cloudflare.rs   - CFDisk, CFFileStorage (R2)
 ```
 
 ## Traits
@@ -35,7 +34,7 @@ Connectivity check interface:
 |---------------|---------|----------|
 | `MockFileStorage` | In-memory | Testing |
 | `CFFileStorage` | Cloudflare R2 | Production |
-| `GDDisk` | Google Cloud Storage | Production |
+| (planned) | Google Drive (OpenDAL) | Production |
 
 ## Configuration
 
@@ -48,6 +47,10 @@ CF_ACCESS_KEY_ID=$(gcloud secrets versions access latest --secret=cf-access-key-
 CF_SECRET_ACCESS_KEY=$(gcloud secrets versions access latest --secret=cf-secret-access-key)
 CF_BUCKET=$(gcloud secrets versions access latest --secret=cf-bucket)
 ```
+
+## TODO
+
+Add Google Drive storage via OpenDAL.
 
 ## Usage
 

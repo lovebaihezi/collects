@@ -5,6 +5,7 @@ import {
   countPreviousFailures,
   buildCommentBody,
   formatApiErrorMessage,
+  isCopilotBotLogin,
 } from "./ci-feedback.ts";
 
 describe("stripAnsiCodes", () => {
@@ -337,5 +338,19 @@ describe("formatApiErrorMessage", () => {
     const result = formatApiErrorMessage("Unknown error", "Operation");
 
     expect(result).toBe("Operation: Unknown error");
+  });
+});
+
+describe("isCopilotBotLogin", () => {
+  test("returns true for known copilot bot logins", () => {
+    expect(isCopilotBotLogin("copilot-swe-agent[bot]")).toBe(true);
+    expect(isCopilotBotLogin("github-copilot[bot]")).toBe(true);
+    expect(isCopilotBotLogin("COPILOT-SWE-AGENT[BOT]")).toBe(true);
+  });
+
+  test("returns false for non-copilot logins", () => {
+    expect(isCopilotBotLogin("dependabot[bot]")).toBe(false);
+    expect(isCopilotBotLogin("octocat")).toBe(false);
+    expect(isCopilotBotLogin(undefined)).toBe(false);
   });
 });

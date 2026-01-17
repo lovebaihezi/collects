@@ -25,7 +25,7 @@ default:
     @echo "   Step 4: Set up Zero Trust secrets (required for internal env)"
     @echo "   $ just scripts::zero-trust-setup --project-id <GCP_PROJECT_ID>"
     @echo ""
-    @echo "   Step 5: (Optional) Set up R2 storage secrets"
+    @echo "   Step 5: Set up R2 storage secrets (REQUIRED)"
     @echo "   $ just scripts::r2-setup --project-id <GCP_PROJECT_ID>"
     @echo ""
     @echo "   ┌─────────────────────────────────────────────────────────────────────────┐"
@@ -33,16 +33,17 @@ default:
     @echo "   ├─────────────┬───────────┬───────────┬────────────┬─────────────────────┤"
     @echo "   │ Environment │ Database  │ JWT       │ Zero Trust │ R2 Storage          │"
     @echo "   ├─────────────┼───────────┼───────────┼────────────┼─────────────────────┤"
-    @echo "   │ prod        │ Required  │ Required  │ Optional   │ Optional            │"
-    @echo "   │ internal    │ Required  │ Required  │ REQUIRED   │ Optional            │"
-    @echo "   │ nightly     │ Required  │ Required  │ Optional   │ Optional            │"
-    @echo "   │ test        │ Required  │ Default   │ Not used   │ Optional            │"
-    @echo "   │ test-internal│ Required │ Default   │ REQUIRED   │ Optional            │"
-    @echo "   │ pr          │ Required  │ Required  │ Not used   │ Optional            │"
-    @echo "   │ local       │ Required  │ Default   │ Not used   │ Optional            │"
+    @echo "   │ prod        │ Required  │ Required  │ Optional   │ REQUIRED            │"
+    @echo "   │ internal    │ Required  │ Required  │ REQUIRED   │ REQUIRED            │"
+    @echo "   │ nightly     │ Required  │ Required  │ Optional   │ REQUIRED            │"
+    @echo "   │ test        │ Required  │ Default   │ Not used   │ REQUIRED            │"
+    @echo "   │ test-internal│ Required │ Default   │ REQUIRED   │ REQUIRED            │"
+    @echo "   │ pr          │ Required  │ Required  │ Not used   │ REQUIRED            │"
+    @echo "   │ local       │ Required  │ Default   │ Not used   │ REQUIRED            │"
     @echo "   └─────────────┴───────────┴───────────┴────────────┴─────────────────────┘"
     @echo ""
-    @echo "   Note: 'internal' and 'test-internal' WILL FAIL TO START without Zero Trust secrets."
+    @echo "   Note: ALL environments WILL FAIL TO START without R2 storage secrets."
+    @echo "         'internal' and 'test-internal' WILL FAIL TO START without Zero Trust secrets."
     @echo ""
     @echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     @echo "2. DATABASE SECRETS"
@@ -126,12 +127,13 @@ default:
     @echo "   $ just scripts::init-db <token> <project>    Initialize database secrets"
     @echo "   $ just scripts::jwt-setup --project-id <id>  Set up JWT secrets"
     @echo "   $ just scripts::zero-trust-setup --project-id <id>  Set up Zero Trust"
-    @echo "   $ just scripts::r2-setup --project-id <id>   Set up R2 storage (optional)"
+    @echo "   $ just scripts::r2-setup --project-id <id>   Set up R2 storage (required)"
     @echo ""
     @echo "   Secret Status:"
     @echo "   $ just scripts::jwt-list --project-id <id>        Check JWT secrets"
     @echo "   $ just scripts::zero-trust-list --project-id <id> Check Zero Trust secrets"
     @echo "   $ just scripts::r2-list --project-id <id>         Check R2 secrets"
+    @echo "   $ just scripts::r2-verify --project-id <id>       Verify R2 access"
     @echo ""
     @echo "   Environments: prod, internal, nightly, test, test-internal, pr, local"
     @echo ""
@@ -147,6 +149,10 @@ dev:
     env \
         ENV=local \
         DATABASE_URL=$(gcloud secrets versions access latest --secret=database-url-local) \
+        CF_ACCOUNT_ID=$(gcloud secrets versions access latest --secret=cf-account-id) \
+        CF_ACCESS_KEY_ID=$(gcloud secrets versions access latest --secret=cf-access-key-id) \
+        CF_SECRET_ACCESS_KEY=$(gcloud secrets versions access latest --secret=cf-secret-access-key) \
+        CF_BUCKET=$(gcloud secrets versions access latest --secret=cf-bucket) \
         PORT=3000 \
         cargo r
 
@@ -258,6 +264,10 @@ release-run:
     env \
         ENV=local \
         DATABASE_URL=$(gcloud secrets versions access latest --secret=database-url-local) \
+        CF_ACCOUNT_ID=$(gcloud secrets versions access latest --secret=cf-account-id) \
+        CF_ACCESS_KEY_ID=$(gcloud secrets versions access latest --secret=cf-access-key-id) \
+        CF_SECRET_ACCESS_KEY=$(gcloud secrets versions access latest --secret=cf-secret-access-key) \
+        CF_BUCKET=$(gcloud secrets versions access latest --secret=cf-bucket) \
         PORT=3000 \
         cargo r --release
 
@@ -285,16 +295,12 @@ test env="local":
     DATABASE_URL=$(gcloud secrets versions access latest --secret=${DATABASE_SECRET})
     export DATABASE_URL
 
-    # Fetch R2 secrets if available (optional for tests)
-    if gcloud secrets versions access latest --secret=cf-account-id 2>/dev/null; then
-        export CF_ACCOUNT_ID=$(gcloud secrets versions access latest --secret=cf-account-id)
-        export CF_ACCESS_KEY_ID=$(gcloud secrets versions access latest --secret=cf-access-key-id)
-        export CF_SECRET_ACCESS_KEY=$(gcloud secrets versions access latest --secret=cf-secret-access-key)
-        export CF_BUCKET=$(gcloud secrets versions access latest --secret=cf-bucket)
-        echo "R2 secrets loaded"
-    else
-        echo "R2 secrets not found, running tests without R2 configuration"
-    fi
+    # Fetch R2 secrets (required)
+    export CF_ACCOUNT_ID=$(gcloud secrets versions access latest --secret=cf-account-id)
+    export CF_ACCESS_KEY_ID=$(gcloud secrets versions access latest --secret=cf-access-key-id)
+    export CF_SECRET_ACCESS_KEY=$(gcloud secrets versions access latest --secret=cf-secret-access-key)
+    export CF_BUCKET=$(gcloud secrets versions access latest --secret=cf-bucket)
+    echo "R2 secrets loaded"
 
     cargo test -p collects-services
 

@@ -53,7 +53,8 @@ impl Display for Env {
 impl Env {
     /// Returns true if this environment requires R2 storage credentials.
     fn requires_r2(&self) -> bool {
-        matches!(self, Self::Prod | Self::Internal | Self::Pr | Self::Nightly)
+        // R2 is required for all runtime environments (including local/test).
+        true
     }
 
     /// Returns true if this environment requires Zero Trust configuration.
@@ -214,7 +215,12 @@ impl Config {
             server_addr: "127.0.0.1".to_string(),
             port: 8080,
             jwt_secret: "test-jwt-secret-key-for-local-development".to_string(),
-            r2: None,
+            r2: Some(R2Config {
+                account_id: "test-account".to_string(),
+                access_key_id: "test-access-key".to_string(),
+                secret_access_key: "test-secret".to_string(),
+                bucket: "test-bucket".to_string(),
+            }),
             zero_trust: None,
         }
     }
@@ -426,15 +432,15 @@ mod tests {
     }
 
     #[test]
-    fn r2_credentials_optional_for_local() {
+    fn r2_credentials_required_for_local() {
         let raw = make_raw(vec![
             ("ENV", "local"),
             ("DATABASE_URL", "postgres://example"),
         ]);
 
-        let config = Config::from_raw(raw).expect("local config should build without R2 creds");
-        assert!(config.r2().is_none());
-        assert!(config.cf_account_id().is_none());
+        let result = Config::from_raw(raw);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("R2 storage"));
     }
 
     #[test]
@@ -476,6 +482,10 @@ mod tests {
             ("ENV", "test-internal"),
             ("DATABASE_URL", "postgres://example"),
             ("PORT", "8080"),
+            ("CF_ACCOUNT_ID", "test-account"),
+            ("CF_ACCESS_KEY_ID", "test-access-key"),
+            ("CF_SECRET_ACCESS_KEY", "test-secret"),
+            ("CF_BUCKET", "test-bucket"),
             ("CF_ACCESS_TEAM_DOMAIN", "myteam.cloudflareaccess.com"),
             ("CF_ACCESS_AUD", "test-audience"),
         ]);
@@ -534,6 +544,10 @@ mod tests {
         let raw = make_raw(vec![
             ("ENV", "local"),
             ("DATABASE_URL", "postgres://example"),
+            ("CF_ACCOUNT_ID", "test-account"),
+            ("CF_ACCESS_KEY_ID", "test-access-key"),
+            ("CF_SECRET_ACCESS_KEY", "test-secret"),
+            ("CF_BUCKET", "test-bucket"),
             ("CF_ACCESS_TEAM_DOMAIN", "myteam.cloudflareaccess.com"),
             // Missing CF_ACCESS_AUD
         ]);
@@ -554,6 +568,10 @@ mod tests {
             ("ENV", "test-internal"),
             ("DATABASE_URL", "postgres://example"),
             ("PORT", "8080"),
+            ("CF_ACCOUNT_ID", "test-account"),
+            ("CF_ACCESS_KEY_ID", "test-access-key"),
+            ("CF_SECRET_ACCESS_KEY", "test-secret"),
+            ("CF_BUCKET", "test-bucket"),
         ]);
 
         let result = Config::from_raw(raw);
@@ -568,6 +586,10 @@ mod tests {
             ("ENV", "test-internal"),
             ("DATABASE_URL", "postgres://example"),
             ("PORT", "8080"),
+            ("CF_ACCOUNT_ID", "test-account"),
+            ("CF_ACCESS_KEY_ID", "test-access-key"),
+            ("CF_SECRET_ACCESS_KEY", "test-secret"),
+            ("CF_BUCKET", "test-bucket"),
             ("CF_ACCESS_TEAM_DOMAIN", "myteam.cloudflareaccess.com"),
             ("CF_ACCESS_AUD", "test-audience"),
         ]);
@@ -603,6 +625,10 @@ mod tests {
         let raw = make_raw(vec![
             ("ENV", "local"),
             ("DATABASE_URL", "postgres://example"),
+            ("CF_ACCOUNT_ID", "test-account"),
+            ("CF_ACCESS_KEY_ID", "test-access-key"),
+            ("CF_SECRET_ACCESS_KEY", "test-secret"),
+            ("CF_BUCKET", "test-bucket"),
         ]);
 
         let config = Config::from_raw(raw).expect("local config should build without JWT_SECRET");
@@ -634,6 +660,10 @@ mod tests {
         let raw = make_raw(vec![
             ("ENV", "local"),
             ("DATABASE_URL", "postgres://example"),
+            ("CF_ACCOUNT_ID", "test-account"),
+            ("CF_ACCESS_KEY_ID", "test-access-key"),
+            ("CF_SECRET_ACCESS_KEY", "test-secret"),
+            ("CF_BUCKET", "test-bucket"),
         ]);
 
         let config = Config::from_raw(raw).expect("local config should build");
@@ -646,9 +676,9 @@ mod tests {
         assert!(Env::Internal.requires_r2());
         assert!(Env::Pr.requires_r2());
         assert!(Env::Nightly.requires_r2());
-        assert!(!Env::Local.requires_r2());
-        assert!(!Env::Test.requires_r2());
-        assert!(!Env::TestInternal.requires_r2());
+        assert!(Env::Local.requires_r2());
+        assert!(Env::Test.requires_r2());
+        assert!(Env::TestInternal.requires_r2());
 
         assert!(Env::Internal.requires_zero_trust());
         assert!(Env::TestInternal.requires_zero_trust());

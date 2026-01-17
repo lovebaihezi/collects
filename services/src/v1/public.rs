@@ -263,20 +263,13 @@ where
                     }
                 }
             } else {
-                // Test mode: return mock URL
-                let expires_at = chrono::Utc::now()
-                    + chrono::Duration::from_std(DEFAULT_PRESIGN_EXPIRY).unwrap();
-                let disp = match final_disposition {
-                    ContentDisposition::Inline => "inline",
-                    ContentDisposition::Attachment => "attachment",
-                };
-                crate::storage::PresignedUrl {
-                    url: format!(
-                        "https://test.r2.example.com/{}?mock=true&disposition={}",
-                        content.storage_key, disp
-                    ),
-                    expires_at,
-                }
+                return (
+                    StatusCode::BAD_GATEWAY,
+                    Json(V1ErrorResponse::internal_error(
+                        "R2 storage is not configured",
+                    )),
+                )
+                    .into_response();
             };
 
             (

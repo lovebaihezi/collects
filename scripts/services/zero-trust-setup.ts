@@ -55,11 +55,42 @@ async function updateSecretValue(
   secretName: string,
   value: string,
 ): Promise<void> {
-  // Use printf to handle special characters properly
-  await confirmAndRun(
-    `printf '%s' '${value}' | gcloud secrets versions add ${secretName} --project=${projectId} --data-file=-`,
-    `Update secret '${secretName}' value`,
-  );
+  const shouldUpdate = await p.confirm({
+    message: `Update secret '${secretName}' value? (value hidden)`,
+  });
+
+  if (p.isCancel(shouldUpdate) || !shouldUpdate) {
+    p.log.warn(`Skipped updating secret '${secretName}'`);
+    return;
+  }
+
+  const s = p.spinner();
+  s.start(`Updating secret '${secretName}'...`);
+
+  const proc = Bun.spawn({
+    cmd: [
+      "gcloud",
+      "secrets",
+      "versions",
+      "add",
+      secretName,
+      `--project=${projectId}`,
+      "--data-file=-",
+    ],
+    stdin: new Blob([value]),
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+
+  const exitCode = await proc.exited;
+  if (exitCode !== 0) {
+    const stderr = proc.stderr ? await new Response(proc.stderr).text() : "";
+    s.stop(`Failed to update secret '${secretName}'`);
+    p.log.error(stderr.trim() || `gcloud exited with code ${exitCode}`);
+    process.exit(1);
+  }
+
+  s.stop(`Secret '${secretName}' updated`);
 }
 
 /**

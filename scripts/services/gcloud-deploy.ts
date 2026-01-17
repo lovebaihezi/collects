@@ -5,17 +5,18 @@
  * with the appropriate secrets and configuration for each environment.
  *
  * Usage:
- *   bun run main.ts gcloud-deploy <env> <image_tag>
+ *   just scripts::gcloud-deploy <env> <image_tag>
  *
  * Examples:
- *   bun run main.ts gcloud-deploy prod v2026.1.3
- *   bun run main.ts gcloud-deploy pr pr-123
- *   bun run main.ts gcloud-deploy test main-abc123
+ *   just scripts::gcloud-deploy prod v2026.1.3
+ *   just scripts::gcloud-deploy pr pr-123
+ *   just scripts::gcloud-deploy test main-abc123
  */
 
 import * as p from "@clack/prompts";
 import { $ } from "bun";
 import { getEnvConfig, type EnvConfig } from "./env-config.ts";
+import { checkResource } from "./utils.ts";
 
 const GCP_REGION = "us-east1";
 const REPOSITORY_NAME = "collects-services";
@@ -162,6 +163,34 @@ function getSecretsSummary(secrets: SecretBinding[]): string {
   return categories.join(", ");
 }
 
+async function assertSecretsExist(
+  projectId: string,
+  secrets: SecretBinding[],
+): Promise<void> {
+  const uniqueSecretNames = Array.from(new Set(secrets.map((s) => s.secretName)));
+  const missing: string[] = [];
+
+  for (const secretName of uniqueSecretNames) {
+    const exists = await checkResource(
+      `gcloud secrets describe ${secretName} --project=${projectId}`,
+    );
+    if (!exists) {
+      missing.push(secretName);
+    }
+  }
+
+  if (missing.length > 0) {
+    p.log.error(`Missing required secrets in project '${projectId}':`);
+    for (const secretName of missing) {
+      p.log.message(`- ${secretName}`);
+    }
+    p.log.info(
+      "Create the missing secrets in Google Cloud Secret Manager, then re-run the deploy.",
+    );
+    process.exit(1);
+  }
+}
+
 /**
  * Build deployment configuration
  */
@@ -202,6 +231,8 @@ export async function deploy(config: DeployConfig): Promise<void> {
   p.log.info(`  Image: ${fullImageName}`);
   p.log.info(`  Region: ${GCP_REGION}`);
   p.log.info(`  Secrets: ${getSecretsSummary(secrets)}`);
+
+  await assertSecretsExist(projectId, secrets);
 
   const secretsArg = formatSecretsArg(secrets);
 

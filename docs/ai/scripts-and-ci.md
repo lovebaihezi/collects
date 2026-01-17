@@ -59,6 +59,18 @@ Rationale:
 - Ensures consistent local vs CI behavior
 - The `just` commands handle installation/setup consistently
 
+### Scripts Command Index (Short)
+
+- `just scripts::help`: show all scripts commands
+- `just scripts::actions-setup`: GitHub Actions + GCP setup
+- `just scripts::actions-migrate-repo`: update WIF bindings after repo move/rename
+- `just scripts::init-db <NEON_API_TOKEN> <NEON_PROJECT_ID>`: provision DB secrets
+- `just scripts::jwt-setup` / `just scripts::jwt-list`
+- `just scripts::zero-trust-setup` / `just scripts::zero-trust-list`
+- `just scripts::r2-setup` / `just scripts::r2-list` / `just scripts::r2-verify`
+- `just scripts::gcloud-deploy <env> <tag>`
+- `just scripts::artifact-cleanup` / `just scripts::artifact-check`
+
 ### CI feedback on PR failures (MUST for `pull_request` jobs)
 
 All jobs that run on `pull_request` must include a final step that posts feedback **only when the job fails**.

@@ -24,6 +24,7 @@ ustr = { workspace = true }
 collects-assets = { path = "../assets" }
 collects-business = { path = "../business" }
 collects-states = { path = "../states" }
+collects-input = { path = "../input" }
 # eframe with all rendering backends and platform support
 # Following best practice: single eframe dependency with all features
 eframe = { workspace = true, features = [
@@ -46,9 +47,7 @@ env_logger = "0.11.8"
 mimalloc = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 reqwest = { workspace = true, default-features = true }
-arboard = { version = "3.6", features = ["wayland-data-control", "image-data"] }
 image = "0.25"
-urlencoding = "2.1"
 
 # web:
 [target.'cfg(target_arch = "wasm32")'.dependencies]

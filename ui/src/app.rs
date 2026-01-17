@@ -7,6 +7,7 @@ use crate::{
     utils::paste_handler::{PasteHandler, SystemPasteHandler},
     widgets,
 };
+
 use chrono::{Timelike as _, Utc};
 #[cfg(any(feature = "env_internal", feature = "env_test_internal"))]
 use collects_business::RefreshInternalUsersCommand;
@@ -17,6 +18,7 @@ use collects_business::{
 #[cfg(not(any(feature = "env_internal", feature = "env_test_internal")))]
 use collects_business::{PendingTokenValidation, ValidateTokenCommand};
 use collects_states::Time;
+use collects_states::{ClipboardImagePayload, ClipboardImagePreviewRgba8, ClipboardImageState};
 
 /// Horizontal offset for the API status window from the right edge (in pixels)
 const API_STATUS_WINDOW_OFFSET_X: f32 = -8.0;
@@ -160,55 +162,98 @@ impl<P: PasteHandler, D: DropHandler> eframe::App for CollectsApp<P, D> {
             });
         }
 
-        // Handle paste shortcut (Ctrl+V / Cmd+V) for clipboard image
-        // If an image was pasted, replace the current displayed image
+        // Handle paste shortcut (Ctrl+V / Cmd+V) for clipboard image.
+        //
+        // We now prefer storing the original encoded clipboard bytes (payload) into `ClipboardImageState`,
+        // and only decode/downconvert to RGBA8 for on-screen preview (`ImagePreviewState`).
         let paste_key_pressed = ctrl_v_pressed || cmd_v_pressed;
         let clipboard_result = self.paste_handler.handle_paste(ctx);
 
-        if let Some(clipboard_image) = clipboard_result {
+        if let Some(payload) = clipboard_result {
             log::info!(
-                "Processing pasted image: {}x{}, {} bytes",
-                clipboard_image.width,
-                clipboard_image.height,
-                clipboard_image.bytes.len()
+                "Processing pasted image payload: mime={} bytes={} filename={} synthesized={}",
+                payload.mime_type,
+                payload.bytes.len(),
+                payload.filename,
+                payload.synthesized
             );
-            let width = clipboard_image.width;
-            let height = clipboard_image.height;
-            let bytes_len = clipboard_image.bytes.len();
 
-            // Record clipboard access success in diagnostics
-            self.state.ctx.update::<ImageDiagState>(|diag| {
-                diag.record_clipboard_access(ClipboardAccessResult::ImageFound {
-                    width,
-                    height,
-                    bytes_len,
-                    format: "RGBA".to_owned(),
-                });
+            // Store the original payload (best-effort original bytes) in shared state.
+            self.state.ctx.update::<ClipboardImageState>(|s| {
+                s.set_payload(ClipboardImagePayload {
+                    bytes: payload.bytes.clone(),
+                    mime_type: payload.mime_type.clone(),
+                    filename: payload.filename.clone(),
+                    synthesized: payload.synthesized,
+                })
             });
 
-            let image_state = self.state.ctx.state_mut::<widgets::ImagePreviewState>();
-            let success = image_state.set_image_rgba(
-                ctx,
-                clipboard_image.width,
-                clipboard_image.height,
-                clipboard_image.bytes,
-            );
-            if success {
-                log::info!("Pasted image set successfully");
-                // Record successful paste in diagnostics
-                self.state.ctx.update::<ImageDiagState>(|diag| {
-                    diag.record_paste(PasteResult::Success {
-                        width,
-                        height,
-                        bytes_len,
+            // Decode for preview only. This may downconvert (e.g. 16-bit -> 8-bit) which is OK for display.
+            let decode_result: Option<ClipboardImagePreviewRgba8> = (|| {
+                let dyn_img = image::load_from_memory(&payload.bytes).ok()?;
+                let rgba = dyn_img.to_rgba8();
+                let (w, h) = rgba.dimensions();
+                Some(ClipboardImagePreviewRgba8 {
+                    width: w as usize,
+                    height: h as usize,
+                    bytes: rgba.into_raw(),
+                })
+            })();
+
+            match decode_result {
+                Some(preview) => {
+                    let width = preview.width;
+                    let height = preview.height;
+                    let bytes_len = preview.bytes.len();
+
+                    // Record clipboard access success in diagnostics
+                    self.state.ctx.update::<ImageDiagState>(|diag| {
+                        diag.record_clipboard_access(ClipboardAccessResult::ImageFound {
+                            width,
+                            height,
+                            bytes_len,
+                            format: "RGBA".to_owned(),
+                        });
                     });
-                });
-            } else {
-                log::warn!("Failed to set pasted image");
-                // Record failed paste in diagnostics
-                self.state.ctx.update::<ImageDiagState>(|diag| {
-                    diag.record_paste(PasteResult::SetImageFailed { width, height });
-                });
+
+                    // Update preview cache state (best-effort). Use current generation.
+                    let generation = self.state.ctx.state::<ClipboardImageState>().generation();
+                    self.state.ctx.update::<ClipboardImageState>(|s| {
+                        let _ = s.set_preview_rgba8_if_current(generation, preview.clone());
+                    });
+
+                    // Push preview into UI texture state.
+                    let image_state = self.state.ctx.state_mut::<widgets::ImagePreviewState>();
+                    let success = image_state.set_image_rgba(ctx, width, height, preview.bytes);
+
+                    if success {
+                        log::info!("Pasted image preview set successfully");
+                        self.state.ctx.update::<ImageDiagState>(|diag| {
+                            diag.record_paste(PasteResult::Success {
+                                width,
+                                height,
+                                bytes_len,
+                            });
+                        });
+                    } else {
+                        log::warn!("Failed to set pasted image preview");
+                        self.state.ctx.update::<ImageDiagState>(|diag| {
+                            diag.record_paste(PasteResult::SetImageFailed { width, height });
+                        });
+                    }
+                }
+                None => {
+                    log::warn!(
+                        "Failed to decode pasted image payload for preview (mime={}, filename={})",
+                        payload.mime_type,
+                        payload.filename
+                    );
+                    // We stored the payload successfully; only preview failed.
+                    self.state.ctx.update::<ImageDiagState>(|diag| {
+                        diag.record_clipboard_access(ClipboardAccessResult::NoImageContent);
+                        diag.record_paste(PasteResult::NoImageContent);
+                    });
+                }
             }
         } else if paste_key_pressed {
             // Key was pressed but no image returned - record failure for diagnostics

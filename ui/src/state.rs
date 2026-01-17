@@ -17,7 +17,7 @@ use collects_business::{
     ResetInternalUsersActionCommand, RevokeOtpCommand, SetCFTokenCommand, UpdateProfileCommand,
     UpdateUsernameCommand,
 };
-use collects_states::{StateCtx, Time};
+use collects_states::{ClipboardImageState, StateCtx, Time};
 use serde::{Deserialize, Serialize};
 
 use crate::widgets::ImagePreviewState;
@@ -75,7 +75,11 @@ impl State {
         ctx.record_command(LogoutCommand);
         ctx.record_command(ValidateTokenCommand);
 
-        // Add image preview state for clipboard/drop image handling
+        // Add clipboard payload state (original encoded bytes + synthesized fallback marker).
+        // UI can decode/downconvert this into `ImagePreviewState` for rendering.
+        ctx.add_state(ClipboardImageState::new());
+
+        // Add image preview state for clipboard/drop image handling (UI texture + RGBA preview)
         ctx.add_state(ImagePreviewState::new());
 
         // Add image diagnostic state (for debugging paste/drop across environments)

@@ -1338,11 +1338,11 @@ dependencies = [
 name = "collects-ui"
 version = "2026.1.2"
 dependencies = [
- "arboard",
  "bon",
  "chrono",
  "collects-assets",
  "collects-business",
+ "collects-input",
  "collects-states",
  "eframe",
  "egui",
@@ -1362,7 +1362,6 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
- "urlencoding",
  "ustr",
  "wasm-bindgen",
  "wasm-bindgen-futures",

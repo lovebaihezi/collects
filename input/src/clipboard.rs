@@ -38,6 +38,29 @@
 //!     Err(e) => eprintln!("Error: {e}"),
 //! }
 //! ```
+//!
+//! If you want to preserve the original encoded bytes as much as possible, prefer
+//! [`ClipboardProvider::get_image_payload`]. UI preview can still downconvert later.
+
+/// Image payload retrieved from the clipboard, preserved as encoded bytes when possible.
+///
+/// This is the preferred type for **storage/export** because it avoids forcing a
+/// downconversion to RGBA at the clipboard boundary.
+#[derive(Debug, Clone)]
+pub struct ClipboardImagePayload {
+    /// Encoded image bytes (ideally the original clipboard representation).
+    ///
+    /// Note: depending on platform/clipboard APIs, this may be synthesized (e.g. encoded
+    /// from a provided bitmap). Callers should treat this as best-effort.
+    pub bytes: Vec<u8>,
+    /// MIME type of the encoded payload (e.g., "image/png", "image/jpeg").
+    pub mime_type: String,
+    /// Suggested filename for the image.
+    pub filename: String,
+    /// Whether this payload was synthesized (e.g. bitmap -> encoded PNG) because the
+    /// platform did not provide the original encoded bytes.
+    pub synthesized: bool,
+}
 
 /// Image data retrieved from the clipboard.
 #[derive(Debug, Clone)]
@@ -87,6 +110,31 @@ pub trait ClipboardProvider {
     /// This is useful for UI contexts where you want to display the image
     /// without the overhead of PNG encoding/decoding.
     fn get_image_rgba(&self) -> Result<Option<ClipboardImage>, ClipboardError>;
+
+    /// Returns an encoded image payload suitable for storage/export.
+    ///
+    /// Goal: preserve the original encoded bytes whenever the platform clipboard provides them.
+    /// If the platform only provides a bitmap, implementations may synthesize a payload
+    /// (e.g. encode bitmap as PNG) as a best-effort fallback.
+    ///
+    /// # Returns
+    /// - `Ok(Some(payload))` if an image payload is available
+    /// - `Ok(None)` if clipboard is accessible but contains no image
+    /// - `Err(...)` if clipboard access failed
+    fn get_image_payload(&self) -> Result<Option<ClipboardImagePayload>, ClipboardError> {
+        // Back-compat default: use `get_image()` which returns PNG bytes for storage
+        // in the current `SystemClipboard` implementation.
+        //
+        // Mark as synthesized because `get_image()` may encode from a bitmap.
+        self.get_image().map(|opt| {
+            opt.map(|img| ClipboardImagePayload {
+                bytes: img.bytes,
+                mime_type: img.mime_type,
+                filename: img.filename,
+                synthesized: true,
+            })
+        })
+    }
 }
 
 /// System clipboard implementation using the `arboard` crate.
@@ -181,6 +229,41 @@ impl ClipboardProvider for SystemClipboard {
             }
         }
     }
+    fn get_image_payload(&self) -> Result<Option<ClipboardImagePayload>, ClipboardError> {
+        use arboard::Clipboard;
+
+        let mut clipboard =
+            Clipboard::new().map_err(|e| ClipboardError::AccessError(e.to_string()))?;
+
+        // 1) Prefer original file bytes if the clipboard contains `file://...` URIs.
+        // This preserves the source file's encoding/bit depth/metadata.
+        if let Ok(text) = clipboard.get_text()
+            && let Some(payload) = try_load_payload_from_file_uri(&text)
+        {
+            return Ok(Some(payload));
+        }
+
+        // 2) Otherwise, fall back to synthesized payload:
+        // read bitmap and encode as PNG (best-effort).
+        match clipboard.get_image() {
+            Ok(image_data) => {
+                let png_data =
+                    encode_rgba_to_png(image_data.width, image_data.height, &image_data.bytes)?;
+
+                let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S");
+                let filename = format!("clipboard_{timestamp}.png");
+
+                Ok(Some(ClipboardImagePayload {
+                    bytes: png_data,
+                    mime_type: "image/png".to_owned(),
+                    filename,
+                    synthesized: true,
+                }))
+            }
+            Err(arboard::Error::ContentNotAvailable) => Ok(None),
+            Err(e) => Err(ClipboardError::AccessError(e.to_string())),
+        }
+    }
 }
 
 /// Clears clipboard contents by overwriting with empty text (best-effort).
@@ -233,6 +316,27 @@ fn try_load_image_from_file_uri(text: &str, encode_png: bool) -> Option<Clipboar
             if let Some(image) = load_image_from_path(&path, encode_png) {
                 return Some(image);
             }
+        }
+    }
+    None
+}
+
+/// Attempts to load an image payload (original encoded bytes) from a file:// URI found in clipboard text.
+///
+/// This preserves the original file bytes, so we don't lose bit depth/metadata by decoding+re-encoding.
+#[cfg(not(target_arch = "wasm32"))]
+fn try_load_payload_from_file_uri(text: &str) -> Option<ClipboardImagePayload> {
+    for line in text.lines() {
+        let line = line.trim();
+        let path = extract_file_path_from_uri(line)?;
+
+        log::trace!(
+            target: "collects_input::clipboard",
+            "file_uri_payload_detected path={path:?}",
+        );
+
+        if let Some(payload) = load_payload_from_path(&path) {
+            return Some(payload);
         }
     }
     None
@@ -333,6 +437,50 @@ fn load_image_from_path(path: &std::path::Path, encode_png: bool) -> Option<Clip
     }
 }
 
+/// Loads an encoded image payload from a filesystem path without decoding/re-encoding.
+///
+/// This preserves original file bytes and sets MIME type based on extension (best-effort).
+#[cfg(not(target_arch = "wasm32"))]
+fn load_payload_from_path(path: &std::path::Path) -> Option<ClipboardImagePayload> {
+    use std::fs;
+
+    // Best-effort image check by extension
+    let extension = path.extension()?.to_str()?.to_lowercase();
+    let is_image = matches!(
+        extension.as_str(),
+        "png" | "jpg" | "jpeg" | "gif" | "bmp" | "webp" | "tiff" | "tif" | "ico"
+    );
+    if !is_image {
+        return None;
+    }
+
+    let bytes = fs::read(path).ok()?;
+
+    let mime_type = match extension.as_str() {
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "bmp" => "image/bmp",
+        "webp" => "image/webp",
+        "tif" | "tiff" => "image/tiff",
+        "ico" => "image/x-icon",
+        _ => "application/octet-stream",
+    }
+    .to_owned();
+
+    let filename = path
+        .file_name()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|| "clipboard_image".to_owned());
+
+    Some(ClipboardImagePayload {
+        bytes,
+        mime_type,
+        filename,
+        synthesized: false,
+    })
+}
+
 /// Clears clipboard contents on WASM (no-op, clipboard not yet supported).
 #[cfg(target_arch = "wasm32")]
 pub fn clear_clipboard_image() -> Result<(), ClipboardError> {
@@ -355,6 +503,10 @@ impl ClipboardProvider for SystemClipboard {
     fn get_image_rgba(&self) -> Result<Option<ClipboardImage>, ClipboardError> {
         Ok(None)
     }
+
+    fn get_image_payload(&self) -> Result<Option<ClipboardImagePayload>, ClipboardError> {
+        Ok(None)
+    }
 }
 
 #[cfg(test)]
@@ -373,6 +525,15 @@ mod tests {
         fn get_image_rgba(&self) -> Result<Option<ClipboardImage>, ClipboardError> {
             Ok(Some(self.image.clone()))
         }
+
+        fn get_image_payload(&self) -> Result<Option<ClipboardImagePayload>, ClipboardError> {
+            Ok(Some(ClipboardImagePayload {
+                bytes: self.image.bytes.clone(),
+                mime_type: self.image.mime_type.clone(),
+                filename: self.image.filename.clone(),
+                synthesized: true,
+            }))
+        }
     }
 
     struct MockClipboardEmpty;
@@ -385,6 +546,10 @@ mod tests {
         fn get_image_rgba(&self) -> Result<Option<ClipboardImage>, ClipboardError> {
             Ok(None)
         }
+
+        fn get_image_payload(&self) -> Result<Option<ClipboardImagePayload>, ClipboardError> {
+            Ok(None)
+        }
     }
 
     struct MockClipboardError;
@@ -395,6 +560,10 @@ mod tests {
         }
 
         fn get_image_rgba(&self) -> Result<Option<ClipboardImage>, ClipboardError> {
+            Err(ClipboardError::AccessError("Mock error".to_owned()))
+        }
+
+        fn get_image_payload(&self) -> Result<Option<ClipboardImagePayload>, ClipboardError> {
             Err(ClipboardError::AccessError("Mock error".to_owned()))
         }
     }

@@ -1527,7 +1527,7 @@ async fn test_public_share_view_url_success() {
         json["url"]
             .as_str()
             .unwrap()
-            .contains("test.r2.example.com")
+            .contains("r2.cloudflarestorage.com")
     );
     assert!(json["expires_at"].as_str().is_some());
 }

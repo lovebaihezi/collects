@@ -2,6 +2,10 @@
 install:
     bun i
 
+# Show scripts CLI help
+help: install
+    bun run main.ts
+
 # Check that Commands use LatestOnlyUpdater (and do not use the legacy Updater signature)
 # Usage: just scripts::command-updater-check
 command-updater-check: install
@@ -39,10 +43,15 @@ jwt-secret env:
     @bun run main.ts jwt-secret {{env}}
 
 # Get R2 storage secrets for an environment (used by other modules)
-# Returns comma-separated secrets string for gcloud deploy, or empty if R2 not required
+# Returns comma-separated secrets string for gcloud deploy
 # Usage: just scripts::r2-secrets pr
 r2-secrets env:
     @bun run main.ts r2-secrets {{env}}
+
+# Check whether a Cargo.toml version changed (used by CI)
+# Usage: just scripts::version-check services/Cargo.toml
+version-check *args: install
+    bun run main.ts version-check {{args}}
 
 # Deploy services to Cloud Run with appropriate secrets
 # Usage: just scripts::gcloud-deploy prod v2026.1.3
@@ -118,14 +127,19 @@ commit-pr-close pr_url: install
     bun run main.ts commit pr-close "{{pr_url}}"
 
 # Setup Cloudflare R2 secrets in Google Cloud Secret Manager
-# Usage: just scripts::r2-setup my-gcp-project-id
+# Usage: just scripts::r2-setup --project-id <gcp-project-id>
 r2-setup *args: install
     bun run main.ts r2-setup {{args}}
 
 # List Cloudflare R2 secrets status
-# Usage: just scripts::r2-list my-gcp-project-id
+# Usage: just scripts::r2-list --project-id <gcp-project-id>
 r2-list *args: install
     bun run main.ts r2-list {{args}}
+
+# Verify Cloudflare R2 access using stored secrets
+# Usage: just scripts::r2-verify --project-id <gcp-project-id>
+r2-verify *args: install
+    bun run main.ts r2-verify {{args}}
 
 # Setup JWT secrets in Google Cloud Secret Manager (auto-generates secure secrets)
 # Usage: just scripts::jwt-setup --project-id my-gcp-project-id

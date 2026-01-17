@@ -18,9 +18,6 @@ pub struct PresignedUrl {
 /// Error type for presigning operations.
 #[derive(Debug, thiserror::Error)]
 pub enum PresignError {
-    #[error("No configuration provided")]
-    NoConfig,
-
     #[error("Presigning failed: {0}")]
     PresignFailed(String),
 
@@ -52,26 +49,18 @@ impl TryFrom<&str> for ContentDisposition {
 /// Presigner for Cloudflare R2 storage.
 #[derive(Clone)]
 pub struct R2Presigner {
-    config: Option<CFDiskConfig>,
+    config: CFDiskConfig,
 }
 
 impl R2Presigner {
     /// Create a new presigner with the given configuration.
     pub fn new(config: CFDiskConfig) -> Self {
-        Self {
-            config: Some(config),
-        }
-    }
-
-    /// Create a presigner for testing (no actual R2 operations).
-    pub fn new_for_test() -> Self {
-        Self { config: None }
+        Self { config }
     }
 
     /// Create an OpenDAL operator for R2.
     fn create_operator(&self) -> Result<opendal::Operator, PresignError> {
-        let config = self.config.as_ref().ok_or(PresignError::NoConfig)?;
-
+        let config = &self.config;
         let builder = opendal::services::S3::default()
             .bucket(&config.bucket)
             .region("auto")
@@ -102,15 +91,6 @@ impl R2Presigner {
         content_type: &str,
         expires_in: Duration,
     ) -> Result<PresignedUrl, PresignError> {
-        // For test mode, return a mock URL
-        if self.config.is_none() {
-            let expires_at = chrono::Utc::now() + chrono::Duration::from_std(expires_in).unwrap();
-            return Ok(PresignedUrl {
-                url: format!("https://test.r2.example.com/{storage_key}?mock=true"),
-                expires_at,
-            });
-        }
-
         let op = self.create_operator()?;
         let expires_at = chrono::Utc::now() + chrono::Duration::from_std(expires_in).unwrap();
 
@@ -142,21 +122,6 @@ impl R2Presigner {
         disposition: ContentDisposition,
         expires_in: Duration,
     ) -> Result<PresignedUrl, PresignError> {
-        // For test mode, return a mock URL
-        if self.config.is_none() {
-            let expires_at = chrono::Utc::now() + chrono::Duration::from_std(expires_in).unwrap();
-            let disp = match disposition {
-                ContentDisposition::Inline => "inline",
-                ContentDisposition::Attachment => "attachment",
-            };
-            return Ok(PresignedUrl {
-                url: format!(
-                    "https://test.r2.example.com/{storage_key}?mock=true&disposition={disp}"
-                ),
-                expires_at,
-            });
-        }
-
         let op = self.create_operator()?;
         let expires_at = chrono::Utc::now() + chrono::Duration::from_std(expires_in).unwrap();
 
@@ -184,11 +149,6 @@ impl R2Presigner {
     ///
     /// Used to verify uploads completed successfully.
     pub async fn file_exists(&self, storage_key: &str) -> Result<bool, PresignError> {
-        // For test mode, always return true
-        if self.config.is_none() {
-            return Ok(true);
-        }
-
         let op = self.create_operator()?;
         op.exists(storage_key)
             .await
@@ -202,14 +162,6 @@ impl R2Presigner {
         &self,
         storage_key: &str,
     ) -> Result<Option<FileMetadata>, PresignError> {
-        // For test mode, return mock metadata
-        if self.config.is_none() {
-            return Ok(Some(FileMetadata {
-                content_type: "application/octet-stream".to_owned(),
-                content_length: 1024,
-            }));
-        }
-
         let op = self.create_operator()?;
         match op.stat(storage_key).await {
             Ok(meta) => Ok(Some(FileMetadata {
@@ -245,21 +197,31 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn test_presigner_test_mode_put() {
-        let presigner = R2Presigner::new_for_test();
+    async fn test_presigner_put_generates_r2_url() {
+        let presigner = R2Presigner::new(CFDiskConfig {
+            account_id: "test-account".to_owned(),
+            access_key_id: "test-access-key".to_owned(),
+            secret_access_key: "test-secret".to_owned(),
+            bucket: "test-bucket".to_owned(),
+        });
         let result = presigner
             .presign_put("test/file.txt", "text/plain", Duration::from_secs(300))
             .await
             .unwrap();
 
         assert!(result.url.contains("test/file.txt"));
-        assert!(result.url.contains("mock=true"));
+        assert!(result.url.contains("r2.cloudflarestorage.com"));
         assert!(result.expires_at > chrono::Utc::now());
     }
 
     #[tokio::test]
-    async fn test_presigner_test_mode_get() {
-        let presigner = R2Presigner::new_for_test();
+    async fn test_presigner_get_generates_r2_url() {
+        let presigner = R2Presigner::new(CFDiskConfig {
+            account_id: "test-account".to_owned(),
+            access_key_id: "test-access-key".to_owned(),
+            secret_access_key: "test-secret".to_owned(),
+            bucket: "test-bucket".to_owned(),
+        });
         let result = presigner
             .presign_get(
                 "test/file.txt",
@@ -270,14 +232,7 @@ mod tests {
             .unwrap();
 
         assert!(result.url.contains("test/file.txt"));
-        assert!(result.url.contains("disposition=inline"));
-    }
-
-    #[tokio::test]
-    async fn test_presigner_test_mode_file_exists() {
-        let presigner = R2Presigner::new_for_test();
-        let exists = presigner.file_exists("any/path").await.unwrap();
-        assert!(exists);
+        assert!(result.url.contains("r2.cloudflarestorage.com"));
     }
 
     #[test]

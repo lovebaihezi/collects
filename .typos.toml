@@ -5,6 +5,7 @@
 [default.extend-words]
 egui = "egui" # Example for how to ignore a false positive
 OTPs = "OTPs" # One-Time Passwords (plural)
+acess = "acess" # Legacy typo in secret name: cf-secret-acess-key
 
 [default.extend-identifiers]
 OTPs = "OTPs" # One-Time Passwords (plural)

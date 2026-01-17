@@ -113,11 +113,13 @@ where
             }
         }
     } else {
-        // Test mode: return mock URL
-        crate::storage::PresignedUrl {
-            url: format!("https://test.r2.example.com/{storage_key}?mock=true"),
-            expires_at,
-        }
+        return (
+            StatusCode::BAD_GATEWAY,
+            Json(V1ErrorResponse::internal_error(
+                "R2 storage is not configured",
+            )),
+        )
+            .into_response();
     };
 
     (
@@ -261,8 +263,13 @@ where
             }
         }
     } else {
-        // Test mode: assume file exists
-        true
+        return (
+            StatusCode::BAD_GATEWAY,
+            Json(V1ErrorResponse::internal_error(
+                "R2 storage is not configured",
+            )),
+        )
+            .into_response();
     };
 
     if !file_exists {

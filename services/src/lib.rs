@@ -796,6 +796,16 @@ mod tests {
             .unwrap();
 
         assert_eq!(response.status(), StatusCode::CREATED);
+
+        // Verify we return a real R2 presigned URL (not a mock placeholder)
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        let upload_url = json["upload_url"].as_str().unwrap_or_default();
+        assert!(upload_url.contains("r2.cloudflarestorage.com"));
+        assert!(!upload_url.contains("test.r2.example.com"));
+        assert!(!upload_url.contains("mock=true"));
     }
 
     #[tokio::test]
@@ -844,6 +854,16 @@ mod tests {
             .unwrap();
 
         assert_eq!(response.status(), StatusCode::OK);
+
+        // Verify we return a real R2 presigned URL (not a mock placeholder)
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        let url = json["url"].as_str().unwrap_or_default();
+        assert!(url.contains("r2.cloudflarestorage.com"));
+        assert!(!url.contains("test.r2.example.com"));
+        assert!(!url.contains("mock=true"));
     }
 
     #[tokio::test]

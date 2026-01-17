@@ -3,8 +3,8 @@
  * This file is the single source of truth for environment-related mappings.
  *
  * Usage in justfiles:
- *   - `bun run main.ts env-feature <env>` - Get cargo feature flags
- *   - `bun run main.ts env-secret <env>` - Get database secret name
+ *   - `just scripts::env-feature <env>` - Get cargo feature flags
+ *   - `just scripts::env-secret <env>` - Get database secret name
  *
  * Available environments: prod, internal, nightly, test, test-internal, pr, local
  */
@@ -65,7 +65,7 @@ export interface EnvConfig {
   databaseSecret: string;
   /** JWT secret name in Google Cloud Secret Manager (null = uses default local secret) */
   jwtSecret: string | null;
-  /** R2 storage secrets (null = not required, e.g., local/test) */
+  /** R2 storage secrets (required for all environments) */
   r2Secrets: R2SecretsConfig | null;
   /** Zero Trust secrets (null = not required, only for internal environments) */
   zeroTrustSecrets: ZeroTrustSecretsConfig | null;
@@ -110,7 +110,7 @@ export const ENV_CONFIGS: EnvConfig[] = [
     cargoFeature: "env_test",
     databaseSecret: "database-url-test",
     jwtSecret: null, // Uses default local secret
-    r2Secrets: null, // R2 not required for test
+    r2Secrets: DEFAULT_R2_SECRETS,
     zeroTrustSecrets: null, // Not an internal environment
     description: "Test environment",
   },
@@ -119,7 +119,7 @@ export const ENV_CONFIGS: EnvConfig[] = [
     cargoFeature: "env_test_internal",
     databaseSecret: "database-url-test-internal",
     jwtSecret: null, // Uses default local secret
-    r2Secrets: null, // R2 not required for test-internal
+    r2Secrets: DEFAULT_R2_SECRETS,
     zeroTrustSecrets: DEFAULT_ZERO_TRUST_SECRETS, // Required for internal
     description: "Test-internal environment (admin role, deploys with main)",
   },
@@ -137,7 +137,7 @@ export const ENV_CONFIGS: EnvConfig[] = [
     cargoFeature: null, // Local uses default (no feature)
     databaseSecret: "database-url-local",
     jwtSecret: null, // Uses default local secret
-    r2Secrets: null, // R2 not required for local
+    r2Secrets: DEFAULT_R2_SECRETS,
     zeroTrustSecrets: null, // Not an internal environment
     description: "Local development environment",
   },
@@ -203,7 +203,7 @@ export function getJwtSecret(env: string): string {
 
 /**
  * Get R2 secrets configuration for an environment
- * Returns the R2 secrets config or null if R2 is not required
+ * Returns the R2 secrets config (null only if misconfigured)
  */
 export function getR2Secrets(env: string): R2SecretsConfig | null {
   const config = getEnvConfig(env);

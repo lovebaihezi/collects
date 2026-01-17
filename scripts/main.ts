@@ -44,6 +44,7 @@ import {
 } from "./services/zero-trust-setup.ts";
 import { runCommandUpdaterCheckCLI } from "./gh-actions/command-updater-check.ts";
 import { runSccacheStatsCLI } from "./gh-actions/sccache-stats.ts";
+import { runCommitCLI } from "./commit/index.ts";
 
 const cli = cac("services");
 
@@ -83,6 +84,15 @@ cli
       newRepo: options.newRepo,
     } as BuildMigrateRepoOptions);
     await migrateRepoBindings(ctx);
+  });
+
+cli
+  .command(
+    "commit <subcommand> [...args]",
+    "Commit/PR helper commands (gh CLI wrapper)",
+  )
+  .action(async (subcommand: string, args: string[] = []) => {
+    await runCommitCLI([subcommand, ...args]);
   });
 
 cli

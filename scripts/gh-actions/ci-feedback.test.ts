@@ -345,7 +345,6 @@ describe("isCopilotBotLogin", () => {
   test("returns true for known copilot bot logins", () => {
     expect(isCopilotBotLogin("copilot-swe-agent[bot]")).toBe(true);
     expect(isCopilotBotLogin("github-copilot[bot]")).toBe(true);
-    expect(isCopilotBotLogin("COPILOT-SWE-AGENT[BOT]")).toBe(true);
   });
 
   test("returns false for non-copilot logins", () => {

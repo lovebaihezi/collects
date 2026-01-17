@@ -38,7 +38,7 @@ const COPILOT_BOT_LOGINS = new Set([
 
 export function isCopilotBotLogin(login?: string | null): boolean {
   if (!login) return false;
-  return COPILOT_BOT_LOGINS.has(login.toLowerCase());
+  return COPILOT_BOT_LOGINS.has(login);
 }
 
 /**

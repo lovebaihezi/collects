@@ -35,6 +35,7 @@ import {
   listR2Secrets,
   promptForR2Credentials,
   setupR2Secrets,
+  verifyR2Secrets,
 } from "./services/r2-setup.ts";
 import { setupJwtSecrets, listJwtSecrets } from "./services/jwt-setup.ts";
 import {
@@ -189,7 +190,7 @@ cli
   )
   .action((env: string) => {
     // Output R2 secrets as comma-separated key=secret:latest pairs
-    // Returns empty string if the environment doesn't require R2
+    // Returns empty string only if the environment has no R2 mapping
     const r2 = getR2Secrets(env);
     if (r2) {
       const secrets = [
@@ -282,6 +283,30 @@ cli
     }
 
     await listR2Secrets(projectId as string);
+  });
+
+cli
+  .command("r2-verify", "Verify Cloudflare R2 access using GCP secrets")
+  .option("--project-id <projectId>", "Google Cloud Project ID")
+  .action(async (options) => {
+    p.intro("Cloudflare R2 Verification");
+
+    const projectId = options.projectId
+      ? options.projectId
+      : await p.text({
+          message: "Enter your Google Cloud Project ID:",
+          placeholder: "my-gcp-project-id",
+          validate: (value) => {
+            if (!value) return "Project ID is required";
+          },
+        });
+
+    if (p.isCancel(projectId)) {
+      p.cancel("Operation cancelled.");
+      process.exit(0);
+    }
+
+    await verifyR2Secrets(projectId as string);
   });
 
 cli
@@ -480,7 +505,7 @@ This script helps manage Google Cloud setup for the Collects services and GitHub
 ## Usage
 
 \`\`\`bash
-bun run main.ts <command>
+just scripts::<command>
 \`\`\`
 
 ## Commands
@@ -499,9 +524,9 @@ Sets up Workload Identity Federation for GitHub Actions to deploy to Google Clou
 
 **Example:**
 \`\`\`bash
-bun run main.ts actions-setup
+just scripts::actions-setup
 # Or with options:
-bun run main.ts actions-setup --project-id my-gcp-project-id --repo username/repository
+just scripts::actions-setup --project-id my-gcp-project-id --repo username/repository
 \`\`\`
 
 ### \`actions-migrate-repo\`
@@ -520,9 +545,9 @@ Migrates workload identity bindings when a GitHub repository is moved to a new o
 
 **Example:**
 \`\`\`bash
-bun run main.ts actions-migrate-repo
+just scripts::actions-migrate-repo
 # Or with options:
-bun run main.ts actions-migrate-repo --project-id my-gcp-project-id --old-repo old-org/old-repo --new-repo new-org/new-repo
+just scripts::actions-migrate-repo --project-id my-gcp-project-id --old-repo old-org/old-repo --new-repo new-org/new-repo
 # For example, migrating to lqxc-org:
 just scripts::actions-migrate-repo --project-id braided-case-416903 --old-repo old-owner/collects --new-repo lqxc-org/collects
 \`\`\`
@@ -545,7 +570,7 @@ Initializes Neon Database branches and updates Google Cloud Secrets with connect
 
 **Example:**
 \`\`\`bash
-bun run main.ts init-db-secret --token <NEON_API_TOKEN> --project-id <NEON_PROJECT_ID>
+just scripts::init-db <NEON_API_TOKEN> <NEON_PROJECT_ID>
 \`\`\`
 
 ### \`version-check\`
@@ -559,8 +584,8 @@ Checks if the version in a Cargo.toml file has changed (for GitHub Actions).
 
 **Example:**
 \`\`\`bash
-bun run main.ts version-check ui/Cargo.toml
-bun run main.ts version-check services/Cargo.toml
+just scripts::version-check ui/Cargo.toml
+just scripts::version-check services/Cargo.toml
 \`\`\`
 
 ### \`env-feature\`
@@ -569,9 +594,9 @@ Gets cargo feature flags for an environment. Used by justfiles to centralize env
 
 **Example:**
 \`\`\`bash
-bun run main.ts env-feature pr        # Output: --features env_pr
-bun run main.ts env-feature test      # Output: --features env_test
-bun run main.ts env-feature prod      # Output: (empty - no feature flag)
+just scripts::env-feature pr        # Output: --features env_pr
+just scripts::env-feature test      # Output: --features env_test
+just scripts::env-feature prod      # Output: (empty - no feature flag)
 \`\`\`
 
 ### \`env-secret\`
@@ -580,9 +605,9 @@ Gets database secret name for an environment. Used by justfiles to centralize en
 
 **Example:**
 \`\`\`bash
-bun run main.ts env-secret pr         # Output: database-url-pr
-bun run main.ts env-secret prod       # Output: database-url
-bun run main.ts env-secret local      # Output: database-url-local
+just scripts::env-secret pr         # Output: database-url-pr
+just scripts::env-secret prod       # Output: database-url
+just scripts::env-secret local      # Output: database-url-local
 \`\`\`
 
 ### \`jwt-secret\`
@@ -592,9 +617,9 @@ Returns an empty string for environments that use the default local secret (loca
 
 **Example:**
 \`\`\`bash
-bun run main.ts jwt-secret pr         # Output: jwt-secret-pr
-bun run main.ts jwt-secret prod       # Output: jwt-secret
-bun run main.ts jwt-secret local      # Output: (empty - uses default local secret)
+just scripts::jwt-secret pr         # Output: jwt-secret-pr
+just scripts::jwt-secret prod       # Output: jwt-secret
+just scripts::jwt-secret local      # Output: (empty - uses default local secret)
 \`\`\`
 
 ### \`env-list\`
@@ -603,7 +628,7 @@ Lists all available environment names.
 
 **Example:**
 \`\`\`bash
-bun run main.ts env-list              # Lists: prod, internal, nightly, test, test-internal, pr, local
+just scripts::env-list              # Lists: prod, internal, nightly, test, test-internal, pr, local
 \`\`\`
 
 ### \`check-pr-title\`
@@ -624,13 +649,13 @@ just scripts::check-pr-title "feat: add user authentication"
 ### \`r2-secrets\`
 
 Gets R2 storage secrets configuration for an environment. Used by justfiles to centralize environment configuration.
-Returns an empty string for environments that don't require R2 (local, test, test-internal).
+All environments require R2 secrets.
 
 **Example:**
 \`\`\`bash
-bun run main.ts r2-secrets pr         # Output: CF_ACCOUNT_ID=cf-account-id:latest,...
-bun run main.ts r2-secrets prod       # Output: CF_ACCOUNT_ID=cf-account-id:latest,...
-bun run main.ts r2-secrets local      # Output: (empty - R2 not required)
+just scripts::r2-secrets pr         # Output: CF_ACCOUNT_ID=cf-account-id:latest,...
+just scripts::r2-secrets prod       # Output: CF_ACCOUNT_ID=cf-account-id:latest,...
+just scripts::r2-secrets local      # Output: CF_ACCOUNT_ID=cf-account-id:latest,...
 \`\`\`
 
 ### \`gcloud-deploy\`
@@ -645,9 +670,9 @@ Deploys services to Cloud Run with appropriate secrets for each environment.
 
 **Example:**
 \`\`\`bash
-bun run main.ts gcloud-deploy prod v2026.1.3
-bun run main.ts gcloud-deploy pr pr-123
-bun run main.ts gcloud-deploy test main-abc123
+just scripts::gcloud-deploy prod v2026.1.3
+just scripts::gcloud-deploy pr pr-123
+just scripts::gcloud-deploy test main-abc123
 \`\`\`
 
 ### \`r2-setup\`
@@ -658,10 +683,11 @@ Sets up Cloudflare R2 storage secrets in Google Cloud Secret Manager.
 1. Prompts for R2 credentials (Account ID, Access Key ID, Secret Access Key, Bucket).
 2. Creates secrets in Google Cloud Secret Manager if they don't exist.
 3. Updates secret values with the provided credentials.
+4. Optionally verifies access by sending a signed HEAD request to the bucket.
 
 **Example:**
 \`\`\`bash
-bun run main.ts r2-setup --project-id my-gcp-project-id
+just scripts::r2-setup --project-id my-gcp-project-id
 \`\`\`
 
 ### \`r2-list\`
@@ -670,7 +696,16 @@ Lists the status of Cloudflare R2 secrets in Google Cloud Secret Manager.
 
 **Example:**
 \`\`\`bash
-bun run main.ts r2-list --project-id my-gcp-project-id
+just scripts::r2-list --project-id my-gcp-project-id
+\`\`\`
+
+### \`r2-verify\`
+
+Verifies Cloudflare R2 access using secrets stored in Google Cloud.
+
+**Example:**
+\`\`\`bash
+just scripts::r2-verify --project-id my-gcp-project-id
 \`\`\`
 
 ### \`ci-feedback\`
@@ -741,7 +776,7 @@ When a scheduled job (like \`Artifact Cleanup\`) fails, this command:
 **Example:**
 \`\`\`bash
 # Usually called from the scheduled-job-monitor.yml workflow
-bun run main.ts scheduled-job-issue
+just scripts::scheduled-job-issue
 \`\`\`
 
 ### \`artifact-cleanup\`
@@ -767,10 +802,10 @@ Cleans up old Docker images from Google Cloud Artifact Registry based on retenti
 **Example:**
 \`\`\`bash
 # Preview what would be deleted
-DRY_RUN=true bun run main.ts artifact-cleanup
+DRY_RUN=true just scripts::artifact-cleanup
 
 # Actually delete old images
-bun run main.ts artifact-cleanup
+just scripts::artifact-cleanup
 \`\`\`
 
 ### \`artifact-check\`
@@ -793,13 +828,10 @@ Checks the current state of Docker images in Artifact Registry and verifies clea
 \`\`\`bash
 # Check current artifact registry status
 just scripts::artifact-check
-
-# Or with bun directly
-bun run main.ts artifact-check
 \`\`\`
 
 ---
-Run \`bun run main.ts --help\` for CLI details.
+Run \`just scripts::help\` for CLI details.
 `;
   console.log(helpText);
 });

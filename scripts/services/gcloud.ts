@@ -303,6 +303,42 @@ export async function grantSecretAccessToAllJwtSecrets(
 }
 
 /**
+ * Grants Secret Accessor role to the default compute service account for all R2 secrets
+ * This includes: cf-account-id, cf-access-key-id, cf-secret-access-key, cf-bucket
+ */
+export async function grantSecretAccessToAllR2Secrets(
+  ctx: SetupContext,
+): Promise<void> {
+  const computeSaEmail = `${ctx.projectNumber}-compute@developer.gserviceaccount.com`;
+  const r2Secrets = [
+    "cf-account-id",
+    "cf-access-key-id",
+    "cf-secret-access-key",
+    "cf-bucket",
+  ];
+
+  const client = new SecretManagerServiceClient();
+  const parent = `projects/${ctx.projectNumber}`;
+
+  for (const secretName of r2Secrets) {
+    const resource = `${parent}/secrets/${secretName}`;
+    await addIamPolicyBinding(
+      async () => {
+        const [policy] = await client.getIamPolicy({ resource });
+        return policy;
+      },
+      async (policy) => {
+        await client.setIamPolicy({ resource, policy });
+      },
+      `serviceAccount:${computeSaEmail}`,
+      "roles/secretmanager.secretAccessor",
+      resource,
+      `Grant access to secret '${secretName}' for Compute Service Account`,
+    );
+  }
+}
+
+/**
  * Grants access to all Zero Trust secrets for the Compute Service Account.
  * These secrets are required for the internal environment.
  */
@@ -664,7 +700,10 @@ export async function setupGitHubActions(ctx: SetupContext): Promise<void> {
   // 9. Grant access to all JWT secrets
   await grantSecretAccessToAllJwtSecrets(ctx);
 
-  // 10. Grant access to all Zero Trust secrets (for internal environment)
+  // 10. Grant access to all R2 secrets
+  await grantSecretAccessToAllR2Secrets(ctx);
+
+  // 11. Grant access to all Zero Trust secrets (for internal environment)
   await grantSecretAccessToAllZeroTrustSecrets(ctx);
 
   p.outro("Setup Complete!");

@@ -10,7 +10,7 @@
  * - Using `LatestOnlyUpdater` guarantees stale completes can’t publish.
  *
  * Intended usage:
- * - Local: `bun run main.ts command-updater-check`
+ * - Local: `just scripts::command-updater-check`
  * - CI: as a step before/alongside `just ui::wk-build`
  *
  * Notes:

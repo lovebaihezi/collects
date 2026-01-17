@@ -6,6 +6,7 @@
 #![allow(unsafe_code)]
 
 mod basic_state;
+mod clipboard_image;
 mod compute;
 mod ctx;
 mod dep;
@@ -18,6 +19,7 @@ mod state_sync_status;
 mod task;
 
 pub use basic_state::Time;
+pub use clipboard_image::{ClipboardImagePayload, ClipboardImagePreviewRgba8, ClipboardImageState};
 pub use compute::{Compute, ComputeDeps, assign_impl};
 pub use ctx::StateCtx;
 pub use dep::Dep;

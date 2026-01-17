@@ -72,10 +72,10 @@ init-db token project_id: install
 check-pr-title title: install
     bun run main.ts check-pr-title "{{title}}"
 
-# Commit/PR helper commands
-# Usage: just scripts::commit branch-name "summary"
+# Commit/PR helper commands (use `--` to pass through args safely)
+# Usage: just scripts::commit -- pr-create "feat(scope): message"
 commit *args: install
-    bun run main.ts commit {{args}}
+    bun run main.ts commit -- {{args}}
 
 # Setup Cloudflare R2 secrets in Google Cloud Secret Manager
 # Usage: just scripts::r2-setup my-gcp-project-id

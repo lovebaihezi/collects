@@ -72,10 +72,50 @@ init-db token project_id: install
 check-pr-title title: install
     bun run main.ts check-pr-title "{{title}}"
 
-# Commit/PR helper commands (use `--` to pass through args safely)
-# Usage: just scripts::commit -- pr-create "feat(scope): message"
-commit *args: install
-    bun run main.ts commit -- {{args}}
+# Commit/PR helper commands
+# Usage: just scripts::commit-branch-name "summary"
+commit-branch-name summary="": install
+    @if [ -n "{{summary}}" ]; then bun run main.ts commit branch-name "{{summary}}"; else bun run main.ts commit branch-name; fi
+
+# Usage: just scripts::commit-pr-create "feat(scope): message" [body_path]
+commit-pr-create title body_path="": install
+    @if [ -n "{{body_path}}" ]; then bun run main.ts commit pr-create "{{title}}" "{{body_path}}"; else bun run main.ts commit pr-create "{{title}}"; fi
+
+# Usage: just scripts::commit-pr-auto-merge <pr_url>
+commit-pr-auto-merge pr_url: install
+    bun run main.ts commit pr-auto-merge "{{pr_url}}"
+
+# Usage: just scripts::commit-pr-checks [pr_url]
+commit-pr-checks pr_url="": install
+    @if [ -n "{{pr_url}}" ]; then bun run main.ts commit pr-checks "{{pr_url}}"; else bun run main.ts commit pr-checks; fi
+
+# Usage: just scripts::commit-pr-open [pr_url]
+commit-pr-open pr_url="": install
+    @if [ -n "{{pr_url}}" ]; then bun run main.ts commit pr-open "{{pr_url}}"; else bun run main.ts commit pr-open; fi
+
+# Usage: just scripts::commit-pr-url
+commit-pr-url: install
+    bun run main.ts commit pr-url
+
+# Usage: just scripts::commit-pr-status [pr_url]
+commit-pr-status pr_url="": install
+    @if [ -n "{{pr_url}}" ]; then bun run main.ts commit pr-status "{{pr_url}}"; else bun run main.ts commit pr-status; fi
+
+# Usage: just scripts::commit-pr-draft [pr_url]
+commit-pr-draft pr_url="": install
+    @if [ -n "{{pr_url}}" ]; then bun run main.ts commit pr-draft "{{pr_url}}"; else bun run main.ts commit pr-draft; fi
+
+# Usage: just scripts::commit-pr-ready [pr_url]
+commit-pr-ready pr_url="": install
+    @if [ -n "{{pr_url}}" ]; then bun run main.ts commit pr-ready "{{pr_url}}"; else bun run main.ts commit pr-ready; fi
+
+# Usage: just scripts::commit-pr-comment <pr_url> <body>
+commit-pr-comment pr_url body: install
+    bun run main.ts commit pr-comment "{{pr_url}}" "{{body}}"
+
+# Usage: just scripts::commit-pr-close <pr_url>
+commit-pr-close pr_url: install
+    bun run main.ts commit pr-close "{{pr_url}}"
 
 # Setup Cloudflare R2 secrets in Google Cloud Secret Manager
 # Usage: just scripts::r2-setup my-gcp-project-id

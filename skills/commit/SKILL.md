@@ -17,7 +17,7 @@ Automate the end-to-end git + GitHub CLI flow: branch creation, staging, Convent
 
 2. Ensure a non-main branch.
    - If current branch is `main`, create a new branch named `feat-<summary>`.
-   - Prefer generating `<summary>` with `just scripts::commit -- branch-name` (creates `feat-<summary>` automatically).
+   - Prefer generating `<summary>` with `just scripts::commit-branch-name "<summary>"` (creates `feat-<summary>` automatically).
    - If the summary is unclear or the user has a preference, ask for a branch name instead of guessing.
 
 3. Stage changes.
@@ -36,25 +36,25 @@ Automate the end-to-end git + GitHub CLI flow: branch creation, staging, Convent
 
 6. Push and create PR.
    - Push with `git push -u origin <branch>`.
-   - Create PR with `just scripts::commit -- pr-create "<title>" [body-path]`.
+   - Create PR with `just scripts::commit-pr-create "<title>" [body-path]`.
    - If `body-path` is omitted, the script auto-fills the PR body from recent changes.
    - Use `references/pr-body.md` when you want full manual control (update testing list based on what ran).
    - If PR creation fails due to missing remote branch, push then retry.
 
 7. Ask about auto-merge.
    - After PR creation, ask: "Enable auto-merge?" and only proceed on explicit approval.
-   - If approved, run `just scripts::commit -- pr-auto-merge <pr-url>`.
+   - If approved, run `just scripts::commit-pr-auto-merge <pr-url>`.
 
 8. Monitor checks.
-   - Use `just scripts::commit -- pr-checks <pr-url>` to monitor status.
+   - Use `just scripts::commit-pr-checks <pr-url>` to monitor status.
    - If checks fail, inspect failures, apply fixes, commit/push, and re-check until green.
    - After checks pass, ask whether to merge if auto-merge is not enabled.
 
 ## Resources
 
 ### scripts/
-- The repo-level `scripts/commit.ts` uses `bun` to call the `gh` CLI for branch naming and PR operations via `just scripts::commit`.
-- Supported subcommands: `branch-name`, `pr-create`, `pr-auto-merge`, `pr-checks`, `pr-open`, `pr-url`, `pr-status`, `pr-draft`, `pr-ready`, `pr-comment`, `pr-close`.
+- The repo-level `scripts/commit.ts` uses `bun` to call the `gh` CLI for branch naming and PR operations.
+- Use the dedicated Just recipes: `scripts::commit-branch-name`, `scripts::commit-pr-create`, `scripts::commit-pr-auto-merge`, `scripts::commit-pr-checks`, `scripts::commit-pr-open`, `scripts::commit-pr-url`, `scripts::commit-pr-status`, `scripts::commit-pr-draft`, `scripts::commit-pr-ready`, `scripts::commit-pr-comment`, `scripts::commit-pr-close`.
 
 ### references/
 - `references/pr-body.md` provides the PR body template.

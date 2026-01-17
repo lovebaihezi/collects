@@ -31,6 +31,17 @@ interface PRInfo {
   prNumber?: number;
 }
 
+const COPILOT_BOT_LOGINS = new Set([
+  "Copilot",
+  "copilot-swe-agent[bot]",
+  "github-copilot[bot]",
+]);
+
+export function isCopilotBotLogin(login?: string | null): boolean {
+  if (!login) return false;
+  return COPILOT_BOT_LOGINS.has(login);
+}
+
 /**
  * Strip ANSI escape codes from text
  * These codes are used for terminal coloring but appear as garbled characters in PR comments
@@ -514,6 +525,26 @@ export async function runPostJobFeedback(
   const octokit = new Octokit({ auth: token });
 
   console.log(`Processing feedback for job "${jobName}" on PR #${prNumber}`);
+
+  let prAuthor = "unknown";
+  try {
+    const response = await octokit.rest.pulls.get({
+      owner,
+      repo,
+      pull_number: prNumber,
+    });
+    prAuthor = response.data.user?.login ?? "unknown";
+  } catch (error) {
+    const message = formatApiErrorMessage(error, "Failed to fetch PR details");
+    return { success: false, message, recoverable: true };
+  }
+
+  if (!isCopilotBotLogin(prAuthor)) {
+    return {
+      success: true,
+      message: `PR author "${prAuthor}" is not a Copilot bot. Skipping CI feedback.`,
+    };
+  }
 
   // Get job logs for the specific failed job
   let jobsData;

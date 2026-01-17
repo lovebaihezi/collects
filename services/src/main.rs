@@ -67,9 +67,9 @@ async fn main() -> anyhow::Result<()> {
 }
 
 async fn validate_storage_backends(config: &Config) -> anyhow::Result<()> {
-    let r2 = config
-        .r2()
-        .ok_or_else(|| anyhow::anyhow!("No storage backend configured. Set R2 (CF_*) credentials."))?;
+    let r2 = config.r2().ok_or_else(|| {
+        anyhow::anyhow!("No storage backend configured. Set R2 (CF_*) credentials.")
+    })?;
 
     let disk = CFDisk::new(CFDiskConfig {
         account_id: r2.account_id().to_owned(),

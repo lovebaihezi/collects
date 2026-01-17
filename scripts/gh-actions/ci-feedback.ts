@@ -32,6 +32,7 @@ interface PRInfo {
 }
 
 const COPILOT_BOT_LOGINS = new Set([
+  "Copilot",
   "copilot-swe-agent[bot]",
   "github-copilot[bot]",
 ]);

@@ -343,6 +343,7 @@ describe("formatApiErrorMessage", () => {
 
 describe("isCopilotBotLogin", () => {
   test("returns true for known copilot bot logins", () => {
+    expect(isCopilotBotLogin("Copilot")).toBe(true);
     expect(isCopilotBotLogin("copilot-swe-agent[bot]")).toBe(true);
     expect(isCopilotBotLogin("github-copilot[bot]")).toBe(true);
   });

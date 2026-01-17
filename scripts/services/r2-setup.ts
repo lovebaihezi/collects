@@ -398,7 +398,10 @@ export async function verifyR2Secrets(projectId: string): Promise<void> {
   const credentials: R2Credentials = {
     accountId: await readSecretValue(projectId, R2_SECRETS.accountId),
     accessKeyId: await readSecretValue(projectId, R2_SECRETS.accessKeyId),
-    secretAccessKey: await readSecretValue(projectId, R2_SECRETS.secretAccessKey),
+    secretAccessKey: await readSecretValue(
+      projectId,
+      R2_SECRETS.secretAccessKey,
+    ),
     bucket: await readSecretValue(projectId, R2_SECRETS.bucket),
   };
 
@@ -431,7 +434,9 @@ export async function listR2Secrets(projectId: string): Promise<void> {
     const hasValue = await checkResource(
       `gcloud secrets versions access latest --secret=${secretName} --project=${projectId}`,
     );
-    const status = hasValue ? "✓ exists (has value)" : "⚠ exists (no value or no access)";
+    const status = hasValue
+      ? "✓ exists (has value)"
+      : "⚠ exists (no value or no access)";
     p.log.info(`${key} (${secretName}): ${status}`);
   }
 

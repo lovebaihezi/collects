@@ -167,7 +167,9 @@ async function assertSecretsExist(
   projectId: string,
   secrets: SecretBinding[],
 ): Promise<void> {
-  const uniqueSecretNames = Array.from(new Set(secrets.map((s) => s.secretName)));
+  const uniqueSecretNames = Array.from(
+    new Set(secrets.map((s) => s.secretName)),
+  );
   const missing: string[] = [];
 
   for (const secretName of uniqueSecretNames) {
